@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vassil Studio</title>
+    <link rel="icon" type="image/png" href="/studio/assets/brand/vassil-mark.png" />
+    <link rel="stylesheet" href="/studio/assets/styles.css" />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+    <script type="module" src="/studio/assets/app.js"></script>
+  </head>
+  <body>
+    <div class="ambient-shell" aria-hidden="true">
+      <div class="signal-grid"></div>
+      <div class="signal-sweep"></div>
+    </div>
+
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <img class="brand-logo" src="/studio/assets/brand/vassil-logo.png" alt="Vassil Studio" />
+        </div>
+
+        <button class="workspace-switch" type="button">
+          <span class="workspace-dot"></span>
+          <span>Local ZipVoice Lab</span>
+          <i data-lucide="chevrons-up-down"></i>
+        </button>
+
+        <nav class="sidebar-nav" aria-label="Studio navigation">
+          <span class="nav-kicker">Create</span>
+          <button class="nav-link active" type="button" data-tab="synthesize">
+            <i data-lucide="audio-lines"></i>
+            <span data-short="TTS">Text to Speech</span>
+          </button>
+          <button class="nav-link" type="button" data-tab="transcribe">
+            <i data-lucide="captions"></i>
+            <span data-short="ASR">Speech to Text</span>
+          </button>
+          <button class="nav-link" type="button" data-tab="live">
+            <i data-lucide="radio"></i>
+            <span data-short="Live">Realtime ASR</span>
+          </button>
+
+          <span class="nav-kicker">Manage</span>
+          <a class="nav-link anchor-link" href="#voiceLibrary">
+            <i data-lucide="users"></i>
+            <span data-short="Voices">Voice Library</span>
+            <span id="voiceCountBadge" class="count-pill">0</span>
+          </a>
+          <a class="nav-link anchor-link" href="#jobHistory">
+            <i data-lucide="history"></i>
+            <span data-short="Jobs">Jobs</span>
+          </a>
+        </nav>
+
+        <section class="sidebar-card runtime-card">
+          <div class="card-title-row">
+            <span class="nav-kicker">Runtime</span>
+            <button id="refreshStatusButton" class="icon-button" type="button" title="Refresh status">
+              <i data-lucide="refresh-cw"></i>
+            </button>
+          </div>
+          <p id="runtimeStatus">Checking runtime...</p>
+          <button id="warmupButton" class="command primary full-width" type="button">
+            <i data-lucide="zap"></i>
+            <span>Warmup models</span>
+          </button>
+        </section>
+
+        <section class="sidebar-card auth-card">
+          <label class="api-key-field">
+            <span>API key</span>
+            <input id="apiKeyInput" type="password" autocomplete="off" />
+          </label>
+          <div class="sidebar-actions">
+            <button id="saveApiKeyButton" class="command compact" type="button">
+              <i data-lucide="key-round"></i>
+              <span>Save</span>
+            </button>
+            <button id="clearApiKeyButton" class="icon-button" type="button" title="Clear API key">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+        </section>
+      </aside>
+
+      <section class="studio-shell">
+        <header class="studio-topbar">
+          <div>
+            <span class="section-kicker">Studio</span>
+            <h2>Text to Speech</h2>
+          </div>
+          <div class="topbar-actions">
+            <a class="command ghost" href="/docs" target="_blank" rel="noreferrer">
+              <i data-lucide="book-open"></i>
+              <span>Docs</span>
+            </a>
+            <a class="command ghost" href="/model-status" target="_blank" rel="noreferrer">
+              <i data-lucide="activity"></i>
+              <span>Status</span>
+            </a>
+          </div>
+        </header>
+
+        <section class="insight-strip" aria-label="Runtime capabilities">
+          <article id="asrInsightCard" class="insight-card" data-status="idle">
+            <span class="insight-label">ASR</span>
+            <strong id="asrInsightTitle">ZipFormer</strong>
+            <small id="asrInsightStatus">Idle</small>
+          </article>
+          <article id="ttsInsightCard" class="insight-card" data-status="idle">
+            <span class="insight-label">TTS</span>
+            <strong id="ttsInsightTitle">ZipVoice</strong>
+            <small id="ttsInsightStatus">Idle</small>
+          </article>
+          <article id="liveInsightCard" class="insight-card" data-status="standby">
+            <span class="insight-label">Live</span>
+            <strong id="liveInsightTitle">WebSocket</strong>
+            <small id="liveInsightStatus">Standby</small>
+          </article>
+        </section>
+
+        <section class="workspace">
+          <div class="tabs" role="tablist">
+            <button
+              id="synthesizeTabButton"
+              class="tab active"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="synthesizeTab"
+              data-tab="synthesize"
+            >
+              <i data-lucide="audio-lines"></i>
+              <span data-short="TTS">Generate</span>
+            </button>
+            <button
+              id="transcribeTabButton"
+              class="tab"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="transcribeTab"
+              data-tab="transcribe"
+            >
+              <i data-lucide="captions"></i>
+              <span data-short="ASR">Transcribe</span>
+            </button>
+            <button
+              id="liveTabButton"
+              class="tab"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="liveTab"
+              data-tab="live"
+            >
+              <i data-lucide="mic"></i>
+              <span data-short="Live">Live ASR</span>
+            </button>
+          </div>
+
+          <div id="synthesizeTab" class="tab-panel active" role="tabpanel" aria-labelledby="synthesizeTabButton">
+            <form id="ttsForm" class="composer-grid">
+              <section class="editor-stage">
+                <div class="editor-toolbar">
+                  <span class="section-kicker">Script</span>
+                  <div class="signal-visual" aria-hidden="true">
+                    <div class="signal-line"></div>
+                    <div class="signal-bars">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                  </div>
+                </div>
+
+                <section id="noVoiceEmptyState" class="empty-state">
+                  <i data-lucide="user-plus"></i>
+                  <strong>Add a voice before generating speech</strong>
+                  <span>Import a loose audio file like sample voice.weba or create a reference voice below.</span>
+                  <div id="quickImportPanel" class="quick-import-panel" hidden>
+                    <span class="quick-import-meta">Local file ready</span>
+                    <strong id="quickImportName">sample voice.weba</strong>
+                    <button id="quickImportButton" class="command primary compact" type="button">
+                      <i data-lucide="download"></i>
+                      <span>Import now</span>
+                    </button>
+                    <audio id="quickImportAudio" class="reference-audio" controls preload="metadata"></audio>
+                  </div>
+                  <a class="command primary" href="#voiceLibrary">
+                    <i data-lucide="users"></i>
+                    <span>Open Voice Library</span>
+                  </a>
+                </section>
+
+                <label class="script-field">
+                  <span class="field-head">
+                    <span>Text</span>
+                    <output id="scriptCharCount">0 characters</output>
+                  </span>
+                  <textarea name="text" rows="15">Xin chào, đây là Vassil Studio đang kiểm tra giọng nói tiếng Việt.</textarea>
+                </label>
+
+                <div class="prompt-strip" aria-label="Prompt suggestions">
+                  <span>Get started with</span>
+                  <button type="button" class="prompt-chip" data-prompt="Kể một câu chuyện ngắn bằng giọng đọc tự nhiên.">
+                    <i data-lucide="book-open"></i>
+                    Kể chuyện
+                  </button>
+                  <button type="button" class="prompt-chip" data-prompt="Đọc lời quảng cáo ngắn, rõ ràng và thuyết phục.">
+                    <i data-lucide="megaphone"></i>
+                    Quảng cáo
+                  </button>
+                  <button type="button" class="prompt-chip" data-prompt="Giới thiệu podcast với giọng thân thiện và ấm áp.">
+                    <i data-lucide="podcast"></i>
+                    Podcast
+                  </button>
+                </div>
+              </section>
+
+              <aside class="settings-panel">
+                <div class="settings-tabs">
+                  <button id="settingsTabButton" class="settings-tab active" type="button">Settings</button>
+                  <button id="historyTabButton" class="settings-tab" type="button">History</button>
+                </div>
+
+                <div id="settingsPanelContent" class="settings-content">
+                  <section class="settings-card promo-card">
+                    <div class="promo-art" aria-hidden="true">
+                      <i data-lucide="sparkles"></i>
+                    </div>
+                    <div>
+                      <strong>Vassil Studio</strong>
+                      <span>ZipVoice generation with saved local voices.</span>
+                    </div>
+                  </section>
+
+                  <section id="noVoiceSettingsHint" class="empty-state compact">
+                    <i data-lucide="user-plus"></i>
+                    <strong>No voice selected</strong>
+                    <span>Create or import a voice to enable synthesis.</span>
+                  </section>
+
+                  <label class="setting-row">
+                    <span>Voice</span>
+                    <select name="voice_id" required></select>
+                  </label>
+
+                  <section id="selectedVoiceCard" class="settings-card selected-voice-card"></section>
+
+                  <section class="settings-card audio-result output-card" aria-label="Latest generated audio">
+                    <div class="card-title-row">
+                      <span class="section-kicker">Latest output</span>
+                      <a id="downloadLink" class="command compact download" href="#" download="vassil-generated.wav">
+                        <i data-lucide="download"></i>
+                        <span>WAV</span>
+                      </a>
+                    </div>
+                    <div class="result-player">
+                      <div id="ttsResultStatus" class="result-status" data-state="idle">
+                        <span class="status-dot" aria-hidden="true"></span>
+                        <div>
+                          <strong>No output yet</strong>
+                          <span>Latest render will appear here.</span>
+                        </div>
+                      </div>
+                      <audio id="ttsAudio" controls hidden></audio>
+                    </div>
+                  </section>
+
+                  <section class="settings-card model-card">
+                    <span class="pill">ZipVoice</span>
+                    <strong>Vietnamese zero-shot TTS</strong>
+                    <small>Uses local reference voice profiles.</small>
+                  </section>
+
+                  <div class="form-grid vertical">
+                    <label class="range-field">
+                      <span class="field-head">
+                        <span>Steps</span>
+                        <output id="stepsValue">4</output>
+                      </span>
+                      <input name="num_steps" type="range" min="1" max="16" value="4" />
+                      <span class="range-labels">
+                        <span>Fast preview</span>
+                        <span>Higher quality</span>
+                      </span>
+                    </label>
+                    <label class="range-field">
+                      <span class="field-head">
+                        <span>Speed</span>
+                        <output id="speedValue">1.0x</output>
+                      </span>
+                      <input name="speed" type="range" min="0.5" max="2" step="0.1" value="1.0" />
+                      <span class="range-labels">
+                        <span>Slower</span>
+                        <span>Faster</span>
+                      </span>
+                    </label>
+                  </div>
+
+                  <div class="button-row settings-actions">
+                    <button id="synthesizeButton" class="command primary" type="submit">
+                      <i data-lucide="play"></i>
+                      <span>Generate</span>
+                    </button>
+                    <button id="queueTtsJobButton" class="command" type="button">
+                      <i data-lucide="list-plus"></i>
+                      <span>Queue</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div id="historyPanelContent" class="settings-content" hidden>
+                  <div class="card-title-row">
+                    <span class="section-kicker">Recent jobs</span>
+                    <a class="command compact" href="#jobHistory">
+                      <i data-lucide="history"></i>
+                      <span>All jobs</span>
+                    </a>
+                  </div>
+                  <div id="rightHistoryList" class="right-history-list"></div>
+                </div>
+              </aside>
+            </form>
+          </div>
+
+          <div id="transcribeTab" class="tab-panel" role="tabpanel" aria-labelledby="transcribeTabButton">
+            <div class="split-panel">
+              <section class="editor-stage">
+                <form id="asrForm" class="stack">
+                  <label class="upload-drop">
+                    <i data-lucide="file-audio"></i>
+                    <span>Upload audio</span>
+                    <input name="audio" type="file" accept="audio/*" required />
+                  </label>
+                  <div class="button-row">
+                    <button class="command primary" type="submit">
+                      <i data-lucide="file-audio"></i>
+                      <span>Transcribe</span>
+                    </button>
+                    <button id="queueAsrJobButton" class="command" type="button">
+                      <i data-lucide="list-plus"></i>
+                      <span>Queue job</span>
+                    </button>
+                  </div>
+                </form>
+              </section>
+
+              <section class="settings-panel transcript-panel">
+                <label class="result-box">
+                  <span>Transcript</span>
+                  <textarea id="asrResult" rows="16" readonly></textarea>
+                </label>
+              </section>
+            </div>
+          </div>
+
+          <div id="liveTab" class="tab-panel" role="tabpanel" aria-labelledby="liveTabButton">
+            <div class="split-panel">
+              <section class="editor-stage live-stage">
+                <div class="live-meter" aria-hidden="true">
+                  <div class="signal-bars">
+                    <span></span><span></span><span></span><span></span><span></span><span></span>
+                  </div>
+                </div>
+                <div class="live-toolbar">
+                  <div id="liveStatus" class="live-status">Idle</div>
+                  <div class="live-actions">
+                    <button id="startLiveButton" class="command primary" type="button">
+                      <i data-lucide="mic"></i>
+                      <span>Start</span>
+                    </button>
+                    <button id="stopLiveButton" class="command" type="button" disabled>
+                      <i data-lucide="square"></i>
+                      <span>Stop</span>
+                    </button>
+                    <button id="clearLiveButton" class="icon-button" type="button" title="Clear transcript">
+                      <i data-lucide="eraser"></i>
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="settings-panel transcript-panel">
+                <label class="result-box">
+                  <span>Live transcript</span>
+                  <textarea id="liveResult" rows="16" readonly></textarea>
+                </label>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section id="voiceLibrary" class="library-section">
+          <div class="section-head">
+            <div>
+              <span class="section-kicker">Voice Library</span>
+              <h2>Saved reference voices</h2>
+            </div>
+            <div class="library-tools">
+              <label class="search-field">
+                <i data-lucide="search"></i>
+                <input id="voiceSearchInput" type="search" placeholder="Search voices or local files" autocomplete="off" />
+              </label>
+              <button id="refreshVoicesButton" class="icon-button" type="button" title="Refresh voices">
+                <i data-lucide="rotate-cw"></i>
+              </button>
+            </div>
+          </div>
+          <output id="voiceLibrarySummary" class="library-summary">0 saved voices | 0 local files</output>
+
+          <section id="importCandidatesPanel" class="import-panel">
+            <div>
+              <span class="section-kicker">Local files</span>
+              <h3>Import loose audio</h3>
+            </div>
+            <div id="importCandidateList" class="import-candidate-list"></div>
+          </section>
+
+          <div class="library-grid">
+            <form id="voiceForm" class="voice-create-card">
+              <div class="card-title-row">
+                <span class="pill">Clone</span>
+                <strong>Add local voice</strong>
+              </div>
+              <label>
+                <span>Name</span>
+                <input name="name" type="text" value="demo" autocomplete="off" />
+              </label>
+              <label>
+                <span>Reference audio</span>
+                <input name="reference_audio" type="file" accept="audio/*" required />
+              </label>
+              <label>
+                <span>Reference text</span>
+                <textarea name="reference_text" rows="4" placeholder="xin chao"></textarea>
+              </label>
+              <label class="check-row">
+                <input name="auto_transcribe" type="checkbox" />
+                <span>Auto transcribe</span>
+              </label>
+              <button class="command primary full-width" type="submit">
+                <i data-lucide="plus"></i>
+                <span>Add voice</span>
+              </button>
+            </form>
+
+            <div id="voiceList" class="voice-list"></div>
+          </div>
+        </section>
+
+        <section id="jobHistory" class="jobs-section">
+          <section class="job-panel">
+            <div class="panel-head compact">
+              <h2>
+                TTS Jobs
+                <span id="ttsJobCountBadge" class="count-pill">0</span>
+              </h2>
+              <div class="panel-actions">
+                <button id="cleanupTtsJobsButton" class="icon-button" type="button" title="Clean finished TTS jobs">
+                  <i data-lucide="trash-2"></i>
+                </button>
+                <button id="refreshTtsJobsButton" class="icon-button" type="button" title="Refresh TTS jobs">
+                  <i data-lucide="refresh-cw"></i>
+                </button>
+              </div>
+            </div>
+            <div id="ttsJobList" class="job-list"></div>
+          </section>
+
+          <section class="job-panel">
+            <div class="panel-head compact">
+              <h2>
+                ASR Jobs
+                <span id="asrJobCountBadge" class="count-pill">0</span>
+              </h2>
+              <div class="panel-actions">
+                <button id="cleanupAsrJobsButton" class="icon-button" type="button" title="Clean finished ASR jobs">
+                  <i data-lucide="trash-2"></i>
+                </button>
+                <button id="refreshAsrJobsButton" class="icon-button" type="button" title="Refresh ASR jobs">
+                  <i data-lucide="refresh-cw"></i>
+                </button>
+              </div>
+            </div>
+            <div id="asrJobList" class="job-list"></div>
+          </section>
+        </section>
+      </section>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      <nav class="mobile-action-bar" aria-label="Mobile synthesis actions">
+        <button id="mobileVoiceButton" class="mobile-action" type="button">
+          <i data-lucide="users"></i>
+          <span id="mobileVoiceLabel">No voice</span>
+        </button>
+        <button id="mobileSynthesizeButton" class="mobile-action primary" type="button">
+          <i data-lucide="play"></i>
+          <span>Generate</span>
+        </button>
+        <button id="mobileQueueButton" class="mobile-action" type="button" title="Queue generation" aria-label="Queue generation">
+          <i data-lucide="list-plus"></i>
+          <span>Queue</span>
+        </button>
+      </nav>
+    </main>
+  </body>
+</html>

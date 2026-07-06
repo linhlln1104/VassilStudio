@@ -1,0 +1,43 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Local audit and generated artifacts
+artifacts/
+
+# Local model assets
+models/**
+!models/
+!models/README.md
+!models/runtime/
+!models/runtime/.gitkeep
+!models/source/
+!models/source/.gitkeep
+Zipmodel/
+
+# Runtime artifacts
+data/**
+!data/
+!data/README.md
+logs/**
+!logs/
+!logs/.gitkeep
+tmp/
+*.wav
+*.mp3
+*.flac
+
+# Local settings
+.env
+config/vassil.local.json
+config/vvoice.local.json
+
+# Foundation source is kept as a local reference clone.
+foundation/sherpa-onnx/
+foundation/ZipVoice/

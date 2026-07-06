@@ -1,0 +1,82 @@
+{
+  "paths": {
+    "models_root": "models",
+    "data_root": "data",
+    "logs_root": "logs"
+  },
+  "runtime": {
+    "provider": "cpu",
+    "num_threads": 2,
+    "debug": false
+  },
+  "asr": {
+    "enabled": true,
+    "default_language": "vi",
+    "sample_rate": 16000,
+    "feature_dim": 80,
+    "decoding_method": "greedy_search",
+    "models": {
+      "vi": {
+        "encoder": "models/runtime/asr/vi/zipformer/encoder.onnx",
+        "decoder": "models/runtime/asr/vi/zipformer/decoder.onnx",
+        "joiner": "models/runtime/asr/vi/zipformer/joiner.onnx",
+        "tokens": "models/runtime/asr/vi/zipformer/tokens.txt"
+      },
+      "en": {
+        "encoder": "models/runtime/asr/en/zipformer/encoder.onnx",
+        "decoder": "models/runtime/asr/en/zipformer/decoder.onnx",
+        "joiner": "models/runtime/asr/en/zipformer/joiner.onnx",
+        "tokens": "models/runtime/asr/en/zipformer/tokens.txt"
+      }
+    }
+  },
+  "tts": {
+    "enabled": true,
+    "sample_rate": 24000,
+    "default_language": "vi",
+    "default_num_steps": 16,
+    "default_speed": 1.0,
+    "min_char_in_sentence": 30,
+    "models": {
+      "vi": {
+        "label": "Vietnamese ZipVoice",
+        "sample_rate": 24000,
+        "tokens": "models/runtime/tts/vi/zipvoice/tokens.txt",
+        "encoder": "models/runtime/tts/vi/zipvoice/text_model.onnx",
+        "decoder": "models/runtime/tts/vi/zipvoice/flow_matching_model.onnx",
+        "vocoder": "models/runtime/tts/vi/zipvoice/vocos_24khz.onnx",
+        "data_dir": "models/runtime/tts/vi/zipvoice/espeak-ng-data",
+        "lexicon": "models/runtime/tts/vi/zipvoice/lexicon_vi_minimal.txt"
+      },
+      "en": {
+        "label": "English ZipVoice",
+        "sample_rate": 24000,
+        "tokens": "models/runtime/tts/en/zipvoice/tokens.txt",
+        "encoder": "models/runtime/tts/en/zipvoice/text_model.onnx",
+        "decoder": "models/runtime/tts/en/zipvoice/flow_matching_model.onnx",
+        "vocoder": "models/runtime/tts/en/zipvoice/vocos_24khz.onnx",
+        "data_dir": "models/runtime/tts/en/zipvoice/espeak-ng-data"
+      }
+    }
+  },
+  "realtime": {
+    "enabled": true,
+    "encoding": "pcm_f32le",
+    "chunk_seconds": 3.0,
+    "min_chunk_seconds": 0.6,
+    "max_buffer_seconds": 12.0,
+    "silence_rms": 0.003
+  },
+  "storage": {
+    "data_dir": "data",
+    "voices_dir": "data/voices",
+    "asr_jobs_dir": "data/jobs/asr",
+    "tts_jobs_dir": "data/jobs/tts",
+    "uploads_dir": "data/uploads",
+    "outputs_dir": "data/outputs",
+    "logs_dir": "logs"
+  },
+  "security": {
+    "api_keys": []
+  }
+}

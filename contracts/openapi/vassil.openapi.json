@@ -1,0 +1,2065 @@
+{
+  "components": {
+    "schemas": {
+      "AsrJobCleanupResponse": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          },
+          "job_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Job Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "deleted",
+          "job_ids"
+        ],
+        "title": "AsrJobCleanupResponse",
+        "type": "object"
+      },
+      "AsrJobDeleteResponse": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted",
+          "job_id"
+        ],
+        "title": "AsrJobDeleteResponse",
+        "type": "object"
+      },
+      "AsrJobResponse": {
+        "properties": {
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "sample_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Rate"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "filename",
+          "language",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "error",
+          "text",
+          "sample_rate",
+          "duration_seconds",
+          "audio_url"
+        ],
+        "title": "AsrJobResponse",
+        "type": "object"
+      },
+      "Body_create_asr_job_api_v1_asr_jobs_post": {
+        "properties": {
+          "audio": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Audio",
+            "type": "string"
+          },
+          "language": {
+            "default": "vi",
+            "title": "Language",
+            "type": "string"
+          }
+        },
+        "required": [
+          "audio"
+        ],
+        "title": "Body_create_asr_job_api_v1_asr_jobs_post",
+        "type": "object"
+      },
+      "Body_create_tts_job_with_voice_api_v1_tts_jobs_voices__voice_id__post": {
+        "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "num_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Num Steps"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "Body_create_tts_job_with_voice_api_v1_tts_jobs_voices__voice_id__post",
+        "type": "object"
+      },
+      "Body_create_voice_api_v1_voices_post": {
+        "properties": {
+          "auto_transcribe": {
+            "default": false,
+            "title": "Auto Transcribe",
+            "type": "boolean"
+          },
+          "language": {
+            "default": "vi",
+            "title": "Language",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reference_audio": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Reference Audio",
+            "type": "string"
+          },
+          "reference_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Text"
+          }
+        },
+        "required": [
+          "name",
+          "reference_audio"
+        ],
+        "title": "Body_create_voice_api_v1_voices_post",
+        "type": "object"
+      },
+      "Body_import_voice_api_v1_voices_import_post": {
+        "properties": {
+          "auto_transcribe": {
+            "default": true,
+            "title": "Auto Transcribe",
+            "type": "boolean"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "language": {
+            "default": "vi",
+            "title": "Language",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reference_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Text"
+          }
+        },
+        "required": [
+          "filename"
+        ],
+        "title": "Body_import_voice_api_v1_voices_import_post",
+        "type": "object"
+      },
+      "Body_synthesize_api_v1_tts_synthesize_post": {
+        "properties": {
+          "language": {
+            "default": "vi",
+            "title": "Language",
+            "type": "string"
+          },
+          "num_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Num Steps"
+          },
+          "reference_audio": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Reference Audio",
+            "type": "string"
+          },
+          "reference_text": {
+            "title": "Reference Text",
+            "type": "string"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "reference_text",
+          "reference_audio"
+        ],
+        "title": "Body_synthesize_api_v1_tts_synthesize_post",
+        "type": "object"
+      },
+      "Body_synthesize_with_voice_api_v1_tts_synthesize_voices__voice_id__post": {
+        "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "num_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Num Steps"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "Body_synthesize_with_voice_api_v1_tts_synthesize_voices__voice_id__post",
+        "type": "object"
+      },
+      "Body_transcribe_audio_api_v1_asr_transcribe_post": {
+        "properties": {
+          "audio": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Audio",
+            "type": "string"
+          },
+          "language": {
+            "default": "vi",
+            "title": "Language",
+            "type": "string"
+          }
+        },
+        "required": [
+          "audio"
+        ],
+        "title": "Body_transcribe_audio_api_v1_asr_transcribe_post",
+        "type": "object"
+      },
+      "Body_update_voice_api_v1_voices__voice_id__patch": {
+        "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reference_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Text"
+          }
+        },
+        "title": "Body_update_voice_api_v1_voices__voice_id__patch",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "asr_enabled": {
+            "title": "Asr Enabled",
+            "type": "boolean"
+          },
+          "asr_loaded": {
+            "title": "Asr Loaded",
+            "type": "boolean"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tts_enabled": {
+            "title": "Tts Enabled",
+            "type": "boolean"
+          },
+          "tts_loaded": {
+            "title": "Tts Loaded",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "asr_enabled",
+          "tts_enabled",
+          "provider",
+          "asr_loaded",
+          "tts_loaded"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "ModelStatusResponse": {
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeStatus"
+          }
+        },
+        "required": [
+          "ready",
+          "checks",
+          "runtime"
+        ],
+        "title": "ModelStatusResponse",
+        "type": "object"
+      },
+      "RuntimeStatus": {
+        "properties": {
+          "asr_configured_languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Asr Configured Languages",
+            "type": "array"
+          },
+          "asr_loaded": {
+            "title": "Asr Loaded",
+            "type": "boolean"
+          },
+          "asr_loaded_languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Asr Loaded Languages",
+            "type": "array"
+          },
+          "debug": {
+            "title": "Debug",
+            "type": "boolean"
+          },
+          "num_threads": {
+            "title": "Num Threads",
+            "type": "integer"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "tts_configured_languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tts Configured Languages",
+            "type": "array"
+          },
+          "tts_loaded": {
+            "title": "Tts Loaded",
+            "type": "boolean"
+          },
+          "tts_loaded_languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tts Loaded Languages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "provider",
+          "num_threads",
+          "debug",
+          "asr_loaded",
+          "tts_loaded",
+          "asr_configured_languages",
+          "asr_loaded_languages",
+          "tts_configured_languages",
+          "tts_loaded_languages"
+        ],
+        "title": "RuntimeStatus",
+        "type": "object"
+      },
+      "TranscriptionResponse": {
+        "properties": {
+          "duration_seconds": {
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "sample_rate": {
+            "title": "Sample Rate",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "sample_rate",
+          "duration_seconds"
+        ],
+        "title": "TranscriptionResponse",
+        "type": "object"
+      },
+      "TtsJobCleanupResponse": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          },
+          "job_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Job Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "deleted",
+          "job_ids"
+        ],
+        "title": "TtsJobCleanupResponse",
+        "type": "object"
+      },
+      "TtsJobDeleteResponse": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted",
+          "job_id"
+        ],
+        "title": "TtsJobDeleteResponse",
+        "type": "object"
+      },
+      "TtsJobResponse": {
+        "properties": {
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "num_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Num Steps"
+          },
+          "sample_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Rate"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "voice_id": {
+            "title": "Voice Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "voice_id",
+          "language",
+          "text",
+          "num_steps",
+          "speed",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "error",
+          "sample_rate",
+          "duration_seconds",
+          "audio_url"
+        ],
+        "title": "TtsJobResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VoiceDeleteResponse": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "voice_id": {
+            "title": "Voice Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted",
+          "voice_id"
+        ],
+        "title": "VoiceDeleteResponse",
+        "type": "object"
+      },
+      "VoiceImportCandidateResponse": {
+        "properties": {
+          "audio_url": {
+            "title": "Audio Url",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "number"
+          }
+        },
+        "required": [
+          "filename",
+          "name",
+          "size_bytes",
+          "updated_at",
+          "audio_url"
+        ],
+        "title": "VoiceImportCandidateResponse",
+        "type": "object"
+      },
+      "VoiceResponse": {
+        "properties": {
+          "audio_path": {
+            "title": "Audio Path",
+            "type": "string"
+          },
+          "audio_size_bytes": {
+            "title": "Audio Size Bytes",
+            "type": "integer"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_seconds": {
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reference_audio_url": {
+            "title": "Reference Audio Url",
+            "type": "string"
+          },
+          "reference_text": {
+            "title": "Reference Text",
+            "type": "string"
+          },
+          "reference_text_source": {
+            "title": "Reference Text Source",
+            "type": "string"
+          },
+          "sample_rate": {
+            "title": "Sample Rate",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "voice_id": {
+            "title": "Voice Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "voice_id",
+          "name",
+          "language",
+          "reference_text",
+          "reference_text_source",
+          "audio_path",
+          "audio_size_bytes",
+          "sample_rate",
+          "duration_seconds",
+          "created_at",
+          "updated_at",
+          "reference_audio_url"
+        ],
+        "title": "VoiceResponse",
+        "type": "object"
+      },
+      "WarmupAllResponse": {
+        "properties": {
+          "asr_loaded": {
+            "title": "Asr Loaded",
+            "type": "boolean"
+          },
+          "tts_loaded": {
+            "title": "Tts Loaded",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "asr_loaded",
+          "tts_loaded"
+        ],
+        "title": "WarmupAllResponse",
+        "type": "object"
+      },
+      "WarmupResponse": {
+        "properties": {
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "loaded"
+        ],
+        "title": "WarmupResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Vassil Studio API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/asr/jobs": {
+      "delete": {
+        "operationId": "cleanup_asr_jobs_api_v1_asr_jobs_delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "max_age_seconds",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Age Seconds"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsrJobCleanupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cleanup Asr Jobs",
+        "tags": [
+          "asr"
+        ]
+      },
+      "get": {
+        "operationId": "list_asr_jobs_api_v1_asr_jobs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AsrJobResponse"
+                  },
+                  "title": "Response List Asr Jobs Api V1 Asr Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Asr Jobs",
+        "tags": [
+          "asr"
+        ]
+      },
+      "post": {
+        "operationId": "create_asr_job_api_v1_asr_jobs_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_asr_job_api_v1_asr_jobs_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsrJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Asr Job",
+        "tags": [
+          "asr"
+        ]
+      }
+    },
+    "/api/v1/asr/jobs/{job_id}": {
+      "delete": {
+        "operationId": "delete_asr_job_api_v1_asr_jobs__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsrJobDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Asr Job",
+        "tags": [
+          "asr"
+        ]
+      },
+      "get": {
+        "operationId": "get_asr_job_api_v1_asr_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsrJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Asr Job",
+        "tags": [
+          "asr"
+        ]
+      }
+    },
+    "/api/v1/asr/jobs/{job_id}/audio": {
+      "get": {
+        "operationId": "get_asr_job_audio_api_v1_asr_jobs__job_id__audio_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Asr Job Audio",
+        "tags": [
+          "asr"
+        ]
+      }
+    },
+    "/api/v1/asr/transcribe": {
+      "post": {
+        "operationId": "transcribe_audio_api_v1_asr_transcribe_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_transcribe_audio_api_v1_asr_transcribe_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transcribe Audio",
+        "tags": [
+          "asr"
+        ]
+      }
+    },
+    "/api/v1/tts/jobs": {
+      "delete": {
+        "operationId": "cleanup_tts_jobs_api_v1_tts_jobs_delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "max_age_seconds",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Age Seconds"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TtsJobCleanupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cleanup Tts Jobs",
+        "tags": [
+          "tts"
+        ]
+      },
+      "get": {
+        "operationId": "list_tts_jobs_api_v1_tts_jobs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TtsJobResponse"
+                  },
+                  "title": "Response List Tts Jobs Api V1 Tts Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tts Jobs",
+        "tags": [
+          "tts"
+        ]
+      }
+    },
+    "/api/v1/tts/jobs/voices/{voice_id}": {
+      "post": {
+        "operationId": "create_tts_job_with_voice_api_v1_tts_jobs_voices__voice_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "voice_id",
+            "required": true,
+            "schema": {
+              "title": "Voice Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_tts_job_with_voice_api_v1_tts_jobs_voices__voice_id__post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TtsJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Tts Job With Voice",
+        "tags": [
+          "tts"
+        ]
+      }
+    },
+    "/api/v1/tts/jobs/{job_id}": {
+      "delete": {
+        "operationId": "delete_tts_job_api_v1_tts_jobs__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TtsJobDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Tts Job",
+        "tags": [
+          "tts"
+        ]
+      },
+      "get": {
+        "operationId": "get_tts_job_api_v1_tts_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TtsJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tts Job",
+        "tags": [
+          "tts"
+        ]
+      }
+    },
+    "/api/v1/tts/jobs/{job_id}/audio": {
+      "get": {
+        "operationId": "get_tts_job_audio_api_v1_tts_jobs__job_id__audio_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tts Job Audio",
+        "tags": [
+          "tts"
+        ]
+      }
+    },
+    "/api/v1/tts/synthesize": {
+      "post": {
+        "operationId": "synthesize_api_v1_tts_synthesize_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_synthesize_api_v1_tts_synthesize_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Synthesize",
+        "tags": [
+          "tts"
+        ]
+      }
+    },
+    "/api/v1/tts/synthesize/voices/{voice_id}": {
+      "post": {
+        "operationId": "synthesize_with_voice_api_v1_tts_synthesize_voices__voice_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "voice_id",
+            "required": true,
+            "schema": {
+              "title": "Voice Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_synthesize_with_voice_api_v1_tts_synthesize_voices__voice_id__post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Synthesize With Voice",
+        "tags": [
+          "tts"
+        ]
+      }
+    },
+    "/api/v1/voices": {
+      "get": {
+        "operationId": "list_voices_api_v1_voices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VoiceResponse"
+                  },
+                  "title": "Response List Voices Api V1 Voices Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Voices",
+        "tags": [
+          "voices"
+        ]
+      },
+      "post": {
+        "operationId": "create_voice_api_v1_voices_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_voice_api_v1_voices_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Voice",
+        "tags": [
+          "voices"
+        ]
+      }
+    },
+    "/api/v1/voices/import": {
+      "post": {
+        "operationId": "import_voice_api_v1_voices_import_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_voice_api_v1_voices_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Voice",
+        "tags": [
+          "voices"
+        ]
+      }
+    },
+    "/api/v1/voices/import-candidates": {
+      "get": {
+        "operationId": "list_voice_import_candidates_api_v1_voices_import_candidates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VoiceImportCandidateResponse"
+                  },
+                  "title": "Response List Voice Import Candidates Api V1 Voices Import Candidates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Voice Import Candidates",
+        "tags": [
+          "voices"
+        ]
+      }
+    },
+    "/api/v1/voices/import-candidates/{filename}/audio": {
+      "get": {
+        "operationId": "get_voice_import_candidate_audio_api_v1_voices_import_candidates__filename__audio_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "title": "Filename",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Voice Import Candidate Audio",
+        "tags": [
+          "voices"
+        ]
+      }
+    },
+    "/api/v1/voices/{voice_id}": {
+      "delete": {
+        "operationId": "delete_voice_api_v1_voices__voice_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "voice_id",
+            "required": true,
+            "schema": {
+              "title": "Voice Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Voice",
+        "tags": [
+          "voices"
+        ]
+      },
+      "get": {
+        "operationId": "get_voice_api_v1_voices__voice_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "voice_id",
+            "required": true,
+            "schema": {
+              "title": "Voice Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Voice",
+        "tags": [
+          "voices"
+        ]
+      },
+      "patch": {
+        "operationId": "update_voice_api_v1_voices__voice_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "voice_id",
+            "required": true,
+            "schema": {
+              "title": "Voice Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_update_voice_api_v1_voices__voice_id__patch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Voice",
+        "tags": [
+          "voices"
+        ]
+      }
+    },
+    "/api/v1/voices/{voice_id}/reference-audio": {
+      "get": {
+        "operationId": "get_voice_reference_audio_api_v1_voices__voice_id__reference_audio_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "voice_id",
+            "required": true,
+            "schema": {
+              "title": "Voice Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Voice Reference Audio",
+        "tags": [
+          "voices"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/model-status": {
+      "get": {
+        "operationId": "model_status_model_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Model Status",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/warmup": {
+      "post": {
+        "operationId": "warmup_all_warmup_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarmupAllResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Warmup All",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/warmup/asr": {
+      "post": {
+        "operationId": "warmup_asr_warmup_asr_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarmupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Warmup Asr",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/warmup/tts": {
+      "post": {
+        "operationId": "warmup_tts_warmup_tts_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarmupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Warmup Tts",
+        "tags": [
+          "system"
+        ]
+      }
+    }
+  }
+}
