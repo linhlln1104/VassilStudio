@@ -204,6 +204,15 @@ class JobSettings:
 
 
 @dataclass(frozen=True)
+class LimitSettings:
+    max_upload_bytes: int
+    max_tts_text_chars: int
+    max_reference_text_chars: int
+    max_voice_name_chars: int
+    max_realtime_frame_bytes: int
+
+
+@dataclass(frozen=True)
 class Settings:
     root: Path
     paths: PathSettings
@@ -212,6 +221,7 @@ class Settings:
     tts: TtsSettings
     realtime: RealtimeSettings
     jobs: JobSettings
+    limits: LimitSettings
     storage: StorageSettings
     security: SecuritySettings
 
@@ -244,6 +254,7 @@ def parse_settings(raw: dict[str, Any], root: Path) -> Settings:
     tts = raw["tts"]
     realtime = raw.get("realtime", {})
     jobs = raw.get("jobs", {})
+    limits = raw.get("limits", {})
     storage = raw["storage"]
     security = raw.get("security", {})
     paths = PathSettings(
@@ -274,6 +285,28 @@ def parse_settings(raw: dict[str, Any], root: Path) -> Settings:
         jobs=JobSettings(
             asr_max_workers=_positive_int(jobs.get("asr_max_workers", 1), "jobs.asr_max_workers"),
             tts_max_workers=_positive_int(jobs.get("tts_max_workers", 1), "jobs.tts_max_workers"),
+        ),
+        limits=LimitSettings(
+            max_upload_bytes=_positive_int(
+                limits.get("max_upload_bytes", 50 * 1024 * 1024),
+                "limits.max_upload_bytes",
+            ),
+            max_tts_text_chars=_positive_int(
+                limits.get("max_tts_text_chars", 5000),
+                "limits.max_tts_text_chars",
+            ),
+            max_reference_text_chars=_positive_int(
+                limits.get("max_reference_text_chars", 2000),
+                "limits.max_reference_text_chars",
+            ),
+            max_voice_name_chars=_positive_int(
+                limits.get("max_voice_name_chars", 120),
+                "limits.max_voice_name_chars",
+            ),
+            max_realtime_frame_bytes=_positive_int(
+                limits.get("max_realtime_frame_bytes", 2 * 1024 * 1024),
+                "limits.max_realtime_frame_bytes",
+            ),
         ),
         storage=StorageSettings(
             data_dir=_resolve(root, storage.get("data_dir", paths.data_root)),

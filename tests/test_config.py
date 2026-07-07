@@ -250,6 +250,25 @@ def test_parse_settings_supports_job_worker_limits(tmp_path) -> None:
     assert settings.jobs.tts_max_workers == 3
 
 
+def test_parse_settings_supports_request_limits(tmp_path) -> None:
+    raw = _minimal_settings_raw()
+    raw["limits"] = {
+        "max_upload_bytes": 1024,
+        "max_tts_text_chars": 120,
+        "max_reference_text_chars": 80,
+        "max_voice_name_chars": 32,
+        "max_realtime_frame_bytes": 512,
+    }
+
+    settings = parse_settings(raw, tmp_path)
+
+    assert settings.limits.max_upload_bytes == 1024
+    assert settings.limits.max_tts_text_chars == 120
+    assert settings.limits.max_reference_text_chars == 80
+    assert settings.limits.max_voice_name_chars == 32
+    assert settings.limits.max_realtime_frame_bytes == 512
+
+
 def test_parse_settings_supports_startup_warmup(tmp_path) -> None:
     raw = _minimal_settings_raw()
     raw["runtime"]["warmup_on_startup"] = True

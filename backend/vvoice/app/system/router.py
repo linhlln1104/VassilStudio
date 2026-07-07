@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.concurrency import run_in_threadpool
 
 from vvoice.app.system.schemas import (
     HealthResponse,
     ModelStatusResponse,
+    ProbeResponse,
     WarmupAllResponse,
     WarmupResponse,
 )
@@ -29,6 +32,28 @@ async def health(request: Request):
     }
 
 
+@router.get("/livez", response_model=ProbeResponse)
+async def liveness():
+    return {"status": "ok", "checks": {}}
+
+
+@router.get("/readyz", response_model=ProbeResponse)
+async def readiness(request: Request, response: Response):
+    settings = request.app.state.container.settings
+    checks = {
+        **_model_file_checks(settings),
+        **_storage_checks(settings),
+    }
+    ready = all(checks.values())
+    if not ready:
+        response.status_code = 503
+
+    return {
+        "status": "ready" if ready else "not_ready",
+        "checks": checks,
+    }
+
+
 @router.get(
     "/model-status",
     response_model=ModelStatusResponse,
@@ -37,29 +62,7 @@ async def health(request: Request):
 async def model_status(request: Request):
     container = request.app.state.container
     settings = request.app.state.container.settings
-    checks = {}
-    for language, model in settings.asr.models.items():
-        prefix = f"asr_{language}"
-        checks.update(
-            {
-                f"{prefix}_encoder": model.encoder.exists(),
-                f"{prefix}_decoder": model.decoder.exists(),
-                f"{prefix}_joiner": model.joiner.exists(),
-                f"{prefix}_tokens": model.tokens.exists(),
-            }
-        )
-    for language, model in settings.tts.models.items():
-        prefix = f"tts_{language}"
-        checks.update(
-            {
-                f"{prefix}_encoder": model.encoder.exists(),
-                f"{prefix}_decoder": model.decoder.exists(),
-                f"{prefix}_vocoder": model.vocoder.exists(),
-                f"{prefix}_tokens": model.tokens.exists(),
-                f"{prefix}_lexicon": model.lexicon.exists(),
-                f"{prefix}_data_dir": model.data_dir.exists(),
-            }
-        )
+    checks = _model_file_checks(settings)
     return {
         "ready": all(checks.values()),
         "checks": checks,
@@ -123,3 +126,47 @@ async def warmup_all(request: Request):
         "asr_loaded_languages": list(container.asr.loaded_languages),
         "tts_loaded_languages": list(container.tts.loaded_languages),
     }
+
+
+def _model_file_checks(settings) -> dict[str, bool]:
+    checks = {}
+    for language, model in settings.asr.models.items():
+        prefix = f"asr_{language}"
+        checks.update(
+            {
+                f"{prefix}_encoder": model.encoder.exists(),
+                f"{prefix}_decoder": model.decoder.exists(),
+                f"{prefix}_joiner": model.joiner.exists(),
+                f"{prefix}_tokens": model.tokens.exists(),
+            }
+        )
+    for language, model in settings.tts.models.items():
+        prefix = f"tts_{language}"
+        checks.update(
+            {
+                f"{prefix}_encoder": model.encoder.exists(),
+                f"{prefix}_decoder": model.decoder.exists(),
+                f"{prefix}_vocoder": model.vocoder.exists(),
+                f"{prefix}_tokens": model.tokens.exists(),
+                f"{prefix}_lexicon": model.lexicon.exists(),
+                f"{prefix}_data_dir": model.data_dir.exists(),
+            }
+        )
+    return checks
+
+
+def _storage_checks(settings) -> dict[str, bool]:
+    storage = getattr(settings, "storage", None)
+    if storage is None:
+        return {}
+
+    paths: dict[str, Path] = {
+        "storage_data_dir": storage.data_dir,
+        "storage_voices_dir": storage.voices_dir,
+        "storage_asr_jobs_dir": storage.asr_jobs_dir,
+        "storage_tts_jobs_dir": storage.tts_jobs_dir,
+        "storage_uploads_dir": storage.uploads_dir,
+        "storage_outputs_dir": storage.outputs_dir,
+        "storage_logs_dir": storage.logs_dir,
+    }
+    return {name: path.exists() and path.is_dir() for name, path in paths.items()}

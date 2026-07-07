@@ -17,6 +17,10 @@ Write-Host "Checking $baseUrl/health"
 $health = Invoke-RestMethod "$baseUrl/health"
 $health | ConvertTo-Json -Depth 8
 
+Write-Host "Checking $baseUrl/livez"
+$live = Invoke-RestMethod "$baseUrl/livez"
+$live | ConvertTo-Json -Depth 8
+
 Write-Host "Checking $baseUrl/model-status"
 $status = Invoke-RestMethod "$baseUrl/model-status" -Headers $headers
 $status | ConvertTo-Json -Depth 8
@@ -24,6 +28,14 @@ $status | ConvertTo-Json -Depth 8
 if (-not $status.ready) {
     throw "Model status is not ready"
 }
+
+Write-Host "Checking $baseUrl/readyz"
+$ready = Invoke-RestMethod "$baseUrl/readyz"
+$ready | ConvertTo-Json -Depth 8
+if ($ready.status -ne "ready") {
+    throw "Readiness probe is not ready"
+}
+
 if ($status.runtime.asr_job_workers -lt 1 -or $status.runtime.tts_job_workers -lt 1) {
     throw "Job worker counts must be greater than zero"
 }

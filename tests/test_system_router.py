@@ -36,6 +36,43 @@ def test_model_status_reports_job_workers(tmp_path) -> None:
     assert runtime["warmup_on_startup"] is True
 
 
+def test_liveness_probe_is_process_only(tmp_path) -> None:
+    app, _, _ = make_app(tmp_path)
+    client = TestClient(app)
+
+    response = client.get("/livez")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "checks": {}}
+
+
+def test_readiness_probe_reports_model_and_storage_checks(tmp_path) -> None:
+    app, _, _ = make_app(tmp_path)
+    client = TestClient(app)
+
+    response = client.get("/readyz")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["checks"]["asr_vi_encoder"] is True
+    assert payload["checks"]["tts_en_data_dir"] is True
+    assert payload["checks"]["storage_data_dir"] is True
+
+
+def test_readiness_probe_returns_503_when_not_ready(tmp_path) -> None:
+    app, _, _ = make_app(tmp_path)
+    app.state.container.settings.asr.models["vi"].encoder = tmp_path / "missing.onnx"
+    client = TestClient(app)
+
+    response = client.get("/readyz")
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "not_ready"
+    assert payload["checks"]["asr_vi_encoder"] is False
+
+
 def test_warmup_loads_all_languages(tmp_path) -> None:
     app, asr, tts = make_app(tmp_path)
     client = TestClient(app)
@@ -62,6 +99,15 @@ def make_app(tmp_path):
         security=SimpleNamespace(api_keys=()),
         asr=SimpleNamespace(enabled=True, models={"vi": make_asr_model(tmp_path), "en": make_asr_model(tmp_path)}),
         tts=SimpleNamespace(enabled=True, models={"vi": make_tts_model(tmp_path), "en": make_tts_model(tmp_path)}),
+        storage=SimpleNamespace(
+            data_dir=mkdir(tmp_path / "data"),
+            voices_dir=mkdir(tmp_path / "voices"),
+            asr_jobs_dir=mkdir(tmp_path / "asr-jobs"),
+            tts_jobs_dir=mkdir(tmp_path / "tts-jobs"),
+            uploads_dir=mkdir(tmp_path / "uploads"),
+            outputs_dir=mkdir(tmp_path / "outputs"),
+            logs_dir=mkdir(tmp_path / "logs"),
+        ),
     )
     app = FastAPI()
     app.state.container = SimpleNamespace(settings=settings, asr=asr, tts=tts)

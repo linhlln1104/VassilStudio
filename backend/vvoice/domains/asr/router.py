@@ -13,6 +13,7 @@ from vvoice.domains.asr.schemas import (
 )
 from vvoice.shared.audio.io import duration_seconds, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
+from vvoice.shared.validation import read_upload_file, safe_display_filename
 
 
 router = APIRouter()
@@ -26,7 +27,11 @@ async def transcribe_audio(
 ):
     container = request.app.state.container
     normalized_language = normalize_language(language)
-    data = await audio.read()
+    data = await read_upload_file(
+        audio,
+        max_bytes=container.settings.limits.max_upload_bytes,
+        field_name="audio",
+    )
     samples, sample_rate = load_audio_bytes(
         data,
         target_sample_rate=container.asr.sample_rate_for(normalized_language),
@@ -51,10 +56,14 @@ async def create_asr_job(
     language: str = Form(default=DEFAULT_LANGUAGE),
 ):
     container = request.app.state.container
-    data = await audio.read()
+    data = await read_upload_file(
+        audio,
+        max_bytes=container.settings.limits.max_upload_bytes,
+        field_name="audio",
+    )
     job = container.asr_jobs.create_from_audio(
         audio_bytes=data,
-        filename=audio.filename or "audio",
+        filename=safe_display_filename(audio.filename),
         language=normalize_language(language),
     )
     return _job_response(job)

@@ -125,6 +125,20 @@ def test_tts_job_service_rejects_invalid_generation_parameters(tmp_path) -> None
         jobs.shutdown()
 
 
+def test_tts_job_service_rejects_text_over_limit(tmp_path) -> None:
+    jobs = TtsJobService(
+        tmp_path / "tts-jobs",
+        FakeTts(),
+        VoiceStore(tmp_path / "voices"),
+        max_text_chars=4,
+    )
+    try:
+        with pytest.raises(VVoiceError, match="text must be 4 characters or fewer"):
+            jobs.create_from_voice(voice_id="missing", text="hello")
+    finally:
+        jobs.shutdown()
+
+
 def wait_for_job(jobs: TtsJobService, job_id: str):
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:

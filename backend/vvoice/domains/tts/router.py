@@ -14,6 +14,7 @@ from vvoice.domains.tts.parameters import validate_tts_parameters
 from vvoice.domains.tts.service import GeneratedSpeech
 from vvoice.shared.audio.io import encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
+from vvoice.shared.validation import read_upload_file, validate_text_field
 
 
 router = APIRouter()
@@ -31,18 +32,32 @@ async def synthesize(
 ):
     container = request.app.state.container
     validate_tts_parameters(num_steps, speed)
+    normalized_text = validate_text_field(
+        text,
+        field_name="text",
+        max_chars=container.settings.limits.max_tts_text_chars,
+    )
+    normalized_reference_text = validate_text_field(
+        reference_text,
+        field_name="reference_text",
+        max_chars=container.settings.limits.max_reference_text_chars,
+    )
     normalized_language = normalize_language(language)
-    data = await reference_audio.read()
+    data = await read_upload_file(
+        reference_audio,
+        max_bytes=container.settings.limits.max_upload_bytes,
+        field_name="reference_audio",
+    )
     samples, sample_rate = load_audio_bytes(
         data,
         target_sample_rate=container.tts.sample_rate_for(normalized_language),
     )
     speech = await run_in_threadpool(
         container.tts.synthesize,
-        text=text,
+        text=normalized_text,
         reference_audio=samples,
         reference_sample_rate=sample_rate,
-        reference_text=reference_text,
+        reference_text=normalized_reference_text,
         language=normalized_language,
         num_steps=num_steps,
         speed=speed,
@@ -61,6 +76,11 @@ async def synthesize_with_voice(
 ):
     container = request.app.state.container
     validate_tts_parameters(num_steps, speed)
+    normalized_text = validate_text_field(
+        text,
+        field_name="text",
+        max_chars=container.settings.limits.max_tts_text_chars,
+    )
     profile = container.voices.get(voice_id)
     normalized_language = normalize_language(language or profile.language)
     samples, sample_rate = load_audio_bytes(
@@ -69,7 +89,7 @@ async def synthesize_with_voice(
     )
     speech = await run_in_threadpool(
         container.tts.synthesize,
-        text=text,
+        text=normalized_text,
         reference_audio=samples,
         reference_sample_rate=sample_rate,
         reference_text=profile.reference_text,

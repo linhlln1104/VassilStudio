@@ -100,6 +100,19 @@ def model_checks(config_path: str | None) -> list[Check]:
         Check("runtime.warmup_on_startup", True, "enabled" if settings.runtime.warmup_on_startup else "disabled"),
         Check("jobs.asr_max_workers", settings.jobs.asr_max_workers > 0, str(settings.jobs.asr_max_workers)),
         Check("jobs.tts_max_workers", settings.jobs.tts_max_workers > 0, str(settings.jobs.tts_max_workers)),
+        Check("limits.max_upload_bytes", settings.limits.max_upload_bytes > 0, str(settings.limits.max_upload_bytes)),
+        Check("limits.max_tts_text_chars", settings.limits.max_tts_text_chars > 0, str(settings.limits.max_tts_text_chars)),
+        Check(
+            "limits.max_reference_text_chars",
+            settings.limits.max_reference_text_chars > 0,
+            str(settings.limits.max_reference_text_chars),
+        ),
+        Check("limits.max_voice_name_chars", settings.limits.max_voice_name_chars > 0, str(settings.limits.max_voice_name_chars)),
+        Check(
+            "limits.max_realtime_frame_bytes",
+            settings.limits.max_realtime_frame_bytes > 0,
+            str(settings.limits.max_realtime_frame_bytes),
+        ),
         Check("realtime.encoding", settings.realtime.encoding in {"pcm_f32le", "pcm_s16le"}, settings.realtime.encoding),
         Check(
             "security.api_key_auth",

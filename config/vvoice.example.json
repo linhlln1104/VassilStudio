@@ -72,6 +72,13 @@
     "asr_max_workers": 1,
     "tts_max_workers": 1
   },
+  "limits": {
+    "max_upload_bytes": 52428800,
+    "max_tts_text_chars": 5000,
+    "max_reference_text_chars": 2000,
+    "max_voice_name_chars": 120,
+    "max_realtime_frame_bytes": 2097152
+  },
   "storage": {
     "data_dir": "data",
     "voices_dir": "data/voices",

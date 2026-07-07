@@ -32,6 +32,7 @@ def test_realtime_websocket_uses_requested_language() -> None:
                 max_buffer_seconds=1.0,
                 silence_rms=0.0,
             ),
+            limits=SimpleNamespace(max_realtime_frame_bytes=2 * 1024 * 1024),
             security=SimpleNamespace(api_keys=()),
         ),
     )

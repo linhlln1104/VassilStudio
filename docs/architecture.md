@@ -71,6 +71,8 @@ Stores reusable voice references: normalized WAV audio, transcript, and metadata
 `backend/vvoice/shared/audio`
 
 Centralized audio decode, resample, mono conversion, and WAV encoding.
+Routers read uploads through shared validation helpers so request size limits are enforced before
+decode/resample work begins.
 
 ### Realtime
 
@@ -93,6 +95,15 @@ Owns optional API key checks for HTTP and WebSocket boundaries. Authentication i
 keys are configured. HTTP clients can use `X-Vassil-API-Key` or `Authorization: Bearer`; browser
 WebSocket clients can pass `api_key` in the query string. Legacy `X-VVoice-API-Key` is still accepted.
 
+### Observability
+
+`backend/vvoice/core/observability.py`
+
+HTTP requests receive an `X-Request-ID` response header. Clients can provide this header or let the
+server generate one. The app logger emits structured JSON for HTTP request completion/failure and
+ASR/TTS job lifecycle events. Request logging records the path without query strings so API keys are
+not written by the app middleware.
+
 ## Current Use Cases
 
 - Upload audio and transcribe it with `/api/v1/asr/transcribe`.
@@ -107,6 +118,7 @@ WebSocket clients can pass `api_key` in the query string. Legacy `X-VVoice-API-K
 - Stream microphone PCM to `/api/v1/realtime/asr?language=vi` and receive chunked transcripts.
 - Require API keys for model/voice/job APIs when `security.api_keys` or `VASSIL_API_KEYS` is set.
 - Preload lazy ASR/TTS runtimes with `/warmup`, `/warmup/asr`, and `/warmup/tts`.
+- Check process liveness with `/livez` and model/storage readiness with `/readyz`.
 
 ## Configuration
 
@@ -117,6 +129,9 @@ $env:VASSIL_CONFIG="C:\path\to\vassil.local.json"
 ```
 
 Legacy `config/vvoice.example.json`, `VVOICE_CONFIG`, `VVOICE_ROOT`, and `VVOICE_API_KEYS` remain supported for existing setups.
+
+The `limits` section centralizes request boundaries for uploaded audio, TTS text, reference
+transcripts, voice profile names, and realtime WebSocket frame size.
 
 ## Deployment Shape
 

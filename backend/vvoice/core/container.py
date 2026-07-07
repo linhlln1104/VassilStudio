@@ -30,6 +30,7 @@ class AppContainer:
             self.tts,
             self.voices,
             max_workers=self.settings.jobs.tts_max_workers,
+            max_text_chars=self.settings.limits.max_tts_text_chars,
         )
 
     def shutdown(self) -> None:

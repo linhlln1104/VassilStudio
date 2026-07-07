@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +16,7 @@ from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
 
 
 TERMINAL_STATUSES = {"succeeded", "failed"}
+logger = logging.getLogger("vvoice.jobs.asr")
 
 
 @dataclass(frozen=True)
@@ -84,6 +86,15 @@ class AsrJobService:
             duration_seconds=duration_seconds(samples, sample_rate),
         )
         self._save(job)
+        logger.info(
+            "asr_job_created",
+            extra={
+                "job_id": job_id,
+                "language": normalized_language,
+                "filename": job.filename,
+                "duration_seconds": job.duration_seconds,
+            },
+        )
         self._executor.submit(self._run, job_id)
         return job
 
@@ -133,6 +144,7 @@ class AsrJobService:
         try:
             job = self.get(job_id)
             self._save(_replace_job(job, status="running", started_at=_now(), error=None))
+            logger.info("asr_job_started", extra={"job_id": job_id, "language": job.language})
 
             if not job.input_path or not job.input_path.exists():
                 raise VVoiceError("ASR job input audio is missing")
@@ -153,6 +165,14 @@ class AsrJobService:
                     duration_seconds=duration_seconds(samples, sample_rate),
                 )
             )
+            logger.info(
+                "asr_job_succeeded",
+                extra={
+                    "job_id": job_id,
+                    "language": job.language,
+                    "duration_seconds": duration_seconds(samples, sample_rate),
+                },
+            )
         except Exception as exc:  # pragma: no cover - exercised through smoke tests
             try:
                 job = self.get(job_id)
@@ -163,6 +183,10 @@ class AsrJobService:
                         completed_at=_now(),
                         error=str(exc),
                     )
+                )
+                logger.exception(
+                    "asr_job_failed",
+                    extra={"job_id": job_id, "language": job.language},
                 )
             except AsrJobNotFoundError:
                 return

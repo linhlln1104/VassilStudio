@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -12,11 +13,13 @@ from vvoice.core.errors import TtsJobNotFoundError, VVoiceError
 from vvoice.domains.tts.parameters import validate_tts_parameters
 from vvoice.shared.audio.io import encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
+from vvoice.shared.validation import validate_text_field
 from vvoice.domains.tts.service import ZipVoiceService
 from vvoice.domains.voices.service import VoiceStore
 
 
 TERMINAL_STATUSES = {"succeeded", "failed"}
+logger = logging.getLogger("vvoice.jobs.tts")
 
 
 @dataclass(frozen=True)
@@ -45,10 +48,12 @@ class TtsJobService:
         voices: VoiceStore,
         *,
         max_workers: int = 1,
+        max_text_chars: int = 5000,
     ) -> None:
         self._jobs_dir = jobs_dir
         self._tts = tts
         self._voices = voices
+        self._max_text_chars = max_text_chars
         self._lock = threading.RLock()
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers,
@@ -66,9 +71,12 @@ class TtsJobService:
         num_steps: int | None = None,
         speed: float | None = None,
     ) -> TtsJob:
-        text = text.strip()
-        if not text:
-            raise VVoiceError("text cannot be empty")
+        text = validate_text_field(
+            text,
+            field_name="text",
+            max_chars=self._max_text_chars,
+        )
+        assert text is not None
         validate_tts_parameters(num_steps, speed)
 
         profile = self._voices.get(voice_id)
@@ -95,6 +103,16 @@ class TtsJobService:
             duration_seconds=None,
         )
         self._save(job)
+        logger.info(
+            "tts_job_created",
+            extra={
+                "job_id": job_id,
+                "voice_id": voice_id,
+                "language": language,
+                "num_steps": num_steps,
+                "speed": speed,
+            },
+        )
         self._executor.submit(self._run, job_id)
         return job
 
@@ -144,6 +162,10 @@ class TtsJobService:
         try:
             job = self.get(job_id)
             self._save(_replace_job(job, status="running", started_at=_now(), error=None))
+            logger.info(
+                "tts_job_started",
+                extra={"job_id": job_id, "voice_id": job.voice_id, "language": job.language},
+            )
 
             profile = self._voices.get(job.voice_id)
             reference_audio, reference_sample_rate = load_audio_bytes(
@@ -173,6 +195,15 @@ class TtsJobService:
                     duration_seconds=speech.duration_seconds,
                 )
             )
+            logger.info(
+                "tts_job_succeeded",
+                extra={
+                    "job_id": job_id,
+                    "voice_id": job.voice_id,
+                    "language": job.language,
+                    "duration_seconds": speech.duration_seconds,
+                },
+            )
         except Exception as exc:  # pragma: no cover - exercised through smoke tests
             try:
                 job = self.get(job_id)
@@ -183,6 +214,10 @@ class TtsJobService:
                         completed_at=_now(),
                         error=str(exc),
                     )
+                )
+                logger.exception(
+                    "tts_job_failed",
+                    extra={"job_id": job_id, "voice_id": job.voice_id, "language": job.language},
                 )
             except TtsJobNotFoundError:
                 return

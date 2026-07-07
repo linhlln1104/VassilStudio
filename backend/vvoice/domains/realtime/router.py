@@ -67,6 +67,9 @@ async def realtime_asr(websocket: WebSocket):
             if data is None:
                 continue
 
+            if len(data) > container.settings.limits.max_realtime_frame_bytes:
+                raise RealtimeProtocolError("Realtime audio frame exceeds the configured size limit")
+
             for chunk in session.append_binary(data):
                 sequence = await _send_transcript(
                     websocket,

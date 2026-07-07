@@ -15,6 +15,7 @@ from vvoice.domains.voices.schemas import (
 )
 from vvoice.shared.audio.io import duration_seconds, encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
+from vvoice.shared.validation import ensure_file_size, read_upload_file, validate_text_field
 
 
 router = APIRouter()
@@ -65,6 +66,11 @@ async def import_voice(
 ):
     container = request.app.state.container
     audio_path = container.voices.import_candidate_path(filename)
+    ensure_file_size(
+        audio_path,
+        max_bytes=container.settings.limits.max_upload_bytes,
+        field_name="reference_audio",
+    )
     profile = await _create_voice_from_audio(
         request,
         raw_audio=audio_path.read_bytes(),
@@ -103,7 +109,12 @@ async def create_voice(
     auto_transcribe: bool = Form(default=False),
     reference_audio: UploadFile = File(...),
 ):
-    raw_audio = await reference_audio.read()
+    container = request.app.state.container
+    raw_audio = await read_upload_file(
+        reference_audio,
+        max_bytes=container.settings.limits.max_upload_bytes,
+        field_name="reference_audio",
+    )
     profile = await _create_voice_from_audio(
         request,
         raw_audio=raw_audio,
@@ -124,14 +135,26 @@ async def update_voice(
     reference_text: str | None = Form(default=None),
 ):
     container = request.app.state.container
-    normalized_name = name.strip() if name is not None else None
+    normalized_name = (
+        validate_text_field(
+            name,
+            field_name="name",
+            max_chars=container.settings.limits.max_voice_name_chars,
+        )
+        if name is not None
+        else None
+    )
     normalized_language = normalize_language(language) if language is not None else None
-    normalized_reference_text = reference_text.strip() if reference_text is not None else None
+    normalized_reference_text = (
+        validate_text_field(
+            reference_text,
+            field_name="reference_text",
+            max_chars=container.settings.limits.max_reference_text_chars,
+        )
+        if reference_text is not None
+        else None
+    )
 
-    if normalized_name == "":
-        raise VVoiceError("Voice name cannot be empty")
-    if normalized_reference_text == "":
-        raise VVoiceError("reference_text cannot be empty")
     if normalized_name is None and normalized_language is None and normalized_reference_text is None:
         raise VVoiceError("Provide name, language, or reference_text to update")
     if normalized_language is not None:
@@ -180,12 +203,20 @@ async def _create_voice_from_audio(
     auto_transcribe: bool,
 ):
     container = request.app.state.container
-    normalized_name = name.strip()
+    normalized_name = validate_text_field(
+        name,
+        field_name="name",
+        max_chars=container.settings.limits.max_voice_name_chars,
+    )
+    assert normalized_name is not None
     normalized_language = normalize_language(language)
-    if not normalized_name:
-        raise VVoiceError("Voice name cannot be empty")
 
-    final_reference_text = (reference_text or "").strip()
+    final_reference_text = validate_text_field(
+        reference_text,
+        field_name="reference_text",
+        max_chars=container.settings.limits.max_reference_text_chars,
+        required=False,
+    )
     reference_text_source = "user"
 
     if auto_transcribe or not final_reference_text:
@@ -200,7 +231,12 @@ async def _create_voice_from_audio(
             asr_sample_rate,
             normalized_language,
         )
-        final_reference_text = transcription.text.strip()
+        final_reference_text = validate_text_field(
+            transcription.text,
+            field_name="reference_text",
+            max_chars=container.settings.limits.max_reference_text_chars,
+            required=False,
+        )
         reference_text_source = "asr"
 
     if not final_reference_text:

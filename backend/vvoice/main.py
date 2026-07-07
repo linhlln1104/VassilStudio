@@ -1,4 +1,7 @@
 from contextlib import asynccontextmanager
+import logging
+import time
+import uuid
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
@@ -15,6 +18,13 @@ from vvoice.core.errors import (
     VVoiceError,
     VoiceNotFoundError,
 )
+from vvoice.core.observability import (
+    REQUEST_ID_HEADER,
+    configure_logging,
+    get_request_id,
+    reset_request_id,
+    set_request_id,
+)
 from vvoice.domains.asr.router import router as asr_router
 from vvoice.domains.realtime.router import router as realtime_router
 from vvoice.shared.security.auth import require_api_key
@@ -26,6 +36,7 @@ from vvoice.domains.voices.router import router as voices_router
 
 def create_app() -> FastAPI:
     settings = load_settings()
+    configure_logging(debug=settings.runtime.debug)
     container = AppContainer(settings)
 
     @asynccontextmanager
@@ -41,6 +52,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title=API_BRAND_NAME, version="0.1.0", lifespan=lifespan)
     app.state.container = container
 
+    register_request_middleware(app)
     register_exception_handlers(app)
 
     app.include_router(system_router, tags=["system"])
@@ -55,22 +67,61 @@ def create_app() -> FastAPI:
     return app
 
 
+def register_request_middleware(app: FastAPI) -> None:
+    logger = logging.getLogger("vvoice.http")
+
+    @app.middleware("http")
+    async def request_context(request: Request, call_next):
+        request_id = _request_id_from_header(request.headers.get(REQUEST_ID_HEADER))
+        request.state.request_id = request_id
+        token = set_request_id(request_id)
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+            logger.exception(
+                "http_request_failed",
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "duration_ms": elapsed_ms,
+                },
+            )
+            raise
+        else:
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+            response.headers[REQUEST_ID_HEADER] = request_id
+            logger.info(
+                "http_request_completed",
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": response.status_code,
+                    "duration_ms": elapsed_ms,
+                },
+            )
+            return response
+        finally:
+            reset_request_id(token)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AudioError)
     async def audio_error_handler(_: Request, exc: AudioError) -> JSONResponse:
-        return JSONResponse(status_code=400, content={"error": "audio_error", "message": str(exc)})
+        return JSONResponse(status_code=400, content=_error_content("audio_error", exc))
 
     @app.exception_handler(VoiceNotFoundError)
     async def voice_not_found_handler(_: Request, exc: VoiceNotFoundError) -> JSONResponse:
-        return JSONResponse(status_code=404, content={"error": "voice_not_found", "message": str(exc)})
+        return JSONResponse(status_code=404, content=_error_content("voice_not_found", exc))
 
     @app.exception_handler(TtsJobNotFoundError)
     async def tts_job_not_found_handler(_: Request, exc: TtsJobNotFoundError) -> JSONResponse:
-        return JSONResponse(status_code=404, content={"error": "tts_job_not_found", "message": str(exc)})
+        return JSONResponse(status_code=404, content=_error_content("tts_job_not_found", exc))
 
     @app.exception_handler(AsrJobNotFoundError)
     async def asr_job_not_found_handler(_: Request, exc: AsrJobNotFoundError) -> JSONResponse:
-        return JSONResponse(status_code=404, content={"error": "asr_job_not_found", "message": str(exc)})
+        return JSONResponse(status_code=404, content=_error_content("asr_job_not_found", exc))
 
     @app.exception_handler(ModelConfigurationError)
     async def model_config_error_handler(
@@ -79,9 +130,24 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=503,
-            content={"error": "model_configuration_error", "message": str(exc)},
+            content=_error_content("model_configuration_error", exc),
         )
 
     @app.exception_handler(VVoiceError)
     async def vvoice_error_handler(_: Request, exc: VVoiceError) -> JSONResponse:
-        return JSONResponse(status_code=400, content={"error": "vvoice_error", "message": str(exc)})
+        return JSONResponse(status_code=400, content=_error_content("vvoice_error", exc))
+
+
+def _request_id_from_header(value: str | None) -> str:
+    candidate = (value or "").strip()
+    if candidate and len(candidate) <= 128 and "\r" not in candidate and "\n" not in candidate:
+        return candidate
+    return uuid.uuid4().hex
+
+
+def _error_content(error: str, exc: Exception) -> dict[str, str]:
+    content = {"error": error, "message": str(exc)}
+    request_id = get_request_id()
+    if request_id:
+        content["request_id"] = request_id
+    return content

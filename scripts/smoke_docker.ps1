@@ -60,9 +60,9 @@ function Wait-ForHealth {
   $Deadline = (Get-Date).AddSeconds($Timeout)
   do {
     try {
-      $Health = Invoke-RestMethod -Uri "$Url/health" -TimeoutSec 5
-      if ($Health.status -eq "ok") {
-        return $Health
+      $Live = Invoke-RestMethod -Uri "$Url/livez" -TimeoutSec 5
+      if ($Live.status -eq "ok") {
+        return $Live
       }
     } catch {
       Start-Sleep -Seconds 2
@@ -88,7 +88,7 @@ try {
   $Started = $true
 
   $Health = Wait-ForHealth -Url $BaseUrl -Timeout $TimeoutSeconds
-  Write-Host "health:"
+  Write-Host "livez:"
   $Health | ConvertTo-Json -Depth 8 | Write-Host
 
   $Status = Invoke-RestMethod -Uri "$BaseUrl/model-status" -TimeoutSec 10

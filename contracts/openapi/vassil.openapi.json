@@ -538,6 +538,27 @@
         "title": "ModelStatusResponse",
         "type": "object"
       },
+      "ProbeResponse": {
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ProbeResponse",
+        "type": "object"
+      },
       "RuntimeStatus": {
         "properties": {
           "asr_configured_languages": {
@@ -2016,6 +2037,27 @@
         ]
       }
     },
+    "/livez": {
+      "get": {
+        "operationId": "liveness_livez_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/model-status": {
       "get": {
         "operationId": "model_status_model_status_get",
@@ -2032,6 +2074,27 @@
           }
         },
         "summary": "Model Status",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readiness_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness",
         "tags": [
           "system"
         ]

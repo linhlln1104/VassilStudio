@@ -12,6 +12,11 @@ class HealthResponse(BaseModel):
     tts_loaded: bool
 
 
+class ProbeResponse(BaseModel):
+    status: str
+    checks: dict[str, bool]
+
+
 class RuntimeStatus(BaseModel):
     provider: str
     num_threads: int

@@ -104,6 +104,13 @@ hardware, increase the worker limits in `config/vassil.example.json`:
 "jobs": {
   "asr_max_workers": 1,
   "tts_max_workers": 1
+},
+"limits": {
+  "max_upload_bytes": 52428800,
+  "max_tts_text_chars": 5000,
+  "max_reference_text_chars": 2000,
+  "max_voice_name_chars": 120,
+  "max_realtime_frame_bytes": 2097152
 }
 ```
 
@@ -117,6 +124,17 @@ the first ASR/TTS request to avoid model-load latency.
 The Generate view includes Preview and Production render modes; Preview uses fewer ZipVoice steps for
 faster drafts, while Production uses the configured default-quality path. API callers can pass
 `num_steps` from `1` to `64` and `speed` from `0.5` to `2.0`.
+
+## Health And Observability
+
+Use `/livez` for process liveness and `/readyz` for model/storage readiness. `/health` remains a
+stable compatibility endpoint for the Studio and older scripts, while `/model-status` returns detailed
+model file checks and runtime state.
+
+Every HTTP response includes `X-Request-ID`. Clients may send their own `X-Request-ID`; otherwise the
+server generates one. Application logs are structured JSON under the `vvoice` logger and include
+request IDs for HTTP requests plus job IDs for ASR/TTS job lifecycle events. API keys and query strings
+are not logged by the app request middleware.
 
 ## Verify
 
@@ -194,6 +212,8 @@ the key in browser local storage.
 ## API Slice
 
 ```powershell
+Invoke-WebRequest http://127.0.0.1:8000/livez
+Invoke-WebRequest http://127.0.0.1:8000/readyz
 Invoke-WebRequest http://127.0.0.1:8000/health
 Invoke-WebRequest http://127.0.0.1:8000/model-status
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor.ps1
