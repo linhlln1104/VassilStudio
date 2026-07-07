@@ -23,7 +23,6 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { QueryErrorState } from '@/components/ui/query-error'
 import { useToast } from '@/components/ui/use-toast'
 import { api, type ImportCandidate, type Voice } from '@/lib/api'
-import { API_BRAND_NAME } from '@/lib/brand'
 import { formatBytes, formatDuration } from '@/lib/format'
 import {
   VOICE_LANGUAGES,
@@ -247,7 +246,7 @@ export function VoicesView() {
           <CardHeader>
             <div>
               <div className="text-sm font-semibold text-slate-950">Saved profiles</div>
-              <div className="mt-1 text-xs text-slate-600">Reusable voices served by the {API_BRAND_NAME}.</div>
+              <div className="mt-1 text-xs text-slate-600">Local voice profiles available for rendering.</div>
             </div>
           </CardHeader>
           <CardContent>
@@ -294,7 +293,7 @@ export function VoicesView() {
                 copy={
                   voices.length > 0
                     ? 'Adjust the search term to find another saved profile.'
-                    : 'Import a reference file from data/voices or create a profile from the studio.'
+                    : 'Prepare a reference recording to make it available in Generate.'
                 }
               />
             )}
@@ -543,7 +542,7 @@ function ImportCandidatesPanel({
       <CardHeader>
         <div>
           <div className="text-sm font-semibold text-slate-950">Import candidates</div>
-          <div className="mt-1 text-xs text-slate-600">Audio found in the watched voices directory.</div>
+          <div className="mt-1 text-xs text-slate-600">Reference audio waiting to become voice profiles.</div>
         </div>
         <FolderPlus className="size-5 text-slate-500" />
       </CardHeader>
@@ -625,7 +624,7 @@ function ImportCandidatesPanel({
             copy={
               totalCandidates > 0
                 ? 'Adjust the search term to find another import candidate.'
-                : 'Drop WAV, WEBM, or WEBA reference clips into data/voices to make them appear here.'
+                : 'Place WAV, WEBM, or WEBA reference clips in data/voices to prepare them here.'
             }
           />
         )}

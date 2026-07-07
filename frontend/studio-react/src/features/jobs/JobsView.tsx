@@ -216,8 +216,8 @@ export function JobsView() {
         title: result.deleted > 0 ? 'Queue cleaned' : 'Queue already clean',
         description:
           result.deleted > 0
-            ? `Removed ${result.deleted} completed or failed jobs.`
-            : 'No completed or failed jobs were available to remove.',
+            ? `Removed ${result.deleted} terminal jobs.`
+            : 'No terminal jobs were available to remove.',
         variant: 'success',
       })
     },

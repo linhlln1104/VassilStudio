@@ -9,6 +9,8 @@ import {
   Languages,
   Loader2,
   Mic2,
+  X,
+  XCircle,
   UploadCloud,
 } from 'lucide-react'
 
@@ -55,9 +57,17 @@ export function TranscribeView() {
       void queryClient.invalidateQueries({ queryKey: ['asr-jobs'] })
     },
   })
+  const cancelJobMutation = useMutation({
+    mutationFn: api.cancelAsrJob,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['asr-jobs'] })
+    },
+  })
 
   const jobs = asrJobsQuery.data ?? []
   const latestTranscript = jobs.find((job) => job.text)
+  const activeAsrCount = jobs.filter((job) => ['queued', 'running', 'cancelling'].includes(job.status)).length
+  const latestFailedJob = jobs.find((job) => job.status === 'failed') ?? null
   const jobsError = asrJobsQuery.isError
     ? queryErrorMessage(asrJobsQuery.error, 'Unable to load ASR jobs.')
     : null
@@ -65,6 +75,12 @@ export function TranscribeView() {
     selectedLanguage,
     modelStatusQuery.data?.runtime.asr_configured_languages,
   )
+  const modelReadinessMessage = getModelReadinessMessage({
+    selectedLanguage,
+    configuredLanguages: modelStatusQuery.data?.runtime.asr_configured_languages,
+    loadedLanguages: modelStatusQuery.data?.runtime.asr_loaded_languages,
+    statusError: modelStatusQuery.error,
+  })
 
   const queueAudioFile = (file: File | undefined) => {
     if (file && !runtimeLanguageWarning) {
@@ -110,6 +126,11 @@ export function TranscribeView() {
             {runtimeLanguageWarning ? (
               <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
                 {runtimeLanguageWarning}
+              </div>
+            ) : null}
+            {modelReadinessMessage ? (
+              <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800">
+                {modelReadinessMessage}
               </div>
             ) : null}
             <div
@@ -206,13 +227,29 @@ export function TranscribeView() {
                           <Badge variant="muted">{voiceLanguageShortLabel(job.language)}</Badge>
                         </div>
                       </div>
-                      <Badge variant={job.status === 'succeeded' ? 'success' : job.status === 'failed' ? 'danger' : 'warning'}>
-                        {job.status}
-                      </Badge>
+                      <JobStatusBadge job={job} />
                     </div>
                     <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-600">
                       {job.text || job.error || 'Transcript pending.'}
                     </p>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-slate-500">
+                        {job.max_attempts > 1 ? `Attempt ${job.attempt}/${job.max_attempts}` : 'ASR queue'}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={!canCancelJob(job) || cancelJobMutation.isPending}
+                        onClick={() => cancelJobMutation.mutate(job.job_id)}
+                      >
+                        {cancelJobMutation.isPending && cancelJobMutation.variables === job.job_id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <X className="size-4" />
+                        )}
+                        Cancel
+                      </Button>
+                    </div>
                   </article>
                 ))}
               </div>
@@ -230,10 +267,76 @@ export function TranscribeView() {
       </section>
 
       <aside className="hidden space-y-3 xl:block">
+        <QueueHealthPanel activeCount={activeAsrCount} latestFailedJob={latestFailedJob} />
         <TranscriptPreview job={latestTranscript} />
       </aside>
     </div>
   )
+}
+
+function QueueHealthPanel({
+  activeCount,
+  latestFailedJob,
+}: {
+  activeCount: number
+  latestFailedJob: AsrJob | null
+}) {
+  if (activeCount === 0 && !latestFailedJob) {
+    return null
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <div className="text-sm font-semibold text-slate-950">Queue state</div>
+          <div className="mt-1 text-xs text-slate-600">Current ASR workload.</div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {activeCount > 0 ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+            {activeCount} transcription {activeCount === 1 ? 'job is' : 'jobs are'} active.
+          </div>
+        ) : null}
+        {latestFailedJob ? (
+          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
+            Latest failed job: {latestFailedJob.error ?? 'Transcription failed.'}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function JobStatusBadge({ job }: { job: AsrJob }) {
+  if (job.status === 'succeeded') {
+    return <Badge variant="success">Succeeded</Badge>
+  }
+
+  if (job.status === 'failed') {
+    return (
+      <Badge variant="danger">
+        <XCircle className="mr-1 size-3" />
+        Failed
+      </Badge>
+    )
+  }
+
+  if (job.status === 'cancelled') {
+    return <Badge variant="muted">Cancelled</Badge>
+  }
+
+  return (
+    <Badge variant="warning">
+      <Loader2 className="mr-1 size-3 animate-spin" />
+      {job.status === 'cancelling' ? 'Cancelling' : job.status === 'queued' ? 'Queued' : 'Running'}
+    </Badge>
+  )
+}
+
+function canCancelJob(job: AsrJob) {
+  return job.status === 'queued' || job.status === 'running'
 }
 
 function LanguagePicker({
@@ -356,4 +459,35 @@ function getRuntimeLanguageWarning(
     .map((language) => voiceLanguageLabel(language))
     .join(', ')
   return `${voiceLanguageLabel(selectedLanguage)} ASR is not configured on this backend. Available runtime: ${available}.`
+}
+
+function getModelReadinessMessage({
+  selectedLanguage,
+  configuredLanguages,
+  loadedLanguages,
+  statusError,
+}: {
+  selectedLanguage: VoiceLanguage
+  configuredLanguages: string[] | undefined
+  loadedLanguages: string[] | undefined
+  statusError: unknown
+}) {
+  if (statusError instanceof Error) {
+    return `Model status unavailable: ${statusError.message}`
+  }
+  if (!configuredLanguages?.length) {
+    return null
+  }
+
+  const configured = new Set(configuredLanguages.map((language) => normalizeVoiceLanguage(language)))
+  if (!configured.has(selectedLanguage)) {
+    return null
+  }
+
+  const loaded = new Set((loadedLanguages ?? []).map((language) => normalizeVoiceLanguage(language)))
+  if (loaded.has(selectedLanguage)) {
+    return null
+  }
+
+  return `${voiceLanguageLabel(selectedLanguage)} ASR model is cold. The next upload may spend extra time loading local assets.`
 }

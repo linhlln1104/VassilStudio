@@ -43,7 +43,7 @@ const promptSuggestions: Record<VoiceLanguage, string[]> = {
     'C\u1ea3m \u01a1n b\u1ea1n \u0111\u00e3 l\u1eafng nghe. H\u1eb9n g\u1eb7p l\u1ea1i trong t\u1eadp ti\u1ebfp theo c\u1ee7a ch\u01b0\u01a1ng tr\u00ecnh.',
   ],
   en: [
-    `Hello, this is a short ${BRAND_NAME} demo for a clean English narration workflow.`,
+    `Hello, this is a short ${BRAND_NAME} narration pass for a clean English production workflow.`,
     'In this episode, we will turn a simple idea into a polished voiceover for production review.',
     `Thanks for listening. See you in the next update from ${BRAND_NAME}.`,
   ],
@@ -89,14 +89,17 @@ export function GenerateView() {
   })
 
   const voices = voicesQuery.data ?? []
+  const ttsJobs = useMemo(() => ttsJobsQuery.data ?? [], [ttsJobsQuery.data])
   const selectedVoice = voices.find((voice) => voice.voice_id === selectedVoiceId) ?? voices[0]
   const selectedVoiceLanguage = normalizeVoiceLanguage(selectedVoice?.language)
   const selectedVoiceEffectId = selectedVoice?.voice_id
   const selectedVoiceEffectLanguage = selectedVoice?.language
   const latestOutput = useMemo(
-    () => ttsJobsQuery.data?.find((job) => job.audio_url) ?? null,
-    [ttsJobsQuery.data],
+    () => ttsJobs.find((job) => job.audio_url) ?? null,
+    [ttsJobs],
   )
+  const activeTtsCount = ttsJobs.filter((job) => ['queued', 'running', 'cancelling'].includes(job.status)).length
+  const latestFailedTtsJob = ttsJobs.find((job) => job.status === 'failed') ?? null
   const latestOutputVoice = voices.find((voice) => voice.voice_id === latestOutput?.voice_id)
   const renderProfile = renderProfiles[renderMode]
   const generateMutation = useMutation({
@@ -126,6 +129,13 @@ export function GenerateView() {
     selectedLanguage,
     modelStatusQuery.data?.runtime.tts_configured_languages,
   )
+  const modelReadinessMessage = getModelReadinessMessage({
+    selectedLanguage,
+    configuredLanguages: modelStatusQuery.data?.runtime.tts_configured_languages,
+    loadedLanguages: modelStatusQuery.data?.runtime.tts_loaded_languages,
+    statusError: modelStatusQuery.error,
+    kind: 'TTS',
+  })
   const canGenerate = Boolean(scriptReady && selectedVoice && !runtimeLanguageWarning && !generateMutation.isPending)
 
   useEffect(() => {
@@ -206,6 +216,7 @@ export function GenerateView() {
     selectedVoiceLanguage,
     languageWarning,
     runtimeLanguageWarning,
+    modelReadinessMessage,
     onLanguageChange: handleLanguageSelect,
     scriptReady,
     canGenerate,
@@ -246,6 +257,8 @@ export function GenerateView() {
         <OutputPanel
           latestOutput={latestOutput}
           latestOutputVoice={latestOutputVoice}
+          activeCount={activeTtsCount}
+          latestFailedJob={latestFailedTtsJob}
           jobsError={jobsError}
           onRetryJobs={() => {
             void ttsJobsQuery.refetch()
@@ -267,6 +280,8 @@ export function GenerateView() {
           <OutputPanel
             latestOutput={latestOutput}
             latestOutputVoice={latestOutputVoice}
+            activeCount={activeTtsCount}
+            latestFailedJob={latestFailedTtsJob}
             jobsError={jobsError}
             onRetryJobs={() => {
               void ttsJobsQuery.refetch()
@@ -315,6 +330,7 @@ type VoicePanelProps = {
   selectedVoiceLanguage: VoiceLanguage
   languageWarning: string | null
   runtimeLanguageWarning: string | null
+  modelReadinessMessage: string | null
   onLanguageChange: (language: VoiceLanguage) => void
   scriptReady: boolean
   canGenerate: boolean
@@ -340,6 +356,7 @@ function VoicePanel({
   selectedVoiceLanguage,
   languageWarning,
   runtimeLanguageWarning,
+  modelReadinessMessage,
   onLanguageChange,
   scriptReady,
   canGenerate,
@@ -411,6 +428,11 @@ function VoicePanel({
             {runtimeLanguageWarning ? (
               <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
                 {runtimeLanguageWarning}
+              </div>
+            ) : null}
+            {modelReadinessMessage ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800">
+                {modelReadinessMessage}
               </div>
             ) : null}
             {languageWarning ? (
@@ -562,11 +584,15 @@ function ScriptEditor({
 function OutputPanel({
   latestOutput,
   latestOutputVoice,
+  activeCount,
+  latestFailedJob,
   jobsError,
   onRetryJobs,
 }: {
   latestOutput: TtsJob | null
   latestOutputVoice: Voice | undefined
+  activeCount: number
+  latestFailedJob: TtsJob | null
   jobsError: string | null
   onRetryJobs: () => void
 }) {
@@ -580,6 +606,20 @@ function OutputPanel({
         <FileAudio className="size-5 text-slate-500" />
       </CardHeader>
       <CardContent>
+        {activeCount > 0 || latestFailedJob ? (
+          <div className="mb-3 grid grid-cols-1 gap-2">
+            {activeCount > 0 ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                {activeCount} render {activeCount === 1 ? 'job is' : 'jobs are'} active.
+              </div>
+            ) : null}
+            {latestFailedJob ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
+                Latest failed job {compactId(latestFailedJob.job_id)}: {latestFailedJob.error ?? 'Render failed.'}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {jobsError ? (
           <QueryErrorState
             compact
@@ -840,4 +880,37 @@ function getRuntimeLanguageWarning(
     .map((language) => voiceLanguageLabel(language))
     .join(', ')
   return `${voiceLanguageLabel(selectedLanguage)} TTS is not configured on this backend. Available runtime: ${available}.`
+}
+
+function getModelReadinessMessage({
+  selectedLanguage,
+  configuredLanguages,
+  loadedLanguages,
+  statusError,
+  kind,
+}: {
+  selectedLanguage: VoiceLanguage
+  configuredLanguages: string[] | undefined
+  loadedLanguages: string[] | undefined
+  statusError: unknown
+  kind: 'ASR' | 'TTS'
+}) {
+  if (statusError instanceof Error) {
+    return `Model status unavailable: ${statusError.message}`
+  }
+  if (!configuredLanguages?.length) {
+    return null
+  }
+
+  const configured = new Set(configuredLanguages.map((language) => normalizeVoiceLanguage(language)))
+  if (!configured.has(selectedLanguage)) {
+    return null
+  }
+
+  const loaded = new Set((loadedLanguages ?? []).map((language) => normalizeVoiceLanguage(language)))
+  if (loaded.has(selectedLanguage)) {
+    return null
+  }
+
+  return `${voiceLanguageLabel(selectedLanguage)} ${kind} model is cold. The next request may spend extra time loading local assets.`
 }
