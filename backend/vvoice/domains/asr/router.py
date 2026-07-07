@@ -91,6 +91,12 @@ async def get_asr_job(request: Request, job_id: str):
     return _job_response(container.asr_jobs.get(job_id))
 
 
+@router.post("/jobs/{job_id}/cancel", response_model=AsrJobResponse)
+async def cancel_asr_job(request: Request, job_id: str):
+    container = request.app.state.container
+    return _job_response(container.asr_jobs.cancel(job_id))
+
+
 @router.get("/jobs/{job_id}/audio")
 async def get_asr_job_audio(request: Request, job_id: str):
     container = request.app.state.container
@@ -122,6 +128,10 @@ def _job_response(job: AsrJob) -> dict:
         "started_at": job.started_at,
         "completed_at": job.completed_at,
         "error": job.error,
+        "attempt": job.attempt,
+        "max_attempts": job.max_attempts,
+        "cancel_requested": job.cancel_requested,
+        "failed_reason": job.failed_reason,
         "text": job.text,
         "sample_rate": job.sample_rate,
         "duration_seconds": job.duration_seconds,

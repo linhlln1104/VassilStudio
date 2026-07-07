@@ -33,6 +33,9 @@ def test_model_status_reports_job_workers(tmp_path) -> None:
     runtime = response.json()["runtime"]
     assert runtime["asr_job_workers"] == 2
     assert runtime["tts_job_workers"] == 3
+    assert runtime["asr_job_max_attempts"] == 2
+    assert runtime["tts_job_max_attempts"] == 2
+    assert runtime["job_retry_backoff_seconds"] == 0.01
     assert runtime["warmup_on_startup"] is True
 
 
@@ -95,7 +98,13 @@ def make_app(tmp_path):
     tts = FakeRuntimeService(("en", "vi"))
     settings = SimpleNamespace(
         runtime=SimpleNamespace(provider="cpu", num_threads=2, debug=False, warmup_on_startup=True),
-        jobs=SimpleNamespace(asr_max_workers=2, tts_max_workers=3),
+        jobs=SimpleNamespace(
+            asr_max_workers=2,
+            tts_max_workers=3,
+            asr_max_attempts=2,
+            tts_max_attempts=2,
+            retry_backoff_seconds=0.01,
+        ),
         security=SimpleNamespace(api_keys=()),
         asr=SimpleNamespace(enabled=True, models={"vi": make_asr_model(tmp_path), "en": make_asr_model(tmp_path)}),
         tts=SimpleNamespace(enabled=True, models={"vi": make_tts_model(tmp_path), "en": make_tts_model(tmp_path)}),

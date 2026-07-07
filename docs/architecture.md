@@ -27,6 +27,10 @@ Jobs store normalized input WAV files and transcript metadata under `data/jobs/a
 a single-worker queue to avoid concurrent recognizer pressure.
 Terminal ASR jobs can be cleaned with `DELETE /api/v1/asr/jobs`, optionally filtered by
 `max_age_seconds`.
+ASR jobs use a small lifecycle state machine: `queued`, `running`, `cancelling`, `succeeded`,
+`failed`, and `cancelled`. `POST /api/v1/asr/jobs/{job_id}/cancel` cancels queued work immediately
+and asks running work to stop at the next safe point. Retry metadata is stored with each job as
+`attempt`, `max_attempts`, `failed_reason`, and `cancel_requested`.
 
 ### TTS
 
@@ -59,6 +63,9 @@ execution stays in-process through a single-worker queue so ZipVoice does not ru
 generations at once.
 Terminal TTS jobs can be cleaned with `DELETE /api/v1/tts/jobs`, optionally filtered by
 `max_age_seconds`.
+TTS jobs use the same lifecycle contract as ASR jobs. `POST /api/v1/tts/jobs/{job_id}/cancel`
+cancels queued work immediately and prevents a running generation from writing output if cancellation
+is requested before the final output step.
 
 ### Voices
 
@@ -108,12 +115,14 @@ not written by the app middleware.
 
 - Upload audio and transcribe it with `/api/v1/asr/transcribe`.
 - Queue long-running transcription with `/api/v1/asr/jobs`.
+- Cancel active transcription jobs with `/api/v1/asr/jobs/{job_id}/cancel`.
 - Clean terminal transcription jobs with `DELETE /api/v1/asr/jobs`.
 - Generate one-off speech with `/api/v1/tts/synthesize`.
 - Create/list/get/delete voice profiles with `/api/v1/voices`.
 - Create a voice profile with ASR-derived `reference_text` by posting `auto_transcribe=true`.
 - Generate speech from a stored profile with `/api/v1/tts/synthesize/voices/{voice_id}`.
 - Queue long-running speech generation with `/api/v1/tts/jobs/voices/{voice_id}`.
+- Cancel active speech jobs with `/api/v1/tts/jobs/{job_id}/cancel`.
 - Clean terminal speech jobs with `DELETE /api/v1/tts/jobs`.
 - Stream microphone PCM to `/api/v1/realtime/asr?language=vi` and receive chunked transcripts.
 - Require API keys for model/voice/job APIs when `security.api_keys` or `VASSIL_API_KEYS` is set.

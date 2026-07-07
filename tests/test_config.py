@@ -242,12 +242,21 @@ def test_parse_settings_appends_vassil_api_keys(tmp_path, monkeypatch) -> None:
 
 def test_parse_settings_supports_job_worker_limits(tmp_path) -> None:
     raw = _minimal_settings_raw()
-    raw["jobs"] = {"asr_max_workers": 2, "tts_max_workers": 3}
+    raw["jobs"] = {
+        "asr_max_workers": 2,
+        "tts_max_workers": 3,
+        "asr_max_attempts": 4,
+        "tts_max_attempts": 5,
+        "retry_backoff_seconds": 0.25,
+    }
 
     settings = parse_settings(raw, tmp_path)
 
     assert settings.jobs.asr_max_workers == 2
     assert settings.jobs.tts_max_workers == 3
+    assert settings.jobs.asr_max_attempts == 4
+    assert settings.jobs.tts_max_attempts == 5
+    assert settings.jobs.retry_backoff_seconds == 0.25
 
 
 def test_parse_settings_supports_request_limits(tmp_path) -> None:

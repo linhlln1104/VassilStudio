@@ -42,6 +42,10 @@
       },
       "AsrJobResponse": {
         "properties": {
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
           "audio_url": {
             "anyOf": [
               {
@@ -52,6 +56,10 @@
               }
             ],
             "title": "Audio Url"
+          },
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
           },
           "completed_at": {
             "anyOf": [
@@ -90,6 +98,17 @@
             ],
             "title": "Error"
           },
+          "failed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Reason"
+          },
           "filename": {
             "title": "Filename",
             "type": "string"
@@ -101,6 +120,10 @@
           "language": {
             "title": "Language",
             "type": "string"
+          },
+          "max_attempts": {
+            "title": "Max Attempts",
+            "type": "integer"
           },
           "sample_rate": {
             "anyOf": [
@@ -149,6 +172,10 @@
           "started_at",
           "completed_at",
           "error",
+          "attempt",
+          "max_attempts",
+          "cancel_requested",
+          "failed_reason",
           "text",
           "sample_rate",
           "duration_seconds",
@@ -568,6 +595,10 @@
             "title": "Asr Configured Languages",
             "type": "array"
           },
+          "asr_job_max_attempts": {
+            "title": "Asr Job Max Attempts",
+            "type": "integer"
+          },
           "asr_job_workers": {
             "title": "Asr Job Workers",
             "type": "integer"
@@ -587,6 +618,10 @@
             "title": "Debug",
             "type": "boolean"
           },
+          "job_retry_backoff_seconds": {
+            "title": "Job Retry Backoff Seconds",
+            "type": "number"
+          },
           "num_threads": {
             "title": "Num Threads",
             "type": "integer"
@@ -601,6 +636,10 @@
             },
             "title": "Tts Configured Languages",
             "type": "array"
+          },
+          "tts_job_max_attempts": {
+            "title": "Tts Job Max Attempts",
+            "type": "integer"
           },
           "tts_job_workers": {
             "title": "Tts Job Workers",
@@ -629,6 +668,9 @@
           "warmup_on_startup",
           "asr_job_workers",
           "tts_job_workers",
+          "asr_job_max_attempts",
+          "tts_job_max_attempts",
+          "job_retry_backoff_seconds",
           "asr_loaded",
           "tts_loaded",
           "asr_configured_languages",
@@ -703,6 +745,10 @@
       },
       "TtsJobResponse": {
         "properties": {
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
           "audio_url": {
             "anyOf": [
               {
@@ -713,6 +759,10 @@
               }
             ],
             "title": "Audio Url"
+          },
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
           },
           "completed_at": {
             "anyOf": [
@@ -751,6 +801,17 @@
             ],
             "title": "Error"
           },
+          "failed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Reason"
+          },
           "job_id": {
             "title": "Job Id",
             "type": "string"
@@ -758,6 +819,10 @@
           "language": {
             "title": "Language",
             "type": "string"
+          },
+          "max_attempts": {
+            "title": "Max Attempts",
+            "type": "integer"
           },
           "num_steps": {
             "anyOf": [
@@ -828,6 +893,10 @@
           "started_at",
           "completed_at",
           "error",
+          "attempt",
+          "max_attempts",
+          "cancel_requested",
+          "failed_reason",
           "sample_rate",
           "duration_seconds",
           "audio_url"
@@ -1298,6 +1367,48 @@
         ]
       }
     },
+    "/api/v1/asr/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_asr_job_api_v1_asr_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsrJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Asr Job",
+        "tags": [
+          "asr"
+        ]
+      }
+    },
     "/api/v1/asr/transcribe": {
       "post": {
         "operationId": "transcribe_audio_api_v1_asr_transcribe_post",
@@ -1581,6 +1692,48 @@
           }
         },
         "summary": "Get Tts Job Audio",
+        "tags": [
+          "tts"
+        ]
+      }
+    },
+    "/api/v1/tts/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_tts_job_api_v1_tts_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TtsJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Tts Job",
         "tags": [
           "tts"
         ]

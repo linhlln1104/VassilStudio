@@ -201,6 +201,9 @@ class RealtimeSettings:
 class JobSettings:
     asr_max_workers: int
     tts_max_workers: int
+    asr_max_attempts: int
+    tts_max_attempts: int
+    retry_backoff_seconds: float
 
 
 @dataclass(frozen=True)
@@ -285,6 +288,18 @@ def parse_settings(raw: dict[str, Any], root: Path) -> Settings:
         jobs=JobSettings(
             asr_max_workers=_positive_int(jobs.get("asr_max_workers", 1), "jobs.asr_max_workers"),
             tts_max_workers=_positive_int(jobs.get("tts_max_workers", 1), "jobs.tts_max_workers"),
+            asr_max_attempts=_positive_int(
+                jobs.get("asr_max_attempts", 1),
+                "jobs.asr_max_attempts",
+            ),
+            tts_max_attempts=_positive_int(
+                jobs.get("tts_max_attempts", 1),
+                "jobs.tts_max_attempts",
+            ),
+            retry_backoff_seconds=_non_negative_float(
+                jobs.get("retry_backoff_seconds", 0.5),
+                "jobs.retry_backoff_seconds",
+            ),
         ),
         limits=LimitSettings(
             max_upload_bytes=_positive_int(
@@ -332,6 +347,13 @@ def _positive_int(value: Any, name: str) -> int:
     parsed = int(value)
     if parsed <= 0:
         raise ValueError(f"{name} must be greater than 0.")
+    return parsed
+
+
+def _non_negative_float(value: Any, name: str) -> float:
+    parsed = float(value)
+    if parsed < 0:
+        raise ValueError(f"{name} must be greater than or equal to 0.")
     return parsed
 
 

@@ -38,11 +38,15 @@ type StudioJob = {
   completedAt: string | null
   durationSeconds: number | null
   audioUrl: string | null
+  attempt: number
+  maxAttempts: number
+  cancelRequested: boolean
+  failedReason: string | null
   summary: string
   error: string | null
 }
 
-type JobFilter = 'all' | 'active' | 'succeeded' | 'failed'
+type JobFilter = 'all' | 'active' | 'succeeded' | 'failed' | 'cancelled'
 type JobTypeFilter = 'all' | 'TTS' | 'ASR'
 
 const statusFilters: Array<{ id: JobFilter; label: string }> = [
@@ -50,6 +54,7 @@ const statusFilters: Array<{ id: JobFilter; label: string }> = [
   { id: 'active', label: 'Active' },
   { id: 'succeeded', label: 'Done' },
   { id: 'failed', label: 'Failed' },
+  { id: 'cancelled', label: 'Cancelled' },
 ]
 
 const typeFilters: Array<{ id: JobTypeFilter; label: string }> = [
@@ -88,6 +93,10 @@ export function JobsView() {
         completedAt: job.completed_at,
         durationSeconds: job.duration_seconds,
         audioUrl: job.audio_url,
+        attempt: job.attempt,
+        maxAttempts: job.max_attempts,
+        cancelRequested: job.cancel_requested,
+        failedReason: job.failed_reason,
         summary: job.text,
         error: job.error,
       })) ?? []
@@ -102,6 +111,10 @@ export function JobsView() {
         completedAt: job.completed_at,
         durationSeconds: job.duration_seconds,
         audioUrl: job.audio_url,
+        attempt: job.attempt,
+        maxAttempts: job.max_attempts,
+        cancelRequested: job.cancel_requested,
+        failedReason: job.failed_reason,
         summary: job.text || job.filename,
         error: job.error,
       })) ?? []
@@ -111,16 +124,17 @@ export function JobsView() {
     )
   }, [asrJobsQuery.data, ttsJobsQuery.data])
 
-  const runningCount = jobs.filter((job) => job.status === 'queued' || job.status === 'running').length
+  const activeCount = jobs.filter((job) => isActiveStatus(job.status)).length
   const failedCount = jobs.filter((job) => job.status === 'failed').length
   const succeededCount = jobs.filter((job) => job.status === 'succeeded').length
+  const cancelledCount = jobs.filter((job) => job.status === 'cancelled').length
   const terminalJobs = jobs.filter((job) => isTerminalStatus(job.status))
   const normalizedSearch = search.trim().toLowerCase()
   const filteredJobs = jobs.filter((job) => {
     if (typeFilter !== 'all' && job.type !== typeFilter) {
       return false
     }
-    if (filter === 'active' && job.status !== 'queued' && job.status !== 'running') {
+    if (filter === 'active' && !isActiveStatus(job.status)) {
       return false
     }
     if (filter !== 'all' && filter !== 'active' && job.status !== filter) {
@@ -155,6 +169,32 @@ export function JobsView() {
       toast({
         title: 'Delete failed',
         description: errorMessage(error, 'Unable to delete this job.'),
+        variant: 'danger',
+      })
+    },
+  })
+
+  const cancelJobMutation = useMutation({
+    mutationFn: async (job: StudioJob) => {
+      if (job.type === 'TTS') {
+        await api.cancelTtsJob(job.id)
+      } else {
+        await api.cancelAsrJob(job.id)
+      }
+    },
+    onSuccess: (_, job) => {
+      void queryClient.invalidateQueries({ queryKey: ['tts-jobs'] })
+      void queryClient.invalidateQueries({ queryKey: ['asr-jobs'] })
+      toast({
+        title: 'Cancellation requested',
+        description: `${job.type} job ${compactId(job.id)} will stop at the next safe point.`,
+        variant: 'success',
+      })
+    },
+    onError: (error) => {
+      toast({
+        title: 'Cancel failed',
+        description: errorMessage(error, 'Unable to cancel this job.'),
         variant: 'danger',
       })
     },
@@ -224,9 +264,10 @@ export function JobsView() {
             <div className="flex flex-wrap items-center gap-2">
               <div className="text-sm font-semibold leading-5 text-slate-950">Recent activity</div>
               <div className="flex flex-wrap gap-1">
-                <Metric label="Running" value={runningCount} tone="warning" />
+                <Metric label="Active" value={activeCount} tone="warning" />
                 <Metric label="Done" value={succeededCount} tone="success" />
                 <Metric label="Failed" value={failedCount} tone="danger" />
+                <Metric label="Cancelled" value={cancelledCount} tone="neutral" />
               </div>
             </div>
             <div className="mt-1 text-xs leading-5 text-slate-600">
@@ -314,6 +355,8 @@ export function JobsView() {
                   key={`${job.type}-${job.id}`}
                   job={job}
                   deleting={deleteJobMutation.isPending && deleteTarget?.id === job.id}
+                  cancelling={cancelJobMutation.isPending && cancelJobMutation.variables?.id === job.id}
+                  onCancel={() => cancelJobMutation.mutate(job)}
                   onDelete={() => setDeleteTarget(job)}
                   onReuse={() => reuseJob(job)}
                 />
@@ -330,7 +373,7 @@ export function JobsView() {
         title={deleteTarget ? `Delete ${deleteTarget.type} job?` : 'Delete job?'}
         description={
           deleteTarget
-            ? `This removes job ${compactId(deleteTarget.id)} and its local files from the queue. Running jobs cannot be deleted.`
+            ? `This removes job ${compactId(deleteTarget.id)} and its local files from the queue. Active jobs must be cancelled first.`
             : ''
         }
         confirmLabel="Delete job"
@@ -351,7 +394,7 @@ export function JobsView() {
       <ConfirmDialog
         open={cleanupConfirmOpen}
         title="Clean completed jobs?"
-        description={`This removes ${terminalJobs.length} completed or failed jobs from the local queue. Active jobs will stay untouched.`}
+        description={`This removes ${terminalJobs.length} completed, failed, or cancelled jobs from the local queue. Active jobs will stay untouched.`}
         confirmLabel="Clean queue"
         busyLabel="Cleaning"
         busy={cleanupMutation.isPending}
@@ -365,16 +408,21 @@ export function JobsView() {
 function JobRow({
   job,
   deleting,
+  cancelling,
+  onCancel,
   onDelete,
   onReuse,
 }: {
   job: StudioJob
   deleting: boolean
+  cancelling: boolean
+  onCancel: () => void
   onDelete: () => void
   onReuse: () => void
 }) {
   const failed = job.status === 'failed'
   const terminal = isTerminalStatus(job.status)
+  const canCancel = job.status === 'queued' || job.status === 'running'
   const canReuse = Boolean(job.summary.trim())
 
   return (
@@ -400,6 +448,8 @@ function JobRow({
           </div>
           <div className="mt-1 text-xs font-medium leading-5 text-slate-500">
             Created {formatDate(job.createdAt)}
+            {job.maxAttempts > 1 ? ` · Attempt ${job.attempt}/${job.maxAttempts}` : ''}
+            {job.failedReason ? ` · ${formatReason(job.failedReason)}` : ''}
           </div>
         </div>
       </div>
@@ -422,6 +472,10 @@ function JobRow({
           <span className="inline-flex h-7 items-center text-xs font-medium text-slate-500">No file</span>
         )}
         <div className="flex flex-wrap gap-1.5">
+          <Button size="sm" variant="secondary" disabled={!canCancel || cancelling} onClick={onCancel}>
+            {cancelling ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
+            Cancel
+          </Button>
           <Button size="sm" variant="secondary" disabled={!canReuse} onClick={onReuse}>
             <RotateCcw className="size-4" />
             Use
@@ -517,12 +571,13 @@ function Metric({
 }: {
   label: string
   value: number
-  tone: 'success' | 'warning' | 'danger'
+  tone: 'success' | 'warning' | 'danger' | 'neutral'
 }) {
   const toneClass = {
     success: 'border-sky-200 text-blue-700',
     warning: 'border-amber-200 text-amber-700',
     danger: 'border-red-200 text-red-700',
+    neutral: 'border-slate-200 text-slate-600',
   }[tone]
 
   return (
@@ -552,6 +607,24 @@ function StatusBadge({ status }: { status: JobStatus }) {
     )
   }
 
+  if (status === 'cancelled') {
+    return (
+      <Badge variant="muted">
+        <XCircle className="mr-1 size-3" />
+        Cancelled
+      </Badge>
+    )
+  }
+
+  if (status === 'cancelling') {
+    return (
+      <Badge variant="warning">
+        <Loader2 className="mr-1 size-3 animate-spin" />
+        Cancelling
+      </Badge>
+    )
+  }
+
   return (
     <Badge variant="warning">
       <Loader2 className="mr-1 size-3 animate-spin" />
@@ -561,7 +634,11 @@ function StatusBadge({ status }: { status: JobStatus }) {
 }
 
 function isTerminalStatus(status: JobStatus) {
-  return status === 'succeeded' || status === 'failed'
+  return status === 'succeeded' || status === 'failed' || status === 'cancelled'
+}
+
+function isActiveStatus(status: JobStatus) {
+  return status === 'queued' || status === 'running' || status === 'cancelling'
 }
 
 function errorMessage(error: unknown, fallback: string) {
@@ -575,4 +652,8 @@ function formatDate(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
+}
+
+function formatReason(value: string) {
+  return value.replaceAll('_', ' ')
 }

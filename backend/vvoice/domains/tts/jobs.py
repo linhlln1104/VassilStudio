@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -18,8 +19,13 @@ from vvoice.domains.tts.service import ZipVoiceService
 from vvoice.domains.voices.service import VoiceStore
 
 
-TERMINAL_STATUSES = {"succeeded", "failed"}
+TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
+CANCELLABLE_STATUSES = {"queued", "running", "cancelling"}
 logger = logging.getLogger("vvoice.jobs.tts")
+
+
+class _JobCancelled(Exception):
+    pass
 
 
 @dataclass(frozen=True)
@@ -35,6 +41,10 @@ class TtsJob:
     started_at: str | None
     completed_at: str | None
     error: str | None
+    attempt: int
+    max_attempts: int
+    cancel_requested: bool
+    failed_reason: str | None
     output_path: Path | None
     sample_rate: int | None
     duration_seconds: float | None
@@ -48,11 +58,15 @@ class TtsJobService:
         voices: VoiceStore,
         *,
         max_workers: int = 1,
+        max_attempts: int = 1,
+        retry_backoff_seconds: float = 0.5,
         max_text_chars: int = 5000,
     ) -> None:
         self._jobs_dir = jobs_dir
         self._tts = tts
         self._voices = voices
+        self._max_attempts = max(1, int(max_attempts))
+        self._retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
         self._max_text_chars = max_text_chars
         self._lock = threading.RLock()
         self._executor = ThreadPoolExecutor(
@@ -98,6 +112,10 @@ class TtsJobService:
             started_at=None,
             completed_at=None,
             error=None,
+            attempt=0,
+            max_attempts=self._max_attempts,
+            cancel_requested=False,
+            failed_reason=None,
             output_path=job_dir / "output.wav",
             sample_rate=None,
             duration_seconds=None,
@@ -143,6 +161,44 @@ class TtsJobService:
                 path.unlink()
         job_dir.rmdir()
 
+    def cancel(self, job_id: str) -> TtsJob:
+        with self._lock:
+            job = self.get(job_id)
+            if job.status in TERMINAL_STATUSES:
+                raise VVoiceError(f"Cannot cancel TTS job while it is {job.status}")
+            if job.status not in CANCELLABLE_STATUSES:
+                raise VVoiceError(f"Cannot cancel TTS job while it is {job.status}")
+
+            if job.status == "queued":
+                cancelled = _replace_job(
+                    job,
+                    status="cancelled",
+                    completed_at=_now(),
+                    error="Job was cancelled before it started",
+                    cancel_requested=True,
+                    failed_reason="cancelled",
+                )
+                self._save(cancelled)
+                logger.info(
+                    "tts_job_cancelled",
+                    extra={"job_id": job_id, "voice_id": job.voice_id, "status": "queued"},
+                )
+                return cancelled
+
+            cancelling = _replace_job(
+                job,
+                status="cancelling",
+                error="Cancellation requested",
+                cancel_requested=True,
+                failed_reason=None,
+            )
+            self._save(cancelling)
+            logger.info(
+                "tts_job_cancel_requested",
+                extra={"job_id": job_id, "voice_id": job.voice_id, "status": job.status},
+            )
+            return cancelling
+
     def cleanup(self, *, max_age_seconds: int | None = None) -> list[str]:
         cutoff = _cutoff(max_age_seconds)
         deleted: list[str] = []
@@ -159,67 +215,74 @@ class TtsJobService:
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     def _run(self, job_id: str) -> None:
-        try:
-            job = self.get(job_id)
-            self._save(_replace_job(job, status="running", started_at=_now(), error=None))
-            logger.info(
-                "tts_job_started",
-                extra={"job_id": job_id, "voice_id": job.voice_id, "language": job.language},
-            )
+        while True:
+            try:
+                job = self._start_attempt(job_id)
+                if job is None:
+                    return
 
-            profile = self._voices.get(job.voice_id)
-            reference_audio, reference_sample_rate = load_audio_bytes(
-                profile.audio_path.read_bytes(),
-                target_sample_rate=self._tts.sample_rate_for(job.language),
-            )
-            speech = self._tts.synthesize(
-                text=job.text,
-                reference_audio=reference_audio,
-                reference_sample_rate=reference_sample_rate,
-                reference_text=profile.reference_text,
-                language=job.language,
-                num_steps=job.num_steps,
-                speed=job.speed,
-            )
+                logger.info(
+                    "tts_job_started",
+                    extra={
+                        "job_id": job_id,
+                        "voice_id": job.voice_id,
+                        "language": job.language,
+                        "attempt": job.attempt,
+                        "max_attempts": job.max_attempts,
+                    },
+                )
 
-            output_path = self._job_dir(job_id) / "output.wav"
-            output_path.write_bytes(encode_wav(speech.samples, speech.sample_rate))
-            self._save(
-                _replace_job(
+                self._raise_if_cancel_requested(job_id)
+                profile = self._voices.get(job.voice_id)
+                reference_audio, reference_sample_rate = load_audio_bytes(
+                    profile.audio_path.read_bytes(),
+                    target_sample_rate=self._tts.sample_rate_for(job.language),
+                )
+                self._raise_if_cancel_requested(job_id)
+                speech = self._tts.synthesize(
+                    text=job.text,
+                    reference_audio=reference_audio,
+                    reference_sample_rate=reference_sample_rate,
+                    reference_text=profile.reference_text,
+                    language=job.language,
+                    num_steps=job.num_steps,
+                    speed=job.speed,
+                )
+                self._raise_if_cancel_requested(job_id)
+
+                output_path = self._job_dir(job_id) / "output.wav"
+                output_path.write_bytes(encode_wav(speech.samples, speech.sample_rate))
+                completed = _replace_job(
                     job,
                     status="succeeded",
                     completed_at=_now(),
                     error=None,
+                    failed_reason=None,
                     output_path=output_path,
                     sample_rate=speech.sample_rate,
                     duration_seconds=speech.duration_seconds,
                 )
-            )
-            logger.info(
-                "tts_job_succeeded",
-                extra={
-                    "job_id": job_id,
-                    "voice_id": job.voice_id,
-                    "language": job.language,
-                    "duration_seconds": speech.duration_seconds,
-                },
-            )
-        except Exception as exc:  # pragma: no cover - exercised through smoke tests
-            try:
-                job = self.get(job_id)
-                self._save(
-                    _replace_job(
-                        job,
-                        status="failed",
-                        completed_at=_now(),
-                        error=str(exc),
-                    )
+                self._save(completed)
+                logger.info(
+                    "tts_job_succeeded",
+                    extra={
+                        "job_id": job_id,
+                        "voice_id": job.voice_id,
+                        "language": job.language,
+                        "attempt": job.attempt,
+                        "duration_seconds": speech.duration_seconds,
+                    },
                 )
-                logger.exception(
-                    "tts_job_failed",
-                    extra={"job_id": job_id, "voice_id": job.voice_id, "language": job.language},
-                )
-            except TtsJobNotFoundError:
+                return
+            except _JobCancelled as exc:
+                self._mark_cancelled(job_id, str(exc))
+                return
+            except Exception as exc:  # pragma: no cover - exercised through smoke tests
+                if self._queue_retry(job_id, exc):
+                    time.sleep(self._retry_backoff_seconds)
+                    continue
+
+                self._mark_failed(job_id, exc)
                 return
 
     def _mark_interrupted_jobs(self) -> None:
@@ -232,6 +295,7 @@ class TtsJobService:
                     status="failed",
                     completed_at=_now(),
                     error="Job was interrupted by server restart",
+                    failed_reason="interrupted",
                 )
             )
 
@@ -249,6 +313,7 @@ class TtsJobService:
     def _load(self, metadata_path: Path) -> TtsJob:
         raw = json.loads(metadata_path.read_text(encoding="utf-8"))
         output_path = raw.get("output_path")
+        max_attempts = int(raw.get("max_attempts") or self._max_attempts)
         return TtsJob(
             job_id=raw["job_id"],
             status=raw["status"],
@@ -261,9 +326,128 @@ class TtsJobService:
             started_at=raw.get("started_at"),
             completed_at=raw.get("completed_at"),
             error=raw.get("error"),
+            attempt=int(raw.get("attempt") or 0),
+            max_attempts=max(1, max_attempts),
+            cancel_requested=bool(raw.get("cancel_requested", False)),
+            failed_reason=raw.get("failed_reason"),
             output_path=Path(output_path) if output_path else None,
             sample_rate=raw.get("sample_rate"),
             duration_seconds=raw.get("duration_seconds"),
+        )
+
+    def _start_attempt(self, job_id: str) -> TtsJob | None:
+        with self._lock:
+            job = self.get(job_id)
+            if job.status in TERMINAL_STATUSES:
+                return None
+            if job.cancel_requested or job.status == "cancelling":
+                self._save(
+                    _replace_job(
+                        job,
+                        status="cancelled",
+                        completed_at=_now(),
+                        error="Job was cancelled before the next attempt",
+                        cancel_requested=True,
+                        failed_reason="cancelled",
+                    )
+                )
+                return None
+
+            attempt = job.attempt + 1
+            running = _replace_job(
+                job,
+                status="running",
+                started_at=job.started_at or _now(),
+                completed_at=None,
+                error=None,
+                failed_reason=None,
+                attempt=attempt,
+                max_attempts=job.max_attempts,
+            )
+            self._save(running)
+            return running
+
+    def _raise_if_cancel_requested(self, job_id: str) -> None:
+        job = self.get(job_id)
+        if job.cancel_requested or job.status == "cancelling":
+            raise _JobCancelled("Job was cancelled")
+
+    def _mark_cancelled(self, job_id: str, message: str) -> None:
+        try:
+            job = self.get(job_id)
+        except TtsJobNotFoundError:
+            return
+
+        cancelled = _replace_job(
+            job,
+            status="cancelled",
+            completed_at=_now(),
+            error=message,
+            cancel_requested=True,
+            failed_reason="cancelled",
+        )
+        self._save(cancelled)
+        logger.info(
+            "tts_job_cancelled",
+            extra={"job_id": job_id, "voice_id": job.voice_id, "attempt": job.attempt},
+        )
+
+    def _queue_retry(self, job_id: str, exc: Exception) -> bool:
+        try:
+            job = self.get(job_id)
+        except TtsJobNotFoundError:
+            return False
+
+        if job.cancel_requested or job.status == "cancelling":
+            self._mark_cancelled(job_id, "Job was cancelled")
+            return True
+        if not _is_retryable_exception(exc) or job.attempt >= job.max_attempts:
+            return False
+
+        retrying = _replace_job(
+            job,
+            status="queued",
+            completed_at=None,
+            error=str(exc),
+            failed_reason="retry_pending",
+        )
+        self._save(retrying)
+        logger.warning(
+            "tts_job_retrying",
+            extra={
+                "job_id": job_id,
+                "voice_id": job.voice_id,
+                "language": job.language,
+                "attempt": job.attempt,
+                "max_attempts": job.max_attempts,
+            },
+        )
+        return True
+
+    def _mark_failed(self, job_id: str, exc: Exception) -> None:
+        try:
+            job = self.get(job_id)
+        except TtsJobNotFoundError:
+            return
+
+        self._save(
+            _replace_job(
+                job,
+                status="failed",
+                completed_at=_now(),
+                error=str(exc),
+                failed_reason=_failed_reason_for(exc),
+            )
+        )
+        logger.exception(
+            "tts_job_failed",
+            extra={
+                "job_id": job_id,
+                "voice_id": job.voice_id,
+                "language": job.language,
+                "attempt": job.attempt,
+                "max_attempts": job.max_attempts,
+            },
         )
 
     def _job_dir(self, job_id: str) -> Path:
@@ -288,6 +472,10 @@ def _job_to_metadata(job: TtsJob) -> dict:
         "started_at": job.started_at,
         "completed_at": job.completed_at,
         "error": job.error,
+        "attempt": job.attempt,
+        "max_attempts": job.max_attempts,
+        "cancel_requested": job.cancel_requested,
+        "failed_reason": job.failed_reason,
         "output_path": str(job.output_path) if job.output_path else None,
         "sample_rate": job.sample_rate,
         "duration_seconds": job.duration_seconds,
@@ -310,6 +498,10 @@ def _replace_job(job: TtsJob, **changes) -> TtsJob:
         started_at=values.get("started_at"),
         completed_at=values.get("completed_at"),
         error=values.get("error"),
+        attempt=int(values.get("attempt") or 0),
+        max_attempts=max(1, int(values.get("max_attempts") or 1)),
+        cancel_requested=bool(values.get("cancel_requested", False)),
+        failed_reason=values.get("failed_reason"),
         output_path=Path(output_path) if output_path else None,
         sample_rate=values.get("sample_rate"),
         duration_seconds=values.get("duration_seconds"),
@@ -329,3 +521,11 @@ def _cutoff(max_age_seconds: int | None) -> datetime | None:
 def _job_age_anchor(job: TtsJob) -> datetime:
     value = job.completed_at or job.created_at
     return datetime.fromisoformat(value)
+
+
+def _is_retryable_exception(exc: Exception) -> bool:
+    return not isinstance(exc, VVoiceError)
+
+
+def _failed_reason_for(exc: Exception) -> str:
+    return "application_error" if isinstance(exc, VVoiceError) else "runtime_error"

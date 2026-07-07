@@ -55,6 +55,9 @@ export type ModelStatusResponse = {
     warmup_on_startup: boolean
     asr_job_workers: number
     tts_job_workers: number
+    asr_job_max_attempts: number
+    tts_job_max_attempts: number
+    job_retry_backoff_seconds: number
     asr_loaded: boolean
     tts_loaded: boolean
     asr_configured_languages: string[]
@@ -111,6 +114,10 @@ export type TtsJob = {
   started_at: string | null
   completed_at: string | null
   error: string | null
+  attempt: number
+  max_attempts: number
+  cancel_requested: boolean
+  failed_reason: string | null
   sample_rate: number | null
   duration_seconds: number | null
   audio_url: string | null
@@ -135,13 +142,17 @@ export type AsrJob = {
   started_at: string | null
   completed_at: string | null
   error: string | null
+  attempt: number
+  max_attempts: number
+  cancel_requested: boolean
+  failed_reason: string | null
   text: string | null
   sample_rate: number | null
   duration_seconds: number | null
   audio_url: string | null
 }
 
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+export type JobStatus = 'queued' | 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const apiKey = getStoredApiKey()
@@ -242,6 +253,14 @@ export const api = {
   deleteAsrJob: (jobId: string) =>
     fetchJson<JobDeleteResponse>(`/api/v1/asr/jobs/${encodeURIComponent(jobId)}`, {
       method: 'DELETE',
+    }),
+  cancelTtsJob: (jobId: string) =>
+    fetchJson<TtsJob>(`/api/v1/tts/jobs/${encodeURIComponent(jobId)}/cancel`, {
+      method: 'POST',
+    }),
+  cancelAsrJob: (jobId: string) =>
+    fetchJson<AsrJob>(`/api/v1/asr/jobs/${encodeURIComponent(jobId)}/cancel`, {
+      method: 'POST',
     }),
   createAsrJob: (file: File, payload: { language?: string } = {}) => {
     const form = new FormData()

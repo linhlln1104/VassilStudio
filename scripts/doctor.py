@@ -100,6 +100,13 @@ def model_checks(config_path: str | None) -> list[Check]:
         Check("runtime.warmup_on_startup", True, "enabled" if settings.runtime.warmup_on_startup else "disabled"),
         Check("jobs.asr_max_workers", settings.jobs.asr_max_workers > 0, str(settings.jobs.asr_max_workers)),
         Check("jobs.tts_max_workers", settings.jobs.tts_max_workers > 0, str(settings.jobs.tts_max_workers)),
+        Check("jobs.asr_max_attempts", settings.jobs.asr_max_attempts > 0, str(settings.jobs.asr_max_attempts)),
+        Check("jobs.tts_max_attempts", settings.jobs.tts_max_attempts > 0, str(settings.jobs.tts_max_attempts)),
+        Check(
+            "jobs.retry_backoff_seconds",
+            settings.jobs.retry_backoff_seconds >= 0,
+            str(settings.jobs.retry_backoff_seconds),
+        ),
         Check("limits.max_upload_bytes", settings.limits.max_upload_bytes > 0, str(settings.limits.max_upload_bytes)),
         Check("limits.max_tts_text_chars", settings.limits.max_tts_text_chars > 0, str(settings.limits.max_tts_text_chars)),
         Check(

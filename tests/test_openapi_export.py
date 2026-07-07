@@ -12,6 +12,8 @@ def test_export_openapi_writes_contract(tmp_path) -> None:
     assert schema["info"]["title"] == "VassilStudio API"
     assert "/health" in schema["paths"]
     assert "/api/v1/voices/import-candidates" in schema["paths"]
+    assert "/api/v1/asr/jobs/{job_id}/cancel" in schema["paths"]
+    assert "/api/v1/tts/jobs/{job_id}/cancel" in schema["paths"]
 
     schemas = schema["components"]["schemas"]
     assert "HealthResponse" in schemas
@@ -22,3 +24,5 @@ def test_export_openapi_writes_contract(tmp_path) -> None:
     assert "VoiceResponse" in schemas
     assert "VoiceImportCandidateResponse" in schemas
     assert "audio_size_bytes" in schemas["VoiceResponse"]["properties"]
+    assert "attempt" in schemas["AsrJobResponse"]["properties"]
+    assert "cancel_requested" in schemas["TtsJobResponse"]["properties"]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -15,8 +16,13 @@ from vvoice.shared.audio.io import duration_seconds, encode_wav, load_audio_byte
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
 
 
-TERMINAL_STATUSES = {"succeeded", "failed"}
+TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
+CANCELLABLE_STATUSES = {"queued", "running", "cancelling"}
 logger = logging.getLogger("vvoice.jobs.asr")
+
+
+class _JobCancelled(Exception):
+    pass
 
 
 @dataclass(frozen=True)
@@ -29,6 +35,10 @@ class AsrJob:
     started_at: str | None
     completed_at: str | None
     error: str | None
+    attempt: int
+    max_attempts: int
+    cancel_requested: bool
+    failed_reason: str | None
     input_path: Path | None
     text: str | None
     sample_rate: int | None
@@ -43,10 +53,14 @@ class AsrJobService:
         *,
         target_sample_rate: int,
         max_workers: int = 1,
+        max_attempts: int = 1,
+        retry_backoff_seconds: float = 0.5,
     ) -> None:
         self._jobs_dir = jobs_dir
         self._asr = asr
         self._target_sample_rate = target_sample_rate
+        self._max_attempts = max(1, int(max_attempts))
+        self._retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
         self._lock = threading.RLock()
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers,
@@ -80,6 +94,10 @@ class AsrJobService:
             started_at=None,
             completed_at=None,
             error=None,
+            attempt=0,
+            max_attempts=self._max_attempts,
+            cancel_requested=False,
+            failed_reason=None,
             input_path=input_path,
             text=None,
             sample_rate=sample_rate,
@@ -125,6 +143,44 @@ class AsrJobService:
                 path.unlink()
         job_dir.rmdir()
 
+    def cancel(self, job_id: str) -> AsrJob:
+        with self._lock:
+            job = self.get(job_id)
+            if job.status in TERMINAL_STATUSES:
+                raise VVoiceError(f"Cannot cancel ASR job while it is {job.status}")
+            if job.status not in CANCELLABLE_STATUSES:
+                raise VVoiceError(f"Cannot cancel ASR job while it is {job.status}")
+
+            if job.status == "queued":
+                cancelled = _replace_job(
+                    job,
+                    status="cancelled",
+                    completed_at=_now(),
+                    error="Job was cancelled before it started",
+                    cancel_requested=True,
+                    failed_reason="cancelled",
+                )
+                self._save(cancelled)
+                logger.info(
+                    "asr_job_cancelled",
+                    extra={"job_id": job_id, "language": job.language, "status": "queued"},
+                )
+                return cancelled
+
+            cancelling = _replace_job(
+                job,
+                status="cancelling",
+                error="Cancellation requested",
+                cancel_requested=True,
+                failed_reason=None,
+            )
+            self._save(cancelling)
+            logger.info(
+                "asr_job_cancel_requested",
+                extra={"job_id": job_id, "language": job.language, "status": job.status},
+            )
+            return cancelling
+
     def cleanup(self, *, max_age_seconds: int | None = None) -> list[str]:
         cutoff = _cutoff(max_age_seconds)
         deleted: list[str] = []
@@ -141,54 +197,64 @@ class AsrJobService:
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     def _run(self, job_id: str) -> None:
-        try:
-            job = self.get(job_id)
-            self._save(_replace_job(job, status="running", started_at=_now(), error=None))
-            logger.info("asr_job_started", extra={"job_id": job_id, "language": job.language})
+        while True:
+            try:
+                job = self._start_attempt(job_id)
+                if job is None:
+                    return
 
-            if not job.input_path or not job.input_path.exists():
-                raise VVoiceError("ASR job input audio is missing")
+                logger.info(
+                    "asr_job_started",
+                    extra={
+                        "job_id": job_id,
+                        "language": job.language,
+                        "attempt": job.attempt,
+                        "max_attempts": job.max_attempts,
+                    },
+                )
 
-            samples, sample_rate = load_audio_bytes(
-                job.input_path.read_bytes(),
-                target_sample_rate=self._sample_rate_for(job.language),
-            )
-            result = self._asr.transcribe(samples, sample_rate, job.language)
-            self._save(
-                _replace_job(
+                if not job.input_path or not job.input_path.exists():
+                    raise VVoiceError("ASR job input audio is missing")
+
+                self._raise_if_cancel_requested(job_id)
+                samples, sample_rate = load_audio_bytes(
+                    job.input_path.read_bytes(),
+                    target_sample_rate=self._sample_rate_for(job.language),
+                )
+                self._raise_if_cancel_requested(job_id)
+                result = self._asr.transcribe(samples, sample_rate, job.language)
+                self._raise_if_cancel_requested(job_id)
+
+                completed = _replace_job(
                     job,
                     status="succeeded",
                     completed_at=_now(),
                     error=None,
+                    failed_reason=None,
                     text=result.text,
                     sample_rate=result.sample_rate,
                     duration_seconds=duration_seconds(samples, sample_rate),
                 )
-            )
-            logger.info(
-                "asr_job_succeeded",
-                extra={
-                    "job_id": job_id,
-                    "language": job.language,
-                    "duration_seconds": duration_seconds(samples, sample_rate),
-                },
-            )
-        except Exception as exc:  # pragma: no cover - exercised through smoke tests
-            try:
-                job = self.get(job_id)
-                self._save(
-                    _replace_job(
-                        job,
-                        status="failed",
-                        completed_at=_now(),
-                        error=str(exc),
-                    )
+                self._save(completed)
+                logger.info(
+                    "asr_job_succeeded",
+                    extra={
+                        "job_id": job_id,
+                        "language": job.language,
+                        "attempt": job.attempt,
+                        "duration_seconds": duration_seconds(samples, sample_rate),
+                    },
                 )
-                logger.exception(
-                    "asr_job_failed",
-                    extra={"job_id": job_id, "language": job.language},
-                )
-            except AsrJobNotFoundError:
+                return
+            except _JobCancelled as exc:
+                self._mark_cancelled(job_id, str(exc))
+                return
+            except Exception as exc:  # pragma: no cover - exercised through smoke tests
+                if self._queue_retry(job_id, exc):
+                    time.sleep(self._retry_backoff_seconds)
+                    continue
+
+                self._mark_failed(job_id, exc)
                 return
 
     def _mark_interrupted_jobs(self) -> None:
@@ -201,6 +267,7 @@ class AsrJobService:
                     status="failed",
                     completed_at=_now(),
                     error="Job was interrupted by server restart",
+                    failed_reason="interrupted",
                 )
             )
 
@@ -218,6 +285,7 @@ class AsrJobService:
     def _load(self, metadata_path: Path) -> AsrJob:
         raw = json.loads(metadata_path.read_text(encoding="utf-8"))
         input_path = raw.get("input_path")
+        max_attempts = int(raw.get("max_attempts") or self._max_attempts)
         return AsrJob(
             job_id=raw["job_id"],
             status=raw["status"],
@@ -227,10 +295,127 @@ class AsrJobService:
             started_at=raw.get("started_at"),
             completed_at=raw.get("completed_at"),
             error=raw.get("error"),
+            attempt=int(raw.get("attempt") or 0),
+            max_attempts=max(1, max_attempts),
+            cancel_requested=bool(raw.get("cancel_requested", False)),
+            failed_reason=raw.get("failed_reason"),
             input_path=Path(input_path) if input_path else None,
             text=raw.get("text"),
             sample_rate=raw.get("sample_rate"),
             duration_seconds=raw.get("duration_seconds"),
+        )
+
+    def _start_attempt(self, job_id: str) -> AsrJob | None:
+        with self._lock:
+            job = self.get(job_id)
+            if job.status in TERMINAL_STATUSES:
+                return None
+            if job.cancel_requested or job.status == "cancelling":
+                self._save(
+                    _replace_job(
+                        job,
+                        status="cancelled",
+                        completed_at=_now(),
+                        error="Job was cancelled before the next attempt",
+                        cancel_requested=True,
+                        failed_reason="cancelled",
+                    )
+                )
+                return None
+
+            attempt = job.attempt + 1
+            running = _replace_job(
+                job,
+                status="running",
+                started_at=job.started_at or _now(),
+                completed_at=None,
+                error=None,
+                failed_reason=None,
+                attempt=attempt,
+                max_attempts=job.max_attempts,
+            )
+            self._save(running)
+            return running
+
+    def _raise_if_cancel_requested(self, job_id: str) -> None:
+        job = self.get(job_id)
+        if job.cancel_requested or job.status == "cancelling":
+            raise _JobCancelled("Job was cancelled")
+
+    def _mark_cancelled(self, job_id: str, message: str) -> None:
+        try:
+            job = self.get(job_id)
+        except AsrJobNotFoundError:
+            return
+
+        cancelled = _replace_job(
+            job,
+            status="cancelled",
+            completed_at=_now(),
+            error=message,
+            cancel_requested=True,
+            failed_reason="cancelled",
+        )
+        self._save(cancelled)
+        logger.info(
+            "asr_job_cancelled",
+            extra={"job_id": job_id, "language": job.language, "attempt": job.attempt},
+        )
+
+    def _queue_retry(self, job_id: str, exc: Exception) -> bool:
+        try:
+            job = self.get(job_id)
+        except AsrJobNotFoundError:
+            return False
+
+        if job.cancel_requested or job.status == "cancelling":
+            self._mark_cancelled(job_id, "Job was cancelled")
+            return True
+        if not _is_retryable_exception(exc) or job.attempt >= job.max_attempts:
+            return False
+
+        retrying = _replace_job(
+            job,
+            status="queued",
+            completed_at=None,
+            error=str(exc),
+            failed_reason="retry_pending",
+        )
+        self._save(retrying)
+        logger.warning(
+            "asr_job_retrying",
+            extra={
+                "job_id": job_id,
+                "language": job.language,
+                "attempt": job.attempt,
+                "max_attempts": job.max_attempts,
+            },
+        )
+        return True
+
+    def _mark_failed(self, job_id: str, exc: Exception) -> None:
+        try:
+            job = self.get(job_id)
+        except AsrJobNotFoundError:
+            return
+
+        self._save(
+            _replace_job(
+                job,
+                status="failed",
+                completed_at=_now(),
+                error=str(exc),
+                failed_reason=_failed_reason_for(exc),
+            )
+        )
+        logger.exception(
+            "asr_job_failed",
+            extra={
+                "job_id": job_id,
+                "language": job.language,
+                "attempt": job.attempt,
+                "max_attempts": job.max_attempts,
+            },
         )
 
     def _job_dir(self, job_id: str) -> Path:
@@ -258,6 +443,10 @@ def _job_to_metadata(job: AsrJob) -> dict:
         "started_at": job.started_at,
         "completed_at": job.completed_at,
         "error": job.error,
+        "attempt": job.attempt,
+        "max_attempts": job.max_attempts,
+        "cancel_requested": job.cancel_requested,
+        "failed_reason": job.failed_reason,
         "input_path": str(job.input_path) if job.input_path else None,
         "text": job.text,
         "sample_rate": job.sample_rate,
@@ -278,6 +467,10 @@ def _replace_job(job: AsrJob, **changes) -> AsrJob:
         started_at=values.get("started_at"),
         completed_at=values.get("completed_at"),
         error=values.get("error"),
+        attempt=int(values.get("attempt") or 0),
+        max_attempts=max(1, int(values.get("max_attempts") or 1)),
+        cancel_requested=bool(values.get("cancel_requested", False)),
+        failed_reason=values.get("failed_reason"),
         input_path=Path(input_path) if input_path else None,
         text=values.get("text"),
         sample_rate=values.get("sample_rate"),
@@ -298,3 +491,11 @@ def _cutoff(max_age_seconds: int | None) -> datetime | None:
 def _job_age_anchor(job: AsrJob) -> datetime:
     value = job.completed_at or job.created_at
     return datetime.fromisoformat(value)
+
+
+def _is_retryable_exception(exc: Exception) -> bool:
+    return not isinstance(exc, VVoiceError)
+
+
+def _failed_reason_for(exc: Exception) -> str:
+    return "application_error" if isinstance(exc, VVoiceError) else "runtime_error"

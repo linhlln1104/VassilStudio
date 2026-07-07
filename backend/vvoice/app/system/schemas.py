@@ -24,6 +24,9 @@ class RuntimeStatus(BaseModel):
     warmup_on_startup: bool
     asr_job_workers: int
     tts_job_workers: int
+    asr_job_max_attempts: int
+    tts_job_max_attempts: int
+    job_retry_backoff_seconds: float
     asr_loaded: bool
     tts_loaded: bool
     asr_configured_languages: list[str]

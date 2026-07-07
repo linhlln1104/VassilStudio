@@ -103,7 +103,10 @@ hardware, increase the worker limits in `config/vassil.example.json`:
 },
 "jobs": {
   "asr_max_workers": 1,
-  "tts_max_workers": 1
+  "tts_max_workers": 1,
+  "asr_max_attempts": 1,
+  "tts_max_attempts": 1,
+  "retry_backoff_seconds": 0.5
 },
 "limits": {
   "max_upload_bytes": 52428800,
@@ -116,6 +119,10 @@ hardware, increase the worker limits in `config/vassil.example.json`:
 
 Model inference still uses per-language locks, so increasing workers mostly improves queue handling
 around IO and mixed ASR/TTS work. Test with `scripts/check.ps1 -RunLanguageMatrix` after changing it.
+Jobs support cooperative cancellation and retry metadata. Queued jobs cancel immediately; running jobs
+move through `cancelling` and stop at the next safe point around decode/model/output work. Retry is
+disabled by default with one attempt; raise `asr_max_attempts` or `tts_max_attempts` only after testing
+latency and CPU pressure on the target machine.
 
 Use Settings -> Warm models or call `/warmup` to load all configured ASR/TTS languages before a
 session. Set `runtime.warmup_on_startup` to `true` only when slower startup is acceptable and you want
@@ -306,6 +313,12 @@ Invoke-RestMethod -Method Delete http://127.0.0.1:8000/api/v1/tts/jobs
 Invoke-RestMethod -Method Delete http://127.0.0.1:8000/api/v1/tts/jobs?max_age_seconds=86400
 ```
 
+Cancel an active TTS job:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/v1/tts/jobs/<job_id>/cancel
+```
+
 Download or preview the saved reference audio:
 
 ```powershell
@@ -339,6 +352,12 @@ Clean finished ASR jobs:
 ```powershell
 Invoke-RestMethod -Method Delete http://127.0.0.1:8000/api/v1/asr/jobs
 Invoke-RestMethod -Method Delete http://127.0.0.1:8000/api/v1/asr/jobs?max_age_seconds=86400
+```
+
+Cancel an active ASR job:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/v1/asr/jobs/<job_id>/cancel
 ```
 
 Realtime ASR websocket:

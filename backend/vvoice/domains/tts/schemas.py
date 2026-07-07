@@ -15,6 +15,10 @@ class TtsJobResponse(BaseModel):
     started_at: str | None
     completed_at: str | None
     error: str | None
+    attempt: int
+    max_attempts: int
+    cancel_requested: bool
+    failed_reason: str | None
     sample_rate: int | None
     duration_seconds: float | None
     audio_url: str | None

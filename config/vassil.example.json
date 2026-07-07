@@ -70,7 +70,10 @@
   },
   "jobs": {
     "asr_max_workers": 1,
-    "tts_max_workers": 1
+    "tts_max_workers": 1,
+    "asr_max_attempts": 1,
+    "tts_max_attempts": 1,
+    "retry_backoff_seconds": 0.5
   },
   "limits": {
     "max_upload_bytes": 52428800,

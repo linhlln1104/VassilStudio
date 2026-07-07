@@ -1,4 +1,5 @@
 import time
+import threading
 
 import numpy as np
 import pytest
@@ -21,6 +22,31 @@ class FakeTts:
 
     def sample_rate_for(self, language: str | None = None) -> int:
         return 24000
+
+
+class FlakyTts(FakeTts):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    def synthesize(self, **kwargs) -> GeneratedSpeech:
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("transient TTS failure")
+        return super().synthesize(**kwargs)
+
+
+class BlockingTts(FakeTts):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def synthesize(self, **kwargs) -> GeneratedSpeech:
+        self.started.set()
+        if not self.release.wait(timeout=3):
+            raise RuntimeError("test TTS did not release")
+        return super().synthesize(**kwargs)
 
 
 def test_tts_job_service_runs_job_from_voice(tmp_path) -> None:
@@ -47,6 +73,10 @@ def test_tts_job_service_runs_job_from_voice(tmp_path) -> None:
         completed = wait_for_job(jobs, job.job_id)
 
         assert completed.status == "succeeded"
+        assert completed.attempt == 1
+        assert completed.max_attempts == 1
+        assert completed.cancel_requested is False
+        assert completed.failed_reason is None
         assert completed.language == "en"
         assert fake_tts.last_kwargs["language"] == "en"
         assert completed.output_path is not None
@@ -59,6 +89,87 @@ def test_tts_job_service_runs_job_from_voice(tmp_path) -> None:
         assert jobs.cleanup() == [job.job_id]
         assert jobs.list() == []
     finally:
+        jobs.shutdown()
+
+
+def test_tts_job_service_retries_transient_failures(tmp_path) -> None:
+    voices = VoiceStore(tmp_path / "voices")
+    profile = create_voice(voices)
+    fake_tts = FlakyTts()
+    jobs = TtsJobService(
+        tmp_path / "tts-jobs",
+        fake_tts,
+        voices,
+        max_attempts=2,
+        retry_backoff_seconds=0,
+    )
+    try:
+        job = jobs.create_from_voice(voice_id=profile.voice_id, text="xin chao moi")
+        completed = wait_for_job(jobs, job.job_id)
+
+        assert completed.status == "succeeded"
+        assert completed.attempt == 2
+        assert completed.max_attempts == 2
+        assert fake_tts.calls == 2
+    finally:
+        jobs.shutdown()
+
+
+def test_tts_job_service_cancels_running_job_at_safe_point(tmp_path) -> None:
+    voices = VoiceStore(tmp_path / "voices")
+    profile = create_voice(voices)
+    fake_tts = BlockingTts()
+    jobs = TtsJobService(
+        tmp_path / "tts-jobs",
+        fake_tts,
+        voices,
+    )
+    try:
+        job = jobs.create_from_voice(voice_id=profile.voice_id, text="xin chao moi")
+        assert fake_tts.started.wait(timeout=3)
+
+        cancelling = jobs.cancel(job.job_id)
+        assert cancelling.status == "cancelling"
+        assert cancelling.cancel_requested is True
+
+        fake_tts.release.set()
+        completed = wait_for_job(jobs, job.job_id)
+
+        assert completed.status == "cancelled"
+        assert completed.cancel_requested is True
+        assert completed.failed_reason == "cancelled"
+        assert completed.output_path is not None
+        assert not completed.output_path.exists()
+    finally:
+        fake_tts.release.set()
+        jobs.shutdown()
+
+
+def test_tts_job_service_cancels_queued_job(tmp_path) -> None:
+    voices = VoiceStore(tmp_path / "voices")
+    profile = create_voice(voices)
+    fake_tts = BlockingTts()
+    jobs = TtsJobService(
+        tmp_path / "tts-jobs",
+        fake_tts,
+        voices,
+        max_workers=1,
+    )
+    try:
+        first = jobs.create_from_voice(voice_id=profile.voice_id, text="first")
+        assert fake_tts.started.wait(timeout=3)
+        second = jobs.create_from_voice(voice_id=profile.voice_id, text="second")
+
+        cancelled = jobs.cancel(second.job_id)
+        assert cancelled.status == "cancelled"
+        assert cancelled.failed_reason == "cancelled"
+
+        fake_tts.release.set()
+        assert wait_for_job(jobs, first.job_id).status == "succeeded"
+        assert jobs.get(second.job_id).status == "cancelled"
+        assert jobs.cleanup() == [second.job_id, first.job_id]
+    finally:
+        fake_tts.release.set()
         jobs.shutdown()
 
 
@@ -105,6 +216,7 @@ def test_tts_job_service_marks_interrupted_jobs_failed(tmp_path) -> None:
 
         assert job.status == "failed"
         assert job.error == "Job was interrupted by server restart"
+        assert job.failed_reason == "interrupted"
     finally:
         recovered.shutdown()
 
@@ -143,7 +255,20 @@ def wait_for_job(jobs: TtsJobService, job_id: str):
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         job = jobs.get(job_id)
-        if job.status in {"succeeded", "failed"}:
+        if job.status in {"succeeded", "failed", "cancelled"}:
             return job
         time.sleep(0.05)
     raise AssertionError("TTS job did not finish")
+
+
+def create_voice(voices: VoiceStore):
+    reference = np.zeros(24000, dtype=np.float32)
+    return voices.create(
+        name="demo",
+        language="en",
+        reference_text="xin chao",
+        reference_text_source="user",
+        audio_bytes=encode_wav(reference, 24000),
+        sample_rate=24000,
+        duration_seconds=1.0,
+    )
