@@ -15,11 +15,17 @@ import numpy as np
 import requests
 import websockets
 
-from vvoice.shared.audio.io import load_audio_bytes
-from vvoice.shared.language import normalize_language
+try:
+    from scripts._path import ROOT, bootstrap_backend_path
+except ModuleNotFoundError:
+    from _path import ROOT, bootstrap_backend_path
+
+bootstrap_backend_path()
+
+from vvoice.shared.audio.io import load_audio_bytes  # noqa: E402
+from vvoice.shared.language import normalize_language  # noqa: E402
 
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 OUT_DIR = ROOT / "tmp" / "smoke" / "language-matrix"
 
@@ -28,13 +34,13 @@ LANGUAGE_CASES = {
         "label": "Vietnamese",
         "text": (
             "Xin ch\u00e0o, \u0111\u00e2y l\u00e0 b\u00e0i ki\u1ec3m tra "
-            "ti\u1ebfng Vi\u1ec7t c\u1ee7a Vassil Studio."
+            "ti\u1ebfng Vi\u1ec7t c\u1ee7a VassilStudio."
         ),
         "keywords": ["XIN", "CHAO", "TIENG", "VIET", "KIEM", "TRA"],
     },
     "en": {
         "label": "English",
-        "text": "Hello, this is a clean English language model test for Vassil Studio.",
+        "text": "Hello, this is a clean English language model test for VassilStudio.",
         "keywords": ["HELLO", "ENGLISH", "LANGUAGE", "MODEL", "TEST"],
     },
 }
@@ -79,12 +85,12 @@ def env_value(primary: str, legacy: str, default: str = "") -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Render and verify VI/EN Vassil Studio paths with matching ASR/TTS runtimes."
+        description="Render and verify VI/EN VassilStudio paths with matching ASR/TTS runtimes."
     )
     parser.add_argument(
         "--base-url",
         default=env_value("VASSIL_BASE_URL", "VVOICE_BASE_URL", DEFAULT_BASE_URL),
-        help=f"Vassil Studio API base URL. Defaults to {DEFAULT_BASE_URL}.",
+        help=f"VassilStudio API base URL. Defaults to {DEFAULT_BASE_URL}.",
     )
     parser.add_argument(
         "--languages",

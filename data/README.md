@@ -1,4 +1,4 @@
-# Vassil Studio Runtime Data
+# VassilStudio Runtime Data
 
 Runtime data is local and intentionally not committed.
 

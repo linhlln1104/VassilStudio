@@ -1,2 +1,2 @@
-BRAND_NAME = "Vassil Studio"
+BRAND_NAME = "VassilStudio"
 API_BRAND_NAME = f"{BRAND_NAME} API"

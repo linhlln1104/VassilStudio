@@ -1,8 +1,8 @@
-# Vassil Studio UI/UX Redesign Plan
+# VassilStudio UI/UX Redesign Plan
 
 ## Goal
 
-Rebuild Vassil Studio as a focused Vietnamese voice production tool, not a demo UI wrapped around APIs. The new interface should feel light, premium, fast to scan, and reliable for repeated audio work.
+Rebuild VassilStudio as a focused Vietnamese voice production tool, not a demo UI wrapped around APIs. The new interface should feel light, premium, fast to scan, and reliable for repeated audio work.
 
 The current vanilla HTML/CSS/JS Studio has reached its complexity ceiling. It should be preserved while a new React Studio is built beside it, then swapped into `/studio` once it passes review.
 

@@ -26,7 +26,7 @@ def _resolve_studio_dir() -> Path:
         if (candidate / "index.html").is_file():
             return candidate
 
-    raise RuntimeError("Vassil Studio assets were not found. Set VASSIL_STUDIO_DIR.")
+    raise RuntimeError("VassilStudio assets were not found. Set VASSIL_STUDIO_DIR.")
 
 
 router = APIRouter()

@@ -12,7 +12,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "/studio/{path:path}" in paths
 
     page = STATIC_DIR.joinpath("index.html").read_text(encoding="utf-8")
-    assert "Vassil Studio" in page
+    assert "VassilStudio" in page
     assert 'href="/studio/brand/vassil-mark.png"' in page
     assert 'src="/studio/assets/' in page
     assert 'href="/studio/assets/' in page
@@ -62,7 +62,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
 def test_studio_dir_prefers_vassil_env(tmp_path, monkeypatch) -> None:
     studio_dir = tmp_path / "studio"
     studio_dir.mkdir()
-    studio_dir.joinpath("index.html").write_text("<!doctype html><title>Vassil Studio</title>", encoding="utf-8")
+    studio_dir.joinpath("index.html").write_text("<!doctype html><title>VassilStudio</title>", encoding="utf-8")
 
     monkeypatch.setenv("VASSIL_STUDIO_DIR", str(studio_dir))
 

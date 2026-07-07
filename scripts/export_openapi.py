@@ -4,10 +4,16 @@ import argparse
 import json
 from pathlib import Path
 
-from vvoice.main import create_app
+try:
+    from scripts._path import ROOT, bootstrap_backend_path
+except ModuleNotFoundError:
+    from _path import ROOT, bootstrap_backend_path
+
+bootstrap_backend_path()
+
+from vvoice.main import create_app  # noqa: E402
 
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "contracts" / "openapi" / "vassil.openapi.json"
 LEGACY_OUTPUT = ROOT / "contracts" / "openapi" / "vvoice.openapi.json"
 
@@ -24,7 +30,7 @@ def export_openapi(output: Path) -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Export the Vassil Studio OpenAPI contract.")
+    parser = argparse.ArgumentParser(description="Export the VassilStudio OpenAPI contract.")
     parser.add_argument(
         "--output",
         default=str(DEFAULT_OUTPUT),

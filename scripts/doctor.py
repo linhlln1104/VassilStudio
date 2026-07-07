@@ -10,8 +10,15 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from vvoice.core.config import load_settings
-from vvoice.domains.tts.text_frontend import ZipVoiceTextFrontend
+try:
+    from scripts._path import bootstrap_backend_path
+except ModuleNotFoundError:
+    from _path import bootstrap_backend_path
+
+bootstrap_backend_path()
+
+from vvoice.core.config import load_settings  # noqa: E402
+from vvoice.domains.tts.text_frontend import ZipVoiceTextFrontend  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -216,14 +223,14 @@ def print_text_report(report: dict[str, Any]) -> None:
         print(f"[{marker}] {check['name']}: {check['detail']}")
 
     if report["ok"]:
-        print("Vassil Studio doctor passed")
+        print("VassilStudio doctor passed")
     else:
-        print("Vassil Studio doctor found issues")
+        print("VassilStudio doctor found issues")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="Path to a Vassil Studio config JSON file")
+    parser.add_argument("--config", help="Path to a VassilStudio config JSON file")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     args = parser.parse_args()
 

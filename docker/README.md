@@ -1,4 +1,4 @@
-# Vassil Studio Docker
+# VassilStudio Docker
 
 Docker assets live here so the repository root stays focused on source layout.
 

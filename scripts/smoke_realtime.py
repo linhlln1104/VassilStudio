@@ -9,6 +9,8 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 import numpy as np
 import websockets
 
+DEFAULT_BASE_URL = "http://127.0.0.1:8000"
+
 
 async def smoke(url: str) -> None:
     async with websockets.connect(url, max_size=8 * 1024 * 1024) as websocket:
@@ -57,11 +59,22 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--url",
-        default="ws://127.0.0.1:8000/api/v1/realtime/asr",
+        default=default_realtime_url(),
         help="Realtime ASR websocket URL",
     )
     args = parser.parse_args()
     asyncio.run(smoke(with_api_key(args.url)))
+
+
+def default_realtime_url() -> str:
+    explicit = (os.getenv("VASSIL_REALTIME_URL") or os.getenv("VVOICE_REALTIME_URL") or "").strip()
+    if explicit:
+        return explicit
+
+    base_url = (os.getenv("VASSIL_BASE_URL") or os.getenv("VVOICE_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+    parts = urlsplit(base_url)
+    scheme = "wss" if parts.scheme == "https" else "ws"
+    return urlunsplit((scheme, parts.netloc, "/api/v1/realtime/asr", "", ""))
 
 
 def with_api_key(url: str) -> str:

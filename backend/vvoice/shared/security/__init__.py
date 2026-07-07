@@ -1,1 +1,1 @@
-"""Security helpers for Vassil Studio."""
+"""Security helpers for VassilStudio."""

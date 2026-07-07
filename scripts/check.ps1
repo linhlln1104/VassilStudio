@@ -18,6 +18,9 @@ if (-not (Test-Path $Python)) {
   $Python = "python"
 }
 
+$BackendDir = Join-Path $Root "backend"
+$env:PYTHONPATH = if ($env:PYTHONPATH) { "$BackendDir;$env:PYTHONPATH" } else { $BackendDir }
+
 function Invoke-Step {
   param(
     [string]$Name,
@@ -172,4 +175,4 @@ if ($RunDocker) {
 }
 
 Write-Host ""
-Write-Host "Vassil Studio check passed"
+Write-Host "VassilStudio check passed"

@@ -25,4 +25,4 @@ if (-not $status.ready) {
     throw "Model status is not ready"
 }
 
-Write-Host "Vassil Studio API smoke check passed"
+Write-Host "VassilStudio API smoke check passed"

@@ -1,6 +1,6 @@
-# Vassil Studio Source Layout
+# VassilStudio Source Layout
 
-Vassil Studio is moving toward a DeerFlow-inspired workspace layout.
+VassilStudio is moving toward a DeerFlow-inspired workspace layout.
 
 This style is best described as a workspace/monorepo application layout:
 
@@ -9,12 +9,12 @@ This style is best described as a workspace/monorepo application layout:
 - the frontend is no longer hidden inside the Python package.
 - model files, data, and local configs stay outside application code.
 
-It is not a microservice layout. Vassil Studio can still deploy as one FastAPI process while keeping a clearer source tree.
+It is not a microservice layout. VassilStudio can still deploy as one FastAPI process while keeping a clearer source tree.
 
 ## Target Shape
 
 ```text
-Vassil Studio/
+VassilStudio/
   backend/
     vvoice/
       main.py
@@ -63,7 +63,7 @@ Vassil Studio/
 The first phase keeps behavior stable and only improves the source boundaries:
 
 ```text
-Vassil Studio/
+VassilStudio/
   backend/
     vvoice/
       main.py
@@ -108,7 +108,7 @@ Recommended names for this architecture:
 - module level: domain-oriented or feature-oriented modules
 - runtime layer: engine/package layer
 
-For Vassil Studio, the useful mental model is:
+For VassilStudio, the useful mental model is:
 
 ```text
 frontend studio -> backend gateway/API -> voice domains -> model runtime adapters -> ZipFormer/ZipVoice

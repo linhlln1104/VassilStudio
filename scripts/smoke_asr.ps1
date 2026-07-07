@@ -7,4 +7,5 @@ if (-not (Test-Path $python)) {
     throw "Virtual environment not found. Run: python -m venv .venv; .\.venv\Scripts\python.exe -m pip install -e ."
 }
 
-& $python (Join-Path $PSScriptRoot "smoke_asr.py")
+& $python (Join-Path $PSScriptRoot "smoke_asr.py") @args
+exit $LASTEXITCODE

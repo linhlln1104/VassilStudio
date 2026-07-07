@@ -103,8 +103,8 @@ try {
     throw "Studio returned HTTP $($Studio.StatusCode)"
   }
 
-  if ($Studio.Content -notmatch "Vassil Studio") {
-    throw "Studio did not return the Vassil Studio React shell"
+  if ($Studio.Content -notmatch "VassilStudio") {
+    throw "Studio did not return the VassilStudio React shell"
   }
 
   $AssetMatches = [regex]::Matches($Studio.Content, '["''](/studio/assets/[^"'']+)["'']')

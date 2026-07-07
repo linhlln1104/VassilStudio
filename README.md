@@ -1,8 +1,8 @@
-# Vassil Studio
+# VassilStudio
 
-Vassil Studio is a modular monolith for local voice workflows built around ZipFormer ASR and ZipVoice TTS models in `models/runtime/`.
+VassilStudio is a modular monolith for local voice workflows built around ZipFormer ASR and ZipVoice TTS models in `models/runtime/`.
 
-The upstream runtime foundation is cloned locally at `foundation/sherpa-onnx` for reference. Vassil Studio itself stays rooted in this repository and uses `sherpa-onnx` for ZipFormer ASR plus a direct ONNX runtime path for ZipVoice TTS.
+The upstream runtime foundation is cloned locally at `foundation/sherpa-onnx` for reference. VassilStudio itself stays rooted in this repository and uses `sherpa-onnx` for ZipFormer ASR plus a direct ONNX runtime path for ZipVoice TTS.
 
 ## Current Shape
 
@@ -31,7 +31,7 @@ profile is `tts.models.vi`, and `tts.models.en` enables the local English ZipVoi
 voice profile language aligned with the text you generate so English text uses the English tokenizer
 and Vietnamese text uses the Vietnamese tokenizer.
 
-ZipVoice models are trained with eSpeak tokenizers. Vassil Studio phonemizes text and reference transcripts
+ZipVoice models are trained with eSpeak tokenizers. VassilStudio phonemizes text and reference transcripts
 with `piper_phonemize`, maps those symbols directly into each ZipVoice `tokens.txt`, and runs the
 ZipVoice ONNX models directly. This avoids sending one language through another language's text
 frontend.
@@ -106,7 +106,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1 -RunDock
 
 ## Docker
 
-Docker builds the React Studio assets and the Vassil Studio app, then mounts local models at runtime:
+Docker builds the React Studio assets and the VassilStudio app, then mounts local models at runtime:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_docker.ps1
@@ -210,7 +210,7 @@ Invoke-WebRequest `
   }
 ```
 
-Create a voice profile and let Vassil Studio transcribe the reference audio:
+Create a voice profile and let VassilStudio transcribe the reference audio:
 
 ```powershell
 Invoke-WebRequest `
@@ -229,7 +229,7 @@ Synthesize with a saved voice:
 Invoke-WebRequest `
   -Method Post `
   -Uri http://127.0.0.1:8000/api/v1/tts/synthesize/voices/<voice_id> `
-  -Form @{ text = "xin chao, day la Vassil Studio"; num_steps = 16 } `
+  -Form @{ text = "xin chao, day la VassilStudio"; num_steps = 16 } `
   -OutFile generated.wav
 ```
 
@@ -239,7 +239,7 @@ Queue an asynchronous TTS job with a saved voice:
 $job = Invoke-RestMethod `
   -Method Post `
   -Uri http://127.0.0.1:8000/api/v1/tts/jobs/voices/<voice_id> `
-  -Form @{ text = "xin chao, day la Vassil Studio"; language = "vi"; num_steps = 16 }
+  -Form @{ text = "xin chao, day la VassilStudio"; language = "vi"; num_steps = 16 }
 
 Invoke-RestMethod http://127.0.0.1:8000/api/v1/tts/jobs/$($job.job_id)
 Invoke-WebRequest `

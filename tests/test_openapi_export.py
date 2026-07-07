@@ -9,7 +9,7 @@ def test_export_openapi_writes_contract(tmp_path) -> None:
     export_openapi(output)
 
     schema = json.loads(output.read_text(encoding="utf-8"))
-    assert schema["info"]["title"] == "Vassil Studio API"
+    assert schema["info"]["title"] == "VassilStudio API"
     assert "/health" in schema["paths"]
     assert "/api/v1/voices/import-candidates" in schema["paths"]
 

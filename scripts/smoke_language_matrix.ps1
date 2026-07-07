@@ -9,3 +9,4 @@ if (-not (Test-Path $Python)) {
 
 $env:PYTHONIOENCODING = "utf-8"
 & $Python (Join-Path $PSScriptRoot "smoke_language_matrix.py") @args
+exit $LASTEXITCODE

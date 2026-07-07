@@ -7,4 +7,5 @@ if (-not (Test-Path $Python)) {
   $Python = "python"
 }
 
-& $Python (Join-Path $PSScriptRoot "smoke_asr_job.py")
+& $Python (Join-Path $PSScriptRoot "smoke_asr_job.py") @args
+exit $LASTEXITCODE

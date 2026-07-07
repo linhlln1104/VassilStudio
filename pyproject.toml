@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vassil-studio"
 version = "0.1.0"
-description = "Vassil Studio local voice platform using ZipFormer ASR and ZipVoice TTS"
+description = "VassilStudio local voice platform using ZipFormer ASR and ZipVoice TTS"
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115",

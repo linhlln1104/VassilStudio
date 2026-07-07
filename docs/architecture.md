@@ -1,6 +1,6 @@
-# Vassil Studio Architecture
+# VassilStudio Architecture
 
-Vassil Studio is designed as a modular monolith. It runs as one process, but the code is split by business capability so each module can be tested, owned, and eventually extracted independently.
+VassilStudio is designed as a modular monolith. It runs as one process, but the code is split by business capability so each module can be tested, owned, and eventually extracted independently.
 
 ## Dependency Direction
 
@@ -40,7 +40,7 @@ tokens, encoder, decoder, vocoder, and frontend data directory. The service lazy
 runtime per configured language and rejects unconfigured languages before queueing jobs, so English
 text cannot accidentally run through Vietnamese model assets.
 
-ZipVoice models use eSpeak tokenizers. Vassil Studio phonemizes generation text and reference transcripts
+ZipVoice models use eSpeak tokenizers. VassilStudio phonemizes generation text and reference transcripts
 in `backend/vvoice/domains/tts/text_frontend.py` before handing them to the direct ONNX runtime path.
 This avoids sending one language through another language's text frontend, which can produce
 voice-like audio without intelligible words.

@@ -1,6 +1,6 @@
-# Vassil Studio UI
+# VassilStudio UI
 
-Production React interface for Vassil Studio. The build output is served by the FastAPI backend from `/studio`.
+Production React interface for VassilStudio. The build output is served by the FastAPI backend from `/studio`.
 
 ## Commands
 

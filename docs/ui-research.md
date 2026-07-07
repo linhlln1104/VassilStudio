@@ -1,4 +1,4 @@
-# Vassil Studio UI Research
+# VassilStudio UI Research
 
 For the React/shadcn rebuild plan and UI/UX Guardian review process, see
 [`ui-redesign-plan.md`](ui-redesign-plan.md).
@@ -39,7 +39,7 @@ For the React/shadcn rebuild plan and UI/UX Guardian review process, see
 - Developer-first tools keep API keys, model status, logs, and docs links close to the workspace.
 - Enterprise products surface retention, team access, consent, auditability, and safety controls.
 
-## Direction For Vassil Studio
+## Direction For VassilStudio
 
 - Use a light, calm studio palette so local operators can work for long sessions without the heavy
   dark-console feeling.

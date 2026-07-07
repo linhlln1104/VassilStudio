@@ -1,8 +1,8 @@
 # Foundation Sources
 
-`sherpa-onnx/` and `ZipVoice/` are local reference clones used while building Vassil Studio.
+`sherpa-onnx/` and `ZipVoice/` are local reference clones used while building VassilStudio.
 
-The Vassil Studio application code remains in the repository root under `backend/vvoice`. Do not edit upstream files unless the intent is to prepare an upstream patch or inspect behavior.
+The VassilStudio application code remains in the repository root under `backend/vvoice`. Do not edit upstream files unless the intent is to prepare an upstream patch or inspect behavior.
 
 Useful references:
 

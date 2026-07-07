@@ -1,4 +1,4 @@
-# Vassil Studio Contracts
+# VassilStudio Contracts
 
 This directory stores generated API contracts.
 

@@ -7,4 +7,8 @@ if (-not (Test-Path $Python)) {
   $Python = "python"
 }
 
+$BackendDir = Join-Path $Root "backend"
+$env:PYTHONPATH = if ($env:PYTHONPATH) { "$BackendDir;$env:PYTHONPATH" } else { $BackendDir }
+
 & $Python (Join-Path $PSScriptRoot "export_openapi.py") @args
+exit $LASTEXITCODE

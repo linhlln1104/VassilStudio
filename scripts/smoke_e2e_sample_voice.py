@@ -79,12 +79,12 @@ def env_value(primary: str, legacy: str, default: str = "") -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run a real Vassil Studio E2E smoke test with data/voices/sample voice.weba."
+        description="Run a real VassilStudio E2E smoke test with data/voices/sample voice.weba."
     )
     parser.add_argument(
         "--base-url",
         default=env_value("VASSIL_BASE_URL", "VVOICE_BASE_URL", DEFAULT_BASE_URL),
-        help=f"Vassil Studio API base URL. Defaults to {DEFAULT_BASE_URL}.",
+        help=f"VassilStudio API base URL. Defaults to {DEFAULT_BASE_URL}.",
     )
     parser.add_argument(
         "--candidate",
