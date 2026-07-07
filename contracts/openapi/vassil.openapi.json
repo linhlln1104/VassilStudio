@@ -595,12 +595,17 @@
             },
             "title": "Tts Loaded Languages",
             "type": "array"
+          },
+          "warmup_on_startup": {
+            "title": "Warmup On Startup",
+            "type": "boolean"
           }
         },
         "required": [
           "provider",
           "num_threads",
           "debug",
+          "warmup_on_startup",
           "asr_job_workers",
           "tts_job_workers",
           "asr_loaded",

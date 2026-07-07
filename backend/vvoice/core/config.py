@@ -29,6 +29,7 @@ class RuntimeSettings:
     provider: str
     num_threads: int
     debug: bool
+    warmup_on_startup: bool
 
 
 @dataclass(frozen=True)
@@ -258,6 +259,7 @@ def parse_settings(raw: dict[str, Any], root: Path) -> Settings:
             provider=str(runtime.get("provider", "cpu")),
             num_threads=int(runtime.get("num_threads", 1)),
             debug=bool(runtime.get("debug", False)),
+            warmup_on_startup=bool(runtime.get("warmup_on_startup", False)),
         ),
         asr=_parse_asr_settings(asr, root),
         tts=_parse_tts_settings(tts, root),

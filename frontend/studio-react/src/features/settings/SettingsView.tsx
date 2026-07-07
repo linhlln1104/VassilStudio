@@ -108,6 +108,7 @@ export function SettingsView() {
         asrLanguages={model?.runtime.asr_configured_languages ?? []}
         asrWorkers={model?.runtime.asr_job_workers ?? 1}
         ttsWorkers={model?.runtime.tts_job_workers ?? 1}
+        startupWarmup={Boolean(model?.runtime.warmup_on_startup)}
         passedChecks={passedChecks}
         totalChecks={checks.length}
         checks={checks}
@@ -211,6 +212,7 @@ function SystemDiagnosticsCard({
   asrLanguages,
   asrWorkers,
   ttsWorkers,
+  startupWarmup,
   passedChecks,
   totalChecks,
   checks,
@@ -230,6 +232,7 @@ function SystemDiagnosticsCard({
   asrLanguages: string[]
   asrWorkers: number
   ttsWorkers: number
+  startupWarmup: boolean
   passedChecks: number
   totalChecks: number
   checks: Array<[string, boolean]>
@@ -301,10 +304,11 @@ function SystemDiagnosticsCard({
           <ChevronDown className="size-4 text-slate-500 transition-transform group-open:rotate-180" />
         </summary>
         <div className="border-t border-slate-200 p-3">
-          <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-3 xl:grid-cols-6">
             <SignalMeta label="Provider" value={provider} />
             <SignalMeta label="Threads" value={threads} />
             <SignalMeta label="Workers" value={`ASR ${asrWorkers} / TTS ${ttsWorkers}`} />
+            <SignalMeta label="Startup" value={startupWarmup ? 'warmup on' : 'manual warmup'} />
             <SignalMeta label="TTS" value={formatRuntimeMeta(ttsLoaded, ttsLanguages)} />
             <SignalMeta label="ASR" value={formatRuntimeMeta(asrLoaded, asrLanguages)} />
           </div>

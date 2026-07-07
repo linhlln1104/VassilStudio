@@ -1,7 +1,9 @@
 import time
 
 import numpy as np
+import pytest
 
+from vvoice.core.errors import VVoiceError
 from vvoice.shared.audio.io import encode_wav
 from vvoice.domains.tts.jobs import TtsJobService
 from vvoice.domains.tts.service import GeneratedSpeech
@@ -105,6 +107,22 @@ def test_tts_job_service_marks_interrupted_jobs_failed(tmp_path) -> None:
         assert job.error == "Job was interrupted by server restart"
     finally:
         recovered.shutdown()
+
+
+def test_tts_job_service_rejects_invalid_generation_parameters(tmp_path) -> None:
+    jobs = TtsJobService(
+        tmp_path / "tts-jobs",
+        FakeTts(),
+        VoiceStore(tmp_path / "voices"),
+    )
+    try:
+        with pytest.raises(VVoiceError, match="num_steps"):
+            jobs.create_from_voice(voice_id="missing", text="hello", num_steps=0)
+
+        with pytest.raises(VVoiceError, match="speed"):
+            jobs.create_from_voice(voice_id="missing", text="hello", speed=3.0)
+    finally:
+        jobs.shutdown()
 
 
 def wait_for_job(jobs: TtsJobService, job_id: str):

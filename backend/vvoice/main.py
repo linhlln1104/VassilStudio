@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from vvoice.core.brand import API_BRAND_NAME
@@ -30,6 +31,9 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         try:
+            if settings.runtime.warmup_on_startup:
+                await run_in_threadpool(container.asr.warmup_all)
+                await run_in_threadpool(container.tts.warmup_all)
             yield
         finally:
             container.shutdown()

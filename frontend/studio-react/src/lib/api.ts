@@ -52,6 +52,7 @@ export type ModelStatusResponse = {
     provider: string
     num_threads: number
     debug: boolean
+    warmup_on_startup: boolean
     asr_job_workers: number
     tts_job_workers: number
     asr_loaded: boolean

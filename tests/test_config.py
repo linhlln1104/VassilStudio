@@ -85,6 +85,7 @@ def test_parse_settings_resolves_paths() -> None:
     )
 
     assert settings.runtime.num_threads == 2
+    assert settings.runtime.warmup_on_startup is False
     assert settings.paths.models_root == root / "models"
     assert settings.paths.data_root == root / "data"
     assert settings.paths.logs_root == root / "logs"
@@ -247,6 +248,15 @@ def test_parse_settings_supports_job_worker_limits(tmp_path) -> None:
 
     assert settings.jobs.asr_max_workers == 2
     assert settings.jobs.tts_max_workers == 3
+
+
+def test_parse_settings_supports_startup_warmup(tmp_path) -> None:
+    raw = _minimal_settings_raw()
+    raw["runtime"]["warmup_on_startup"] = True
+
+    settings = parse_settings(raw, tmp_path)
+
+    assert settings.runtime.warmup_on_startup is True
 
 
 def test_parse_settings_supports_tts_model_registry() -> None:

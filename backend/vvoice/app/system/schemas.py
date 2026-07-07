@@ -16,6 +16,7 @@ class RuntimeStatus(BaseModel):
     provider: str
     num_threads: int
     debug: bool
+    warmup_on_startup: bool
     asr_job_workers: int
     tts_job_workers: int
     asr_loaded: bool

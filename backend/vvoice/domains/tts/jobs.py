@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from vvoice.core.errors import TtsJobNotFoundError, VVoiceError
+from vvoice.domains.tts.parameters import validate_tts_parameters
 from vvoice.shared.audio.io import encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
 from vvoice.domains.tts.service import ZipVoiceService
@@ -68,6 +69,7 @@ class TtsJobService:
         text = text.strip()
         if not text:
             raise VVoiceError("text cannot be empty")
+        validate_tts_parameters(num_steps, speed)
 
         profile = self._voices.get(voice_id)
         language = normalize_language(language or profile.language)

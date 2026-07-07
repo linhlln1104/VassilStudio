@@ -10,6 +10,7 @@ from vvoice.domains.tts.schemas import (
     TtsJobDeleteResponse,
     TtsJobResponse,
 )
+from vvoice.domains.tts.parameters import validate_tts_parameters
 from vvoice.domains.tts.service import GeneratedSpeech
 from vvoice.shared.audio.io import encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
@@ -29,6 +30,7 @@ async def synthesize(
     speed: float | None = Form(default=None),
 ):
     container = request.app.state.container
+    validate_tts_parameters(num_steps, speed)
     normalized_language = normalize_language(language)
     data = await reference_audio.read()
     samples, sample_rate = load_audio_bytes(
@@ -58,6 +60,7 @@ async def synthesize_with_voice(
     speed: float | None = Form(default=None),
 ):
     container = request.app.state.container
+    validate_tts_parameters(num_steps, speed)
     profile = container.voices.get(voice_id)
     normalized_language = normalize_language(language or profile.language)
     samples, sample_rate = load_audio_bytes(
@@ -87,6 +90,7 @@ async def create_tts_job_with_voice(
     speed: float | None = Form(default=None),
 ):
     container = request.app.state.container
+    validate_tts_parameters(num_steps, speed)
     job = container.tts_jobs.create_from_voice(
         voice_id=voice_id,
         text=text,

@@ -95,6 +95,12 @@ Queued ASR and TTS jobs are serialized by default for predictable CPU performanc
 hardware, increase the worker limits in `config/vassil.example.json`:
 
 ```json
+"runtime": {
+  "provider": "cpu",
+  "num_threads": 2,
+  "debug": false,
+  "warmup_on_startup": false
+},
 "jobs": {
   "asr_max_workers": 1,
   "tts_max_workers": 1
@@ -105,8 +111,12 @@ Model inference still uses per-language locks, so increasing workers mostly impr
 around IO and mixed ASR/TTS work. Test with `scripts/check.ps1 -RunLanguageMatrix` after changing it.
 
 Use Settings -> Warm models or call `/warmup` to load all configured ASR/TTS languages before a
-session. The Generate view includes Preview and Production render modes; Preview uses fewer ZipVoice
-steps for faster drafts, while Production uses the configured default-quality path.
+session. Set `runtime.warmup_on_startup` to `true` only when slower startup is acceptable and you want
+the first ASR/TTS request to avoid model-load latency.
+
+The Generate view includes Preview and Production render modes; Preview uses fewer ZipVoice steps for
+faster drafts, while Production uses the configured default-quality path. API callers can pass
+`num_steps` from `1` to `64` and `speed` from `0.5` to `2.0`.
 
 ## Verify
 

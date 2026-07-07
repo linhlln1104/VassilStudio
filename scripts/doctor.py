@@ -97,6 +97,7 @@ def model_checks(config_path: str | None) -> list[Check]:
     checks = [
         Check("runtime.provider", True, settings.runtime.provider),
         Check("runtime.num_threads", settings.runtime.num_threads > 0, str(settings.runtime.num_threads)),
+        Check("runtime.warmup_on_startup", True, "enabled" if settings.runtime.warmup_on_startup else "disabled"),
         Check("jobs.asr_max_workers", settings.jobs.asr_max_workers > 0, str(settings.jobs.asr_max_workers)),
         Check("jobs.tts_max_workers", settings.jobs.tts_max_workers > 0, str(settings.jobs.tts_max_workers)),
         Check("realtime.encoding", settings.realtime.encoding in {"pcm_f32le", "pcm_s16le"}, settings.realtime.encoding),

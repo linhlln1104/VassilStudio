@@ -67,6 +67,7 @@ async def model_status(request: Request):
             "provider": settings.runtime.provider,
             "num_threads": settings.runtime.num_threads,
             "debug": settings.runtime.debug,
+            "warmup_on_startup": settings.runtime.warmup_on_startup,
             "asr_job_workers": settings.jobs.asr_max_workers,
             "tts_job_workers": settings.jobs.tts_max_workers,
             "asr_loaded": container.asr.is_loaded,

@@ -9,6 +9,7 @@ import numpy as np
 from vvoice.core.brand import prepare_spoken_brand_text
 from vvoice.core.config import RuntimeSettings, TtsModelSettings, TtsSettings
 from vvoice.core.errors import ModelConfigurationError
+from vvoice.domains.tts.parameters import validate_tts_parameters
 from vvoice.domains.tts.text_frontend import ZipVoiceTextFrontend
 from vvoice.domains.tts.zipvoice_onnx import ZipVoiceOnnxRuntime
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
@@ -46,6 +47,7 @@ class ZipVoiceService:
         tts = self._get_tts(normalized_language)
         effective_num_steps = int(num_steps or model_settings.default_num_steps)
         effective_speed = float(speed or model_settings.default_speed)
+        validate_tts_parameters(effective_num_steps, effective_speed)
 
         with self._inference_locks[normalized_language]:
             audio = tts.synthesize(

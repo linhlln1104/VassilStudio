@@ -7,7 +7,8 @@
   "runtime": {
     "provider": "cpu",
     "num_threads": 2,
-    "debug": false
+    "debug": false,
+    "warmup_on_startup": false
   },
   "asr": {
     "enabled": true,
