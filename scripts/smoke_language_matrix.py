@@ -37,11 +37,15 @@ LANGUAGE_CASES = {
             "ti\u1ebfng Vi\u1ec7t c\u1ee7a VassilStudio."
         ),
         "keywords": ["XIN", "CHAO", "TIENG", "VIET", "KIEM", "TRA"],
+        "min_keyword_hits": 4,
+        "brand_aliases": ["VASSIL", "VASSAL", "STUDIO", "STORE", "SERIO"],
     },
     "en": {
         "label": "English",
         "text": "Hello, this is a clean English language model test for VassilStudio.",
         "keywords": ["HELLO", "ENGLISH", "LANGUAGE", "MODEL", "TEST"],
+        "min_keyword_hits": 4,
+        "brand_aliases": ["VASSIL", "VASSAL", "STUDIO"],
     },
 }
 
@@ -183,6 +187,8 @@ def run_language_case(
     label = str(case["label"])
     text = str(case["text"])
     keywords = list(case["keywords"])
+    min_keyword_hits = int(case["min_keyword_hits"])
+    brand_aliases = list(case["brand_aliases"])
     voice = find_voice(voices, language)
     job_id: str | None = None
 
@@ -196,14 +202,16 @@ def run_language_case(
         completed = wait_for_tts_job(base_url, headers, job_id, args)
         output = download_audio(base_url, headers, completed, language)
         transcript = transcribe_audio(base_url, headers, output, language)
-        assert_keywords(f"{label} direct ASR", transcript, keywords)
+        assert_keywords(f"{label} direct ASR", transcript, keywords, min_keyword_hits)
+        assert_any_keyword(f"{label} direct ASR brand", transcript, brand_aliases)
         print(f"direct_asr: {transcript}")
 
         if not args.skip_realtime:
             realtime_text = asyncio.run(
                 transcribe_realtime(base_url, api_key, output, language)
             )
-            assert_keywords(f"{label} realtime ASR", realtime_text, keywords)
+            assert_keywords(f"{label} realtime ASR", realtime_text, keywords, min_keyword_hits)
+            assert_any_keyword(f"{label} realtime ASR brand", realtime_text, brand_aliases)
             print(f"realtime_asr: {realtime_text}")
     finally:
         if job_id and not args.keep_jobs:
@@ -372,13 +380,23 @@ def realtime_url(base_url: str, language: str, api_key: str) -> str:
     return urlunsplit((scheme, parts.netloc, "/api/v1/realtime/asr", urlencode(query), ""))
 
 
-def assert_keywords(name: str, transcript: str, keywords: list[str]) -> None:
+def assert_keywords(name: str, transcript: str, keywords: list[str], min_hits: int) -> None:
     normalized = normalize_for_match(transcript)
     hits = [keyword for keyword in keywords if keyword in normalized]
-    if len(hits) < 2:
+    if len(hits) < min_hits:
         raise SmokeError(
             f"{name} transcript did not contain enough expected words. "
-            f"hits={hits}, transcript={transcript!r}"
+            f"required={min_hits}, hits={hits}, transcript={transcript!r}"
+        )
+
+
+def assert_any_keyword(name: str, transcript: str, keywords: list[str]) -> None:
+    normalized = normalize_for_match(transcript)
+    hits = [keyword for keyword in keywords if keyword in normalized]
+    if not hits:
+        raise SmokeError(
+            f"{name} transcript did not contain an expected brand variant. "
+            f"expected_any={keywords}, transcript={transcript!r}"
         )
 
 

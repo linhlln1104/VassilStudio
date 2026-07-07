@@ -52,6 +52,8 @@ export type ModelStatusResponse = {
     provider: string
     num_threads: number
     debug: boolean
+    asr_job_workers: number
+    tts_job_workers: number
     asr_loaded: boolean
     tts_loaded: boolean
     asr_configured_languages: string[]
@@ -64,6 +66,8 @@ export type ModelStatusResponse = {
 export type WarmupAllResponse = {
   asr_loaded: boolean
   tts_loaded: boolean
+  asr_loaded_languages: string[]
+  tts_loaded_languages: string[]
 }
 
 export type Voice = {

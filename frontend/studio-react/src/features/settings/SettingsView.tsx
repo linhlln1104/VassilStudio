@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ChevronDown,
@@ -44,6 +44,7 @@ export function SettingsView() {
   const [showApiKey, setShowApiKey] = useState(false)
   const [copied, setCopied] = useState(false)
   const [clearKeyConfirmOpen, setClearKeyConfirmOpen] = useState(false)
+  const queryClient = useQueryClient()
   const healthQuery = useQuery({
     queryKey: ['health'],
     queryFn: api.health,
@@ -53,6 +54,13 @@ export function SettingsView() {
     queryKey: ['model-status'],
     queryFn: api.modelStatus,
     refetchInterval: 10000,
+  })
+  const warmupMutation = useMutation({
+    mutationFn: api.warmup,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['health'] })
+      void queryClient.invalidateQueries({ queryKey: ['model-status'] })
+    },
   })
 
   const health = healthQuery.data
@@ -98,14 +106,19 @@ export function SettingsView() {
         asrLoaded={Boolean(health?.asr_loaded)}
         ttsLanguages={model?.runtime.tts_configured_languages ?? []}
         asrLanguages={model?.runtime.asr_configured_languages ?? []}
+        asrWorkers={model?.runtime.asr_job_workers ?? 1}
+        ttsWorkers={model?.runtime.tts_job_workers ?? 1}
         passedChecks={passedChecks}
         totalChecks={checks.length}
         checks={checks}
         diagnosticsRunning={diagnosticsRunning}
+        warmupRunning={warmupMutation.isPending}
+        warmupError={warmupMutation.error instanceof Error ? warmupMutation.error.message : null}
         onRunDiagnostics={() => {
           void healthQuery.refetch()
           void modelQuery.refetch()
         }}
+        onWarmup={() => warmupMutation.mutate()}
       />
 
       <Card>
@@ -196,11 +209,16 @@ function SystemDiagnosticsCard({
   asrLoaded,
   ttsLanguages,
   asrLanguages,
+  asrWorkers,
+  ttsWorkers,
   passedChecks,
   totalChecks,
   checks,
   diagnosticsRunning,
+  warmupRunning,
+  warmupError,
   onRunDiagnostics,
+  onWarmup,
 }: {
   backendOffline: boolean
   runtimeReady: boolean
@@ -210,11 +228,16 @@ function SystemDiagnosticsCard({
   asrLoaded: boolean
   ttsLanguages: string[]
   asrLanguages: string[]
+  asrWorkers: number
+  ttsWorkers: number
   passedChecks: number
   totalChecks: number
   checks: Array<[string, boolean]>
   diagnosticsRunning: boolean
+  warmupRunning: boolean
+  warmupError: string | null
   onRunDiagnostics: () => void
+  onWarmup: () => void
 }) {
   const healthy = !backendOffline && runtimeReady && passedChecks === totalChecks && totalChecks > 0
   const headline = healthy ? 'Runtime available' : 'Runtime needs attention'
@@ -246,7 +269,7 @@ function SystemDiagnosticsCard({
         </div>
       </div>
 
-      <div className="mt-3 flex justify-start">
+      <div className="mt-3 flex flex-wrap justify-start gap-2">
         <Button variant="secondary" onClick={onRunDiagnostics}>
           {diagnosticsRunning ? (
             <Loader2 className="size-4 animate-spin" />
@@ -255,7 +278,20 @@ function SystemDiagnosticsCard({
           )}
           {diagnosticsRunning ? 'Checking' : 'Run diagnostics'}
         </Button>
+        <Button variant="secondary" disabled={warmupRunning || backendOffline} onClick={onWarmup}>
+          {warmupRunning ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <CheckCircle2 className="size-4" />
+          )}
+          {warmupRunning ? 'Warming' : 'Warm models'}
+        </Button>
       </div>
+      {warmupError ? (
+        <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
+          {warmupError}
+        </div>
+      ) : null}
 
       <SignalBars healthy={healthy} />
 
@@ -265,9 +301,10 @@ function SystemDiagnosticsCard({
           <ChevronDown className="size-4 text-slate-500 transition-transform group-open:rotate-180" />
         </summary>
         <div className="border-t border-slate-200 p-3">
-          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-5">
             <SignalMeta label="Provider" value={provider} />
             <SignalMeta label="Threads" value={threads} />
+            <SignalMeta label="Workers" value={`ASR ${asrWorkers} / TTS ${ttsWorkers}`} />
             <SignalMeta label="TTS" value={formatRuntimeMeta(ttsLoaded, ttsLanguages)} />
             <SignalMeta label="ASR" value={formatRuntimeMeta(asrLoaded, asrLanguages)} />
           </div>

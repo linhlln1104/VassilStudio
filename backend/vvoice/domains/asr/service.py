@@ -56,6 +56,10 @@ class AsrService:
     def warmup(self, language: str | None = None) -> None:
         self._get_recognizer(normalize_language(language or self._settings.default_language))
 
+    def warmup_all(self) -> None:
+        for language in self.configured_languages:
+            self.warmup(language)
+
     def _get_recognizer(self, language: str):
         normalized_language = normalize_language(language)
         if normalized_language in self._recognizers:

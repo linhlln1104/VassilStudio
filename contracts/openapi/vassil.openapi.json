@@ -547,6 +547,10 @@
             "title": "Asr Configured Languages",
             "type": "array"
           },
+          "asr_job_workers": {
+            "title": "Asr Job Workers",
+            "type": "integer"
+          },
           "asr_loaded": {
             "title": "Asr Loaded",
             "type": "boolean"
@@ -577,6 +581,10 @@
             "title": "Tts Configured Languages",
             "type": "array"
           },
+          "tts_job_workers": {
+            "title": "Tts Job Workers",
+            "type": "integer"
+          },
           "tts_loaded": {
             "title": "Tts Loaded",
             "type": "boolean"
@@ -593,6 +601,8 @@
           "provider",
           "num_threads",
           "debug",
+          "asr_job_workers",
+          "tts_job_workers",
           "asr_loaded",
           "tts_loaded",
           "asr_configured_languages",
@@ -971,14 +981,30 @@
             "title": "Asr Loaded",
             "type": "boolean"
           },
+          "asr_loaded_languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Asr Loaded Languages",
+            "type": "array"
+          },
           "tts_loaded": {
             "title": "Tts Loaded",
             "type": "boolean"
+          },
+          "tts_loaded_languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tts Loaded Languages",
+            "type": "array"
           }
         },
         "required": [
           "asr_loaded",
-          "tts_loaded"
+          "tts_loaded",
+          "asr_loaded_languages",
+          "tts_loaded_languages"
         ],
         "title": "WarmupAllResponse",
         "type": "object"
@@ -988,10 +1014,18 @@
           "loaded": {
             "title": "Loaded",
             "type": "boolean"
+          },
+          "loaded_languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Loaded Languages",
+            "type": "array"
           }
         },
         "required": [
-          "loaded"
+          "loaded",
+          "loaded_languages"
         ],
         "title": "WarmupResponse",
         "type": "object"

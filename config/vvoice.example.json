@@ -67,6 +67,10 @@
     "max_buffer_seconds": 12.0,
     "silence_rms": 0.003
   },
+  "jobs": {
+    "asr_max_workers": 1,
+    "tts_max_workers": 1
+  },
   "storage": {
     "data_dir": "data",
     "voices_dir": "data/voices",

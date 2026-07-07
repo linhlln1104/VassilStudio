@@ -24,5 +24,8 @@ $status | ConvertTo-Json -Depth 8
 if (-not $status.ready) {
     throw "Model status is not ready"
 }
+if ($status.runtime.asr_job_workers -lt 1 -or $status.runtime.tts_job_workers -lt 1) {
+    throw "Job worker counts must be greater than zero"
+}
 
 Write-Host "VassilStudio API smoke check passed"

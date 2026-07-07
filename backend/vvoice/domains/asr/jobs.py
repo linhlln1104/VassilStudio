@@ -40,12 +40,16 @@ class AsrJobService:
         asr: AsrService,
         *,
         target_sample_rate: int,
+        max_workers: int = 1,
     ) -> None:
         self._jobs_dir = jobs_dir
         self._asr = asr
         self._target_sample_rate = target_sample_rate
         self._lock = threading.RLock()
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vvoice-asr-job")
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="vvoice-asr-job",
+        )
         self._jobs_dir.mkdir(parents=True, exist_ok=True)
         self._mark_interrupted_jobs()
 

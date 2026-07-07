@@ -23,11 +23,13 @@ class AppContainer:
             self.settings.storage.asr_jobs_dir,
             self.asr,
             target_sample_rate=self.settings.asr.sample_rate,
+            max_workers=self.settings.jobs.asr_max_workers,
         )
         self.tts_jobs = TtsJobService(
             self.settings.storage.tts_jobs_dir,
             self.tts,
             self.voices,
+            max_workers=self.settings.jobs.tts_max_workers,
         )
 
     def shutdown(self) -> None:

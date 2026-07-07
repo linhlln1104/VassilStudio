@@ -49,12 +49,28 @@ const promptSuggestions: Record<VoiceLanguage, string[]> = {
   ],
 }
 
+type RenderMode = 'preview' | 'production'
+
+const renderProfiles: Record<RenderMode, { label: string; numSteps: number; helper: string }> = {
+  preview: {
+    label: 'Preview',
+    numSteps: 8,
+    helper: 'Faster draft render for checking voice, pacing, and copy.',
+  },
+  production: {
+    label: 'Production',
+    numSteps: 16,
+    helper: 'Full default render for final review and export.',
+  },
+}
+
 export function GenerateView() {
   const [script, setScript] = useState('')
   const [selectedVoiceId, setSelectedVoiceId] = useState(() => getPreferredVoiceId())
   const [selectedLanguage, setSelectedLanguage] = useState<VoiceLanguage>(() =>
     normalizeVoiceLanguage(getPreferredLanguage()),
   )
+  const [renderMode, setRenderMode] = useState<RenderMode>('preview')
   const [speedPercent, setSpeedPercent] = useState(100)
   const importInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
@@ -82,9 +98,15 @@ export function GenerateView() {
     [ttsJobsQuery.data],
   )
   const latestOutputVoice = voices.find((voice) => voice.voice_id === latestOutput?.voice_id)
+  const renderProfile = renderProfiles[renderMode]
   const generateMutation = useMutation({
     mutationFn: ({ voiceId, text, language }: { voiceId: string; text: string; language: VoiceLanguage }) =>
-      api.createTtsJobWithVoice(voiceId, { text, language, speed: speedFromPercent(speedPercent) }),
+      api.createTtsJobWithVoice(voiceId, {
+        text,
+        language,
+        numSteps: renderProfile.numSteps,
+        speed: speedFromPercent(speedPercent),
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['tts-jobs'] })
     },
@@ -178,6 +200,8 @@ export function GenerateView() {
     setSelectedVoiceId: handleVoiceSelect,
     speedPercent,
     setSpeedPercent,
+    renderMode,
+    setRenderMode,
     selectedLanguage,
     selectedVoiceLanguage,
     languageWarning,
@@ -285,6 +309,8 @@ type VoicePanelProps = {
   setSelectedVoiceId: (voiceId: string) => void
   speedPercent: number
   setSpeedPercent: (value: number) => void
+  renderMode: RenderMode
+  setRenderMode: (value: RenderMode) => void
   selectedLanguage: VoiceLanguage
   selectedVoiceLanguage: VoiceLanguage
   languageWarning: string | null
@@ -308,6 +334,8 @@ function VoicePanel({
   setSelectedVoiceId,
   speedPercent,
   setSpeedPercent,
+  renderMode,
+  setRenderMode,
   selectedLanguage,
   selectedVoiceLanguage,
   languageWarning,
@@ -399,6 +427,7 @@ function VoicePanel({
               valueLabel={`${speedFromPercent(speedPercent).toFixed(2)}x`}
               onChange={setSpeedPercent}
             />
+            <RenderModeControl value={renderMode} onChange={setRenderMode} />
             <ModelParameter label="Stability" value="Voice default" />
             <ModelParameter label="Similarity" value="Reference matched" />
 
@@ -670,6 +699,35 @@ function LanguageControl({
         value={value}
         onChange={onChange}
       />
+    </div>
+  )
+}
+
+function RenderModeControl({
+  value,
+  onChange,
+}: {
+  value: RenderMode
+  onChange: (value: RenderMode) => void
+}) {
+  const profile = renderProfiles[value]
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-2.5">
+      <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-slate-700">
+        <span>Render mode</span>
+        <span className="text-slate-500">{profile.numSteps} steps</span>
+      </div>
+      <SegmentedControl
+        equalWidth
+        options={(Object.keys(renderProfiles) as RenderMode[]).map((mode) => ({
+          value: mode,
+          label: renderProfiles[mode].label,
+          title: renderProfiles[mode].helper,
+        }))}
+        value={value}
+        onChange={onChange}
+      />
+      <p className="mt-2 text-xs font-medium leading-5 text-slate-600">{profile.helper}</p>
     </div>
   )
 }

@@ -40,6 +40,9 @@ Studio, batch ASR jobs, realtime ASR, voice import, and TTS jobs all carry an ex
 field. Use `vi` for Vietnamese and `en` for English so the backend selects the matching tokenizer,
 ASR recognizer, and ZipVoice runtime.
 
+`VassilStudio` is the display name. Before ZipVoice phonemization, the backend expands that token to
+`Vassil Studio` so generated speech treats the brand as two pronounceable words.
+
 The existing `vocoder.onnx` from the ZipVoice drop is a 22.05 kHz / 80-mel Vocos model and does not match this ZipVoice model, which emits 100-bin mel features. Use the 24 kHz Vocos model:
 
 ```powershell
@@ -85,6 +88,25 @@ Open the local studio:
 ```text
 http://127.0.0.1:8000/studio
 ```
+
+## Runtime Tuning
+
+Queued ASR and TTS jobs are serialized by default for predictable CPU performance. On stronger
+hardware, increase the worker limits in `config/vassil.example.json`:
+
+```json
+"jobs": {
+  "asr_max_workers": 1,
+  "tts_max_workers": 1
+}
+```
+
+Model inference still uses per-language locks, so increasing workers mostly improves queue handling
+around IO and mixed ASR/TTS work. Test with `scripts/check.ps1 -RunLanguageMatrix` after changing it.
+
+Use Settings -> Warm models or call `/warmup` to load all configured ASR/TTS languages before a
+session. The Generate view includes Preview and Production render modes; Preview uses fewer ZipVoice
+steps for faster drafts, while Production uses the configured default-quality path.
 
 ## Verify
 

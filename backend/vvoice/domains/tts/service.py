@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from vvoice.core.brand import prepare_spoken_brand_text
 from vvoice.core.config import RuntimeSettings, TtsModelSettings, TtsSettings
 from vvoice.core.errors import ModelConfigurationError
 from vvoice.domains.tts.text_frontend import ZipVoiceTextFrontend
@@ -48,10 +49,10 @@ class ZipVoiceService:
 
         with self._inference_locks[normalized_language]:
             audio = tts.synthesize(
-                text=text,
+                text=prepare_spoken_brand_text(text),
                 reference_audio=reference_audio,
                 reference_sample_rate=reference_sample_rate,
-                reference_text=reference_text,
+                reference_text=prepare_spoken_brand_text(reference_text),
                 num_steps=effective_num_steps,
                 speed=effective_speed,
             )
@@ -79,6 +80,10 @@ class ZipVoiceService:
 
     def warmup(self, language: str | None = None) -> None:
         self._get_tts(normalize_language(language or self._settings.default_language))
+
+    def warmup_all(self) -> None:
+        for language in self.configured_languages:
+            self.warmup(language)
 
     def _model_settings(self, language: str | None) -> TtsModelSettings:
         return self._settings.model_for(language)

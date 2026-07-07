@@ -99,6 +99,8 @@ def test_parse_settings_resolves_paths() -> None:
     assert settings.storage.uploads_dir == root / "data/uploads"
     assert settings.storage.outputs_dir == root / "data/outputs"
     assert settings.storage.logs_dir == root / "logs"
+    assert settings.jobs.asr_max_workers == 1
+    assert settings.jobs.tts_max_workers == 1
     assert settings.security.api_keys == ("secret-1",)
 
 
@@ -235,6 +237,16 @@ def test_parse_settings_appends_vassil_api_keys(tmp_path, monkeypatch) -> None:
     settings = parse_settings(raw, tmp_path)
 
     assert settings.security.api_keys == ("file-secret", "env-secret-1", "env-secret-2")
+
+
+def test_parse_settings_supports_job_worker_limits(tmp_path) -> None:
+    raw = _minimal_settings_raw()
+    raw["jobs"] = {"asr_max_workers": 2, "tts_max_workers": 3}
+
+    settings = parse_settings(raw, tmp_path)
+
+    assert settings.jobs.asr_max_workers == 2
+    assert settings.jobs.tts_max_workers == 3
 
 
 def test_parse_settings_supports_tts_model_registry() -> None:

@@ -1,0 +1,98 @@
+from types import SimpleNamespace
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from vvoice.app.system.router import router
+
+
+class FakeRuntimeService:
+    def __init__(self, languages: tuple[str, ...]) -> None:
+        self.configured_languages = languages
+        self.loaded_languages: tuple[str, ...] = ()
+        self.is_loaded = False
+        self.warmup_all_called = False
+
+    def warmup(self) -> None:
+        self.loaded_languages = self.configured_languages[:1]
+        self.is_loaded = True
+
+    def warmup_all(self) -> None:
+        self.loaded_languages = self.configured_languages
+        self.is_loaded = True
+        self.warmup_all_called = True
+
+
+def test_model_status_reports_job_workers(tmp_path) -> None:
+    app, _, _ = make_app(tmp_path)
+    client = TestClient(app)
+
+    response = client.get("/model-status")
+
+    assert response.status_code == 200
+    runtime = response.json()["runtime"]
+    assert runtime["asr_job_workers"] == 2
+    assert runtime["tts_job_workers"] == 3
+
+
+def test_warmup_loads_all_languages(tmp_path) -> None:
+    app, asr, tts = make_app(tmp_path)
+    client = TestClient(app)
+
+    response = client.post("/warmup")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "asr_loaded": True,
+        "tts_loaded": True,
+        "asr_loaded_languages": ["en", "vi"],
+        "tts_loaded_languages": ["en", "vi"],
+    }
+    assert asr.warmup_all_called
+    assert tts.warmup_all_called
+
+
+def make_app(tmp_path):
+    asr = FakeRuntimeService(("en", "vi"))
+    tts = FakeRuntimeService(("en", "vi"))
+    settings = SimpleNamespace(
+        runtime=SimpleNamespace(provider="cpu", num_threads=2, debug=False),
+        jobs=SimpleNamespace(asr_max_workers=2, tts_max_workers=3),
+        security=SimpleNamespace(api_keys=()),
+        asr=SimpleNamespace(enabled=True, models={"vi": make_asr_model(tmp_path), "en": make_asr_model(tmp_path)}),
+        tts=SimpleNamespace(enabled=True, models={"vi": make_tts_model(tmp_path), "en": make_tts_model(tmp_path)}),
+    )
+    app = FastAPI()
+    app.state.container = SimpleNamespace(settings=settings, asr=asr, tts=tts)
+    app.include_router(router)
+    return app, asr, tts
+
+
+def make_asr_model(tmp_path):
+    return SimpleNamespace(
+        encoder=touch(tmp_path / "encoder.onnx"),
+        decoder=touch(tmp_path / "decoder.onnx"),
+        joiner=touch(tmp_path / "joiner.onnx"),
+        tokens=touch(tmp_path / "tokens.txt"),
+    )
+
+
+def make_tts_model(tmp_path):
+    return SimpleNamespace(
+        encoder=touch(tmp_path / "text_model.onnx"),
+        decoder=touch(tmp_path / "flow_matching_model.onnx"),
+        vocoder=touch(tmp_path / "vocos_24khz.onnx"),
+        tokens=touch(tmp_path / "tts_tokens.txt"),
+        lexicon=touch(tmp_path / "lexicon.txt"),
+        data_dir=mkdir(tmp_path / "espeak-ng-data"),
+    )
+
+
+def touch(path):
+    path.write_text("", encoding="utf-8")
+    return path
+
+
+def mkdir(path):
+    path.mkdir(exist_ok=True)
+    return path

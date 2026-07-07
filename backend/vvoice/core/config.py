@@ -197,6 +197,12 @@ class RealtimeSettings:
 
 
 @dataclass(frozen=True)
+class JobSettings:
+    asr_max_workers: int
+    tts_max_workers: int
+
+
+@dataclass(frozen=True)
 class Settings:
     root: Path
     paths: PathSettings
@@ -204,6 +210,7 @@ class Settings:
     asr: AsrSettings
     tts: TtsSettings
     realtime: RealtimeSettings
+    jobs: JobSettings
     storage: StorageSettings
     security: SecuritySettings
 
@@ -235,6 +242,7 @@ def parse_settings(raw: dict[str, Any], root: Path) -> Settings:
     asr = raw["asr"]
     tts = raw["tts"]
     realtime = raw.get("realtime", {})
+    jobs = raw.get("jobs", {})
     storage = raw["storage"]
     security = raw.get("security", {})
     paths = PathSettings(
@@ -261,6 +269,10 @@ def parse_settings(raw: dict[str, Any], root: Path) -> Settings:
             max_buffer_seconds=float(realtime.get("max_buffer_seconds", 12.0)),
             silence_rms=float(realtime.get("silence_rms", 0.003)),
         ),
+        jobs=JobSettings(
+            asr_max_workers=_positive_int(jobs.get("asr_max_workers", 1), "jobs.asr_max_workers"),
+            tts_max_workers=_positive_int(jobs.get("tts_max_workers", 1), "jobs.tts_max_workers"),
+        ),
         storage=StorageSettings(
             data_dir=_resolve(root, storage.get("data_dir", paths.data_root)),
             voices_dir=_resolve(root, storage.get("voices_dir", paths.data_root / "voices")),
@@ -279,6 +291,13 @@ def parse_settings(raw: dict[str, Any], root: Path) -> Settings:
 def _resolve(root: Path, value: str | os.PathLike[str]) -> Path:
     path = Path(value)
     return path if path.is_absolute() else root / path
+
+
+def _positive_int(value: Any, name: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise ValueError(f"{name} must be greater than 0.")
+    return parsed
 
 
 def _parse_asr_settings(raw: dict[str, Any], root: Path) -> AsrSettings:
