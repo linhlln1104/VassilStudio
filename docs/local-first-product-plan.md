@@ -380,3 +380,4 @@ feat: add local auth foundation
 | 2026-07-08 | Account Password Management | Done | `POST /api/v1/auth/change-password`, Settings password form, other-session revocation tests, auth smoke coverage, and `scripts/check.ps1` pass |
 | 2026-07-08 | Operations Guide | Done | `docs/operations.md`, public `/operations` route, README/Docker docs links, and `scripts/check.ps1` pass |
 | 2026-07-08 | Public Trust Pages | Done | Privacy/support/license/changelog/operations pages use product-grade copy instead of placeholders, with frontend asset tests and `scripts/check.ps1` pass |
+| 2026-07-08 | Auth Rate Limiting | Done | Login and password change attempts return `429` with `Retry-After` after repeated failures, with pytest/OpenAPI coverage and `scripts/check.ps1` pass |

@@ -64,7 +64,11 @@ async def setup_owner(
     )
 
 
-@router.post("/login", response_model=AuthSessionResponse)
+@router.post(
+    "/login",
+    response_model=AuthSessionResponse,
+    responses={429: {"description": "Too many login attempts."}},
+)
 async def login(
     payload: AuthLoginRequest,
     request: Request,
@@ -82,6 +86,11 @@ async def login(
             detail="Create the local owner account before logging in.",
         )
 
+    rate_limit_key = _rate_limit_identifier(request, payload.username)
+    retry_after = auth.record_login_attempt(rate_limit_key)
+    if retry_after is not None:
+        _raise_rate_limited(retry_after, "Too many login attempts. Try again later.")
+
     account = auth.authenticate(payload.username, payload.password)
     if account is None:
         raise HTTPException(
@@ -89,6 +98,7 @@ async def login(
             detail="Invalid username or password.",
         )
 
+    auth.clear_login_attempts(rate_limit_key)
     session = auth.create_session(account, user_agent=request.headers.get("user-agent"))
     _set_session_cookie(request, response, session)
     return AuthSessionResponse(
@@ -125,7 +135,11 @@ async def me(request: Request) -> AuthUser:
     return _auth_user(account)
 
 
-@router.post("/change-password", response_model=AuthPasswordChangeResponse)
+@router.post(
+    "/change-password",
+    response_model=AuthPasswordChangeResponse,
+    responses={429: {"description": "Too many password change attempts."}},
+)
 async def change_password(
     payload: AuthChangePasswordRequest,
     request: Request,
@@ -139,6 +153,11 @@ async def change_password(
             detail="Missing or invalid Studio session.",
         )
 
+    rate_limit_key = _rate_limit_identifier(request, account.username)
+    retry_after = auth.record_password_change_attempt(rate_limit_key)
+    if retry_after is not None:
+        _raise_rate_limited(retry_after, "Too many password change attempts. Try again later.")
+
     try:
         revoked_count = auth.change_password(
             account.account_id,
@@ -149,6 +168,7 @@ async def change_password(
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    auth.clear_password_change_attempts(rate_limit_key)
     return AuthPasswordChangeResponse(password_changed=True, other_sessions_revoked=revoked_count)
 
 
@@ -172,6 +192,20 @@ def _set_session_cookie(request: Request, response: Response, session: CreatedSe
         httponly=True,
         secure=settings.secure_cookies,
         samesite="lax",
+    )
+
+
+def _rate_limit_identifier(request: Request, username: str) -> str:
+    host = request.client.host if request.client else "unknown"
+    normalized = username.strip().lower()[:80] or "blank"
+    return f"{host}:{normalized}"
+
+
+def _raise_rate_limited(retry_after_seconds: int, detail: str) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail=detail,
+        headers={"Retry-After": str(retry_after_seconds)},
     )
 
 

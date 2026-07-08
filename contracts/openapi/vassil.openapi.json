@@ -1791,6 +1791,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many password change attempts."
           }
         },
         "summary": "Change Password",
@@ -1832,6 +1835,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many login attempts."
           }
         },
         "summary": "Login",

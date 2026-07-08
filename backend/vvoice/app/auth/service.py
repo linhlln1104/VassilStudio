@@ -7,10 +7,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
+import math
 import re
 import secrets
 import sqlite3
 import threading
+import time
 import uuid
 
 from vvoice.core.config import SecuritySettings
@@ -19,6 +21,8 @@ from vvoice.core.config import SecuritySettings
 PBKDF2_ALGORITHM = "pbkdf2_sha256"
 PBKDF2_ITERATIONS = 390_000
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.@-]{3,80}$")
+AUTH_RATE_LIMIT_MAX_ATTEMPTS = 5
+AUTH_RATE_LIMIT_WINDOW_SECONDS = 5 * 60
 
 
 class AuthError(ValueError):
@@ -44,6 +48,14 @@ class LocalAuthService:
         self.settings = settings
         self.path = settings.auth_db_path
         self._lock = threading.RLock()
+        self._login_rate_limiter = _MemoryRateLimiter(
+            max_attempts=AUTH_RATE_LIMIT_MAX_ATTEMPTS,
+            window_seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
+        )
+        self._password_change_rate_limiter = _MemoryRateLimiter(
+            max_attempts=AUTH_RATE_LIMIT_MAX_ATTEMPTS,
+            window_seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
+        )
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_schema()
 
@@ -109,6 +121,18 @@ class LocalAuthService:
                 return None
 
             return _account_from_row(row)
+
+    def record_login_attempt(self, identifier: str) -> int | None:
+        return self._login_rate_limiter.record(identifier)
+
+    def clear_login_attempts(self, identifier: str) -> None:
+        self._login_rate_limiter.reset(identifier)
+
+    def record_password_change_attempt(self, identifier: str) -> int | None:
+        return self._password_change_rate_limiter.record(identifier)
+
+    def clear_password_change_attempts(self, identifier: str) -> None:
+        self._password_change_rate_limiter.reset(identifier)
 
     def create_session(self, account: Account, user_agent: str | None = None) -> CreatedSession:
         token = secrets.token_urlsafe(40)
@@ -317,6 +341,38 @@ class LocalAuthService:
             raise
         finally:
             connection.close()
+
+
+class _MemoryRateLimiter:
+    def __init__(self, *, max_attempts: int, window_seconds: int) -> None:
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self._attempts: dict[str, list[float]] = {}
+        self._lock = threading.RLock()
+
+    def record(self, identifier: str) -> int | None:
+        now = time.monotonic()
+        with self._lock:
+            attempts = self._active_attempts(identifier, now)
+            if len(attempts) >= self.max_attempts:
+                self._attempts[identifier] = attempts
+                retry_after = self.window_seconds - (now - attempts[0])
+                return max(1, math.ceil(retry_after))
+
+            attempts.append(now)
+            self._attempts[identifier] = attempts
+            return None
+
+    def reset(self, identifier: str) -> None:
+        with self._lock:
+            self._attempts.pop(identifier, None)
+
+    def _active_attempts(self, identifier: str, now: float) -> list[float]:
+        return [
+            attempt
+            for attempt in self._attempts.get(identifier, [])
+            if now - attempt < self.window_seconds
+        ]
 
 
 def _normalize_username(username: str) -> str:

@@ -4,7 +4,7 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from vvoice.app.auth.router import router as auth_router
-from vvoice.app.auth.service import LocalAuthService
+from vvoice.app.auth.service import AUTH_RATE_LIMIT_MAX_ATTEMPTS, LocalAuthService
 from vvoice.core.config import SecuritySettings
 from vvoice.shared.security.auth import _candidate_from_mapping, _matches
 from vvoice.shared.security.auth import require_api_key
@@ -157,6 +157,63 @@ def test_change_password_revokes_other_sessions(tmp_path) -> None:
     assert change_response.json() == {"password_changed": True, "other_sessions_revoked": 1}
     assert client_one.get("/protected").status_code == 200
     assert client_two.get("/protected").status_code == 401
+
+
+def test_login_rate_limits_repeated_failures(tmp_path) -> None:
+    settings = make_security_settings(tmp_path, auth_required=True)
+    app = make_auth_app(settings)
+    client = TestClient(app)
+    client.post(
+        "/api/v1/auth/setup",
+        json={"username": "owner", "password": "correct horse battery"},
+    )
+    client.post("/api/v1/auth/logout")
+
+    for _ in range(AUTH_RATE_LIMIT_MAX_ATTEMPTS):
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"username": "owner", "password": "wrong password"},
+        )
+        assert response.status_code == 401
+
+    limited_response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "owner", "password": "wrong password"},
+    )
+
+    assert limited_response.status_code == 429
+    assert limited_response.headers["retry-after"].isdigit()
+
+
+def test_change_password_rate_limits_repeated_failures(tmp_path) -> None:
+    settings = make_security_settings(tmp_path, auth_required=True)
+    app = make_auth_app(settings)
+    client = TestClient(app)
+    client.post(
+        "/api/v1/auth/setup",
+        json={"username": "owner", "password": "correct horse battery"},
+    )
+
+    for _ in range(AUTH_RATE_LIMIT_MAX_ATTEMPTS):
+        response = client.post(
+            "/api/v1/auth/change-password",
+            json={
+                "current_password": "wrong password",
+                "new_password": "new correct horse battery",
+            },
+        )
+        assert response.status_code == 400
+
+    limited_response = client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": "wrong password",
+            "new_password": "new correct horse battery",
+        },
+    )
+
+    assert limited_response.status_code == 429
+    assert limited_response.headers["retry-after"].isdigit()
 
 
 def test_api_key_still_authorizes_when_local_auth_is_required(tmp_path) -> None:

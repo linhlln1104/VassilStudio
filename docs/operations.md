@@ -109,6 +109,7 @@ Studio local auth is disabled by default for developer convenience. When enabled
 - Passwords are stored as one-way hashes in `data/auth.sqlite3`.
 - Sessions use HttpOnly cookies and are invalidated on logout.
 - Settings can change the owner password and revoke other active sessions.
+- Repeated failed login or password change attempts return `429` with `Retry-After`.
 - API key auth remains available for scripts and integrations.
 
 If the owner password is lost, stop the app, back up `data/auth.sqlite3`, then remove or replace the
