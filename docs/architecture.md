@@ -133,6 +133,10 @@ server generate one. The app logger emits structured JSON for HTTP request compl
 ASR/TTS job lifecycle events. Request logging records the path without query strings so API keys are
 not written by the app middleware.
 
+`GET /diagnostics` returns redacted operations metadata for the Studio Settings surface and support
+workflows: runtime configuration, auth mode, storage paths, and local license placeholder state. It
+does not return API keys, session secrets, cookies, transcripts, or audio content.
+
 ## Current Use Cases
 
 - Upload audio and transcribe it with `/api/v1/asr/transcribe`.
@@ -152,6 +156,7 @@ not written by the app middleware.
   `VASSIL_AUTH_REQUIRED` is set.
 - Preload lazy ASR/TTS runtimes with `/warmup`, `/warmup/asr`, and `/warmup/tts`.
 - Check process liveness with `/livez` and model/storage readiness with `/readyz`.
+- Inspect redacted runtime/auth/storage/license metadata with `/diagnostics`.
 
 ## Configuration
 

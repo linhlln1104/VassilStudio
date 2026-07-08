@@ -630,6 +630,123 @@
         "title": "Body_update_voice_api_v1_voices__voice_id__patch",
         "type": "object"
       },
+      "DiagnosticsLicense": {
+        "properties": {
+          "billing_enabled": {
+            "title": "Billing Enabled",
+            "type": "boolean"
+          },
+          "plan": {
+            "title": "Plan",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "plan",
+          "billing_enabled"
+        ],
+        "title": "DiagnosticsLicense",
+        "type": "object"
+      },
+      "DiagnosticsResponse": {
+        "properties": {
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "license": {
+            "$ref": "#/components/schemas/DiagnosticsLicense"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeStatus"
+          },
+          "security": {
+            "$ref": "#/components/schemas/DiagnosticsSecurity"
+          },
+          "storage": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticsStorageItem"
+            },
+            "title": "Storage",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "runtime",
+          "security",
+          "storage",
+          "license"
+        ],
+        "title": "DiagnosticsResponse",
+        "type": "object"
+      },
+      "DiagnosticsSecurity": {
+        "properties": {
+          "api_key_auth_enabled": {
+            "title": "Api Key Auth Enabled",
+            "type": "boolean"
+          },
+          "auth_required": {
+            "title": "Auth Required",
+            "type": "boolean"
+          },
+          "secure_cookies": {
+            "title": "Secure Cookies",
+            "type": "boolean"
+          },
+          "session_cookie_name": {
+            "title": "Session Cookie Name",
+            "type": "string"
+          },
+          "session_ttl_seconds": {
+            "title": "Session Ttl Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "auth_required",
+          "api_key_auth_enabled",
+          "session_cookie_name",
+          "session_ttl_seconds",
+          "secure_cookies"
+        ],
+        "title": "DiagnosticsSecurity",
+        "type": "object"
+      },
+      "DiagnosticsStorageItem": {
+        "properties": {
+          "exists": {
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "is_dir": {
+            "title": "Is Dir",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "exists",
+          "is_dir"
+        ],
+        "title": "DiagnosticsStorageItem",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2452,6 +2569,27 @@
         "summary": "Get Voice Reference Audio",
         "tags": [
           "voices"
+        ]
+      }
+    },
+    "/diagnostics": {
+      "get": {
+        "operationId": "diagnostics_diagnostics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Diagnostics",
+        "tags": [
+          "system"
         ]
       }
     },

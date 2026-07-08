@@ -17,6 +17,27 @@ class ProbeResponse(BaseModel):
     checks: dict[str, bool]
 
 
+class DiagnosticsStorageItem(BaseModel):
+    name: str
+    path: str
+    exists: bool
+    is_dir: bool
+
+
+class DiagnosticsSecurity(BaseModel):
+    auth_required: bool
+    api_key_auth_enabled: bool
+    session_cookie_name: str
+    session_ttl_seconds: int
+    secure_cookies: bool
+
+
+class DiagnosticsLicense(BaseModel):
+    status: str
+    plan: str
+    billing_enabled: bool
+
+
 class RuntimeStatus(BaseModel):
     provider: str
     num_threads: int
@@ -39,6 +60,14 @@ class ModelStatusResponse(BaseModel):
     ready: bool
     checks: dict[str, bool]
     runtime: RuntimeStatus
+
+
+class DiagnosticsResponse(BaseModel):
+    generated_at: str
+    runtime: RuntimeStatus
+    security: DiagnosticsSecurity
+    storage: list[DiagnosticsStorageItem]
+    license: DiagnosticsLicense
 
 
 class WarmupResponse(BaseModel):

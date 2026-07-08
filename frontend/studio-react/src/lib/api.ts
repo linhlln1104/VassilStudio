@@ -67,6 +67,29 @@ export type ModelStatusResponse = {
   }
 }
 
+export type DiagnosticsResponse = {
+  generated_at: string
+  runtime: ModelStatusResponse['runtime']
+  security: {
+    auth_required: boolean
+    api_key_auth_enabled: boolean
+    session_cookie_name: string
+    session_ttl_seconds: number
+    secure_cookies: boolean
+  }
+  storage: Array<{
+    name: string
+    path: string
+    exists: boolean
+    is_dir: boolean
+  }>
+  license: {
+    status: string
+    plan: string
+    billing_enabled: boolean
+  }
+}
+
 export type WarmupAllResponse = {
   asr_loaded: boolean
   tts_loaded: boolean
@@ -275,6 +298,7 @@ export const api = {
     }),
   health: () => fetchJson<HealthResponse>('/health'),
   modelStatus: () => fetchJson<ModelStatusResponse>('/model-status'),
+  diagnostics: () => fetchJson<DiagnosticsResponse>('/diagnostics'),
   warmup: () => fetchJson<WarmupAllResponse>('/warmup', { method: 'POST' }),
   voices: () => fetchJson<Voice[]>('/api/v1/voices'),
   importCandidates: () => fetchJson<ImportCandidate[]>('/api/v1/voices/import-candidates'),

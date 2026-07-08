@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.concurrency import run_in_threadpool
 
 from vvoice.app.system.schemas import (
+    DiagnosticsResponse,
     HealthResponse,
     ModelStatusResponse,
     ProbeResponse,
@@ -66,22 +68,33 @@ async def model_status(request: Request):
     return {
         "ready": all(checks.values()),
         "checks": checks,
-        "runtime": {
-            "provider": settings.runtime.provider,
-            "num_threads": settings.runtime.num_threads,
-            "debug": settings.runtime.debug,
-            "warmup_on_startup": settings.runtime.warmup_on_startup,
-            "asr_job_workers": settings.jobs.asr_max_workers,
-            "tts_job_workers": settings.jobs.tts_max_workers,
-            "asr_job_max_attempts": settings.jobs.asr_max_attempts,
-            "tts_job_max_attempts": settings.jobs.tts_max_attempts,
-            "job_retry_backoff_seconds": settings.jobs.retry_backoff_seconds,
-            "asr_loaded": container.asr.is_loaded,
-            "tts_loaded": container.tts.is_loaded,
-            "asr_configured_languages": list(container.asr.configured_languages),
-            "asr_loaded_languages": list(container.asr.loaded_languages),
-            "tts_configured_languages": list(container.tts.configured_languages),
-            "tts_loaded_languages": list(container.tts.loaded_languages),
+        "runtime": _runtime_status(container, settings),
+    }
+
+
+@router.get(
+    "/diagnostics",
+    response_model=DiagnosticsResponse,
+    dependencies=[Depends(require_api_key)],
+)
+async def diagnostics(request: Request):
+    container = request.app.state.container
+    settings = request.app.state.container.settings
+    return {
+        "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "runtime": _runtime_status(container, settings),
+        "security": {
+            "auth_required": getattr(settings.security, "auth_required", False),
+            "api_key_auth_enabled": bool(settings.security.api_keys),
+            "session_cookie_name": getattr(settings.security, "session_cookie_name", "vassil_session"),
+            "session_ttl_seconds": getattr(settings.security, "session_ttl_seconds", 0),
+            "secure_cookies": getattr(settings.security, "secure_cookies", False),
+        },
+        "storage": _diagnostic_storage_items(settings),
+        "license": {
+            "status": "local",
+            "plan": "Local workspace",
+            "billing_enabled": False,
         },
     }
 
@@ -129,6 +142,52 @@ async def warmup_all(request: Request):
         "asr_loaded_languages": list(container.asr.loaded_languages),
         "tts_loaded_languages": list(container.tts.loaded_languages),
     }
+
+
+def _runtime_status(container, settings) -> dict:
+    return {
+        "provider": settings.runtime.provider,
+        "num_threads": settings.runtime.num_threads,
+        "debug": settings.runtime.debug,
+        "warmup_on_startup": settings.runtime.warmup_on_startup,
+        "asr_job_workers": settings.jobs.asr_max_workers,
+        "tts_job_workers": settings.jobs.tts_max_workers,
+        "asr_job_max_attempts": settings.jobs.asr_max_attempts,
+        "tts_job_max_attempts": settings.jobs.tts_max_attempts,
+        "job_retry_backoff_seconds": settings.jobs.retry_backoff_seconds,
+        "asr_loaded": container.asr.is_loaded,
+        "tts_loaded": container.tts.is_loaded,
+        "asr_configured_languages": list(container.asr.configured_languages),
+        "asr_loaded_languages": list(container.asr.loaded_languages),
+        "tts_configured_languages": list(container.tts.configured_languages),
+        "tts_loaded_languages": list(container.tts.loaded_languages),
+    }
+
+
+def _diagnostic_storage_items(settings) -> list[dict[str, object]]:
+    storage = getattr(settings, "storage", None)
+    if storage is None:
+        return []
+
+    paths: dict[str, Path] = {
+        "data": storage.data_dir,
+        "voices": storage.voices_dir,
+        "asr_jobs": storage.asr_jobs_dir,
+        "tts_jobs": storage.tts_jobs_dir,
+        "uploads": storage.uploads_dir,
+        "outputs": storage.outputs_dir,
+        "logs": storage.logs_dir,
+        "auth_db": getattr(settings.security, "auth_db_path", storage.data_dir / "auth.sqlite3"),
+    }
+    return [
+        {
+            "name": name,
+            "path": str(path),
+            "exists": path.exists(),
+            "is_dir": path.is_dir(),
+        }
+        for name, path in paths.items()
+    ]
 
 
 def _model_file_checks(settings) -> dict[str, bool]:

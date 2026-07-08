@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import {
   ChevronDown,
   CheckCircle2,
+  BadgeCheck,
   Copy,
   Database,
   Eye,
@@ -13,7 +14,9 @@ import {
   KeyRound,
   Loader2,
   LockKeyhole,
+  LogOut,
   ShieldCheck,
+  UserRound,
   XCircle,
 } from 'lucide-react'
 
@@ -55,11 +58,27 @@ export function SettingsView() {
     queryFn: api.modelStatus,
     refetchInterval: 10000,
   })
+  const authQuery = useQuery({
+    queryKey: ['auth-status'],
+    queryFn: api.authStatus,
+    refetchInterval: 30000,
+  })
+  const diagnosticsQuery = useQuery({
+    queryKey: ['diagnostics'],
+    queryFn: api.diagnostics,
+    refetchInterval: 30000,
+  })
   const warmupMutation = useMutation({
     mutationFn: api.warmup,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['health'] })
       void queryClient.invalidateQueries({ queryKey: ['model-status'] })
+    },
+  })
+  const logoutMutation = useMutation({
+    mutationFn: api.authLogout,
+    onSuccess: () => {
+      window.location.assign('/login')
     },
   })
 
@@ -118,9 +137,32 @@ export function SettingsView() {
         onRunDiagnostics={() => {
           void healthQuery.refetch()
           void modelQuery.refetch()
+          void diagnosticsQuery.refetch()
         }}
         onWarmup={() => warmupMutation.mutate()}
       />
+
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <AccountSessionCard
+          authRequired={Boolean(authQuery.data?.auth_required)}
+          authenticated={Boolean(authQuery.data?.authenticated)}
+          username={authQuery.data?.user?.username ?? null}
+          role={authQuery.data?.user?.role ?? null}
+          apiKeyAuthEnabled={Boolean(authQuery.data?.api_key_auth_enabled)}
+          sessionCookieName={diagnosticsQuery.data?.security.session_cookie_name ?? 'vassil_session'}
+          sessionTtlSeconds={diagnosticsQuery.data?.security.session_ttl_seconds ?? 0}
+          secureCookies={Boolean(diagnosticsQuery.data?.security.secure_cookies)}
+          authDbPath={diagnosticsQuery.data?.storage.find((item) => item.name === 'auth_db')?.path ?? 'data/auth.sqlite3'}
+          signingOut={logoutMutation.isPending}
+          onSignOut={() => logoutMutation.mutate()}
+        />
+        <LicenseCard
+          status={diagnosticsQuery.data?.license.status ?? 'local'}
+          plan={diagnosticsQuery.data?.license.plan ?? 'Local workspace'}
+          billingEnabled={Boolean(diagnosticsQuery.data?.license.billing_enabled)}
+          generatedAt={diagnosticsQuery.data?.generated_at ?? null}
+        />
+      </div>
 
       <Card>
         <CardHeader>
@@ -197,6 +239,117 @@ export function SettingsView() {
       />
 
       <AdvancedSettings />
+    </div>
+  )
+}
+
+function AccountSessionCard({
+  authRequired,
+  authenticated,
+  username,
+  role,
+  apiKeyAuthEnabled,
+  sessionCookieName,
+  sessionTtlSeconds,
+  secureCookies,
+  authDbPath,
+  signingOut,
+  onSignOut,
+}: {
+  authRequired: boolean
+  authenticated: boolean
+  username: string | null
+  role: string | null
+  apiKeyAuthEnabled: boolean
+  sessionCookieName: string
+  sessionTtlSeconds: number
+  secureCookies: boolean
+  authDbPath: string
+  signingOut: boolean
+  onSignOut: () => void
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <div className="text-sm font-semibold text-slate-950">Account and session</div>
+          <div className="mt-1 text-xs text-slate-600">
+            Local owner access for this workspace.
+          </div>
+        </div>
+        <UserRound className="size-5 text-slate-500" />
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <SettingsMetric label="Studio auth" value={authRequired ? 'Required' : 'Local dev'} />
+          <SettingsMetric label="Session" value={authenticated ? username ?? 'Signed in' : 'Not required'} />
+          <SettingsMetric label="Role" value={role ?? 'workspace'} />
+          <SettingsMetric label="API keys" value={apiKeyAuthEnabled ? 'Enabled' : 'Disabled'} />
+        </div>
+        <div className="mt-3 grid gap-2 text-xs lg:grid-cols-3">
+          <SettingsMetric label="Cookie" value={sessionCookieName} />
+          <SettingsMetric label="TTL" value={formatSeconds(sessionTtlSeconds)} />
+          <SettingsMetric label="Secure cookie" value={secureCookies ? 'HTTPS only' : 'Local HTTP'} />
+        </div>
+        <div className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2">
+          <div className="text-xs font-medium text-slate-600">Account store</div>
+          <div className="mt-1 break-all text-xs font-semibold text-slate-950">{authDbPath}</div>
+        </div>
+        {authRequired && authenticated ? (
+          <Button className="mt-3" variant="secondary" onClick={onSignOut} disabled={signingOut}>
+            <LogOut className="size-4" />
+            {signingOut ? 'Signing out' : 'Sign out'}
+          </Button>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function LicenseCard({
+  status,
+  plan,
+  billingEnabled,
+  generatedAt,
+}: {
+  status: string
+  plan: string
+  billingEnabled: boolean
+  generatedAt: string | null
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <div className="text-sm font-semibold text-slate-950">License</div>
+          <div className="mt-1 text-xs text-slate-600">Prepared for local license keys.</div>
+        </div>
+        <BadgeCheck className="size-5 text-slate-500" />
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-2">
+          <SettingsMetric label="Status" value={status} />
+          <SettingsMetric label="Plan" value={plan} />
+          <SettingsMetric label="Billing" value={billingEnabled ? 'Enabled' : 'Not connected'} />
+        </div>
+        <div className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-600">
+          License enforcement is not enabled for this local build.
+        </div>
+        {generatedAt ? (
+          <div className="mt-2 text-xs font-medium text-slate-500">
+            Diagnostics: {formatDiagnosticTime(generatedAt)}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function SettingsMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
+      <div className="text-xs font-medium text-slate-600">{label}</div>
+      <div className="mt-1 truncate text-xs font-semibold text-slate-950">{value}</div>
     </div>
   )
 }
@@ -401,6 +554,29 @@ function formatRuntimeMeta(loaded: boolean, languages: string[]) {
     return state
   }
   return `${state} / ${languages.map((language) => language.toUpperCase()).join(', ')}`
+}
+
+function formatSeconds(seconds: number) {
+  if (!seconds) {
+    return 'default'
+  }
+  const days = Math.round(seconds / 86400)
+  if (days >= 1) {
+    return `${days}d`
+  }
+  const hours = Math.round(seconds / 3600)
+  if (hours >= 1) {
+    return `${hours}h`
+  }
+  return `${seconds}s`
+}
+
+function formatDiagnosticTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString()
 }
 
 function AdvancedSettings() {

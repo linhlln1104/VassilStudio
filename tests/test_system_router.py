@@ -39,6 +39,26 @@ def test_model_status_reports_job_workers(tmp_path) -> None:
     assert runtime["warmup_on_startup"] is True
 
 
+def test_diagnostics_reports_redacted_operations_metadata(tmp_path) -> None:
+    app, _, _ = make_app(tmp_path)
+    client = TestClient(app)
+
+    response = client.get("/diagnostics")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["license"] == {
+        "status": "local",
+        "plan": "Local workspace",
+        "billing_enabled": False,
+    }
+    assert payload["security"]["auth_required"] is False
+    assert payload["security"]["api_key_auth_enabled"] is False
+    assert "api_keys" not in payload["security"]
+    assert "session_secret" not in payload["security"]
+    assert any(item["name"] == "auth_db" for item in payload["storage"])
+
+
 def test_liveness_probe_is_process_only(tmp_path) -> None:
     app, _, _ = make_app(tmp_path)
     client = TestClient(app)
@@ -105,7 +125,14 @@ def make_app(tmp_path):
             tts_max_attempts=2,
             retry_backoff_seconds=0.01,
         ),
-        security=SimpleNamespace(api_keys=()),
+        security=SimpleNamespace(
+            api_keys=(),
+            auth_required=False,
+            auth_db_path=tmp_path / "auth.sqlite3",
+            session_cookie_name="vassil_session",
+            session_ttl_seconds=3600,
+            secure_cookies=False,
+        ),
         asr=SimpleNamespace(enabled=True, models={"vi": make_asr_model(tmp_path), "en": make_asr_model(tmp_path)}),
         tts=SimpleNamespace(enabled=True, models={"vi": make_tts_model(tmp_path), "en": make_tts_model(tmp_path)}),
         storage=SimpleNamespace(

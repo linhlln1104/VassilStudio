@@ -239,6 +239,7 @@ Invoke-WebRequest http://127.0.0.1:8000/livez
 Invoke-WebRequest http://127.0.0.1:8000/readyz
 Invoke-WebRequest http://127.0.0.1:8000/health
 Invoke-WebRequest http://127.0.0.1:8000/model-status
+Invoke-WebRequest http://127.0.0.1:8000/diagnostics
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\export_openapi.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_api.ps1
