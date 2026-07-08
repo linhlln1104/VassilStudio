@@ -165,6 +165,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1 -RunLang
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1 -RunDocker
 ```
 
+Latency benchmarks run against a live API and write JSON summaries under `tmp/benchmarks`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark_tts_latency.ps1 --iterations 1 --num-steps 8
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark_asr_latency.ps1 --iterations 3
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark_realtime_chunking.ps1 --chunks 5
+```
+
 ## Docker
 
 Docker builds the React Studio assets and the VassilStudio app, then mounts local models at runtime:
