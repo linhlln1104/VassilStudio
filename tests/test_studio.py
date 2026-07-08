@@ -63,6 +63,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Run diagnostics" in script
     assert "Warm models" in script
     assert "Render mode" in script
+    assert "First output checklist" in script
     assert "Production" in script
     assert "color-scheme:light" in style
     assert "vvoice-soft-grid" not in style

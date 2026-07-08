@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  ArrowRight,
+  CheckCircle2,
+  Circle,
   Download,
   FileAudio,
   Languages,
@@ -114,6 +117,7 @@ export function GenerateView() {
       void queryClient.invalidateQueries({ queryKey: ['tts-jobs'] })
     },
   })
+  const firstRunRenderQueued = activeTtsCount > 0 || Boolean(latestOutput) || generateMutation.isSuccess
 
   const generateErrorMessage =
     generateMutation.error instanceof Error ? generateMutation.error.message : 'Unable to queue TTS job.'
@@ -242,6 +246,18 @@ export function GenerateView() {
         }}
       />
 
+      <FirstRunChecklist
+        runtimeReady={Boolean(modelStatusQuery.data?.ready)}
+        runtimeLoading={modelStatusQuery.isLoading}
+        voiceReady={voices.length > 0}
+        scriptReady={scriptReady}
+        renderQueued={firstRunRenderQueued}
+        outputReady={Boolean(latestOutput?.audio_url)}
+        canGenerate={canGenerate}
+        onUseSample={() => setScript(promptSuggestions[selectedLanguage][0])}
+        onGenerate={handleGenerate}
+      />
+
       <div className="grid min-w-0 grid-cols-1 gap-3 xl:hidden">
         <ScriptEditor
           script={script}
@@ -290,6 +306,111 @@ export function GenerateView() {
         </aside>
       </div>
     </>
+  )
+}
+
+function FirstRunChecklist({
+  runtimeReady,
+  runtimeLoading,
+  voiceReady,
+  scriptReady,
+  renderQueued,
+  outputReady,
+  canGenerate,
+  onUseSample,
+  onGenerate,
+}: {
+  runtimeReady: boolean
+  runtimeLoading: boolean
+  voiceReady: boolean
+  scriptReady: boolean
+  renderQueued: boolean
+  outputReady: boolean
+  canGenerate: boolean
+  onUseSample: () => void
+  onGenerate: () => void
+}) {
+  const steps = [
+    {
+      label: 'Runtime',
+      done: runtimeReady,
+      value: runtimeLoading ? 'Checking' : runtimeReady ? 'Ready' : 'Needs setup',
+      action: !runtimeReady
+        ? { label: 'Settings', onClick: () => { window.location.hash = '/settings' } }
+        : null,
+    },
+    {
+      label: 'Voice',
+      done: voiceReady,
+      value: voiceReady ? 'Profile ready' : 'Import one',
+      action: !voiceReady
+        ? { label: 'Voices', onClick: () => { window.location.hash = '/voices' } }
+        : null,
+    },
+    {
+      label: 'Script',
+      done: scriptReady,
+      value: scriptReady ? 'Text ready' : 'Add text',
+      action: !scriptReady ? { label: 'Use sample', onClick: onUseSample } : null,
+    },
+    {
+      label: 'Render',
+      done: renderQueued,
+      value: renderQueued ? 'Queued' : 'Not queued',
+      action: !renderQueued && canGenerate ? { label: 'Generate', onClick: onGenerate } : null,
+    },
+    {
+      label: 'Output',
+      done: outputReady,
+      value: outputReady ? 'Playable' : 'Waiting',
+      action: !outputReady && renderQueued
+        ? { label: 'Jobs', onClick: () => { window.location.hash = '/jobs' } }
+        : null,
+    },
+  ]
+  const completed = steps.filter((step) => step.done).length
+
+  if (completed === steps.length) {
+    return null
+  }
+
+  return (
+    <section className="mb-3 rounded-md border border-slate-200 bg-white p-3">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="text-sm font-semibold text-slate-950">First output checklist</div>
+          <div className="mt-1 text-xs text-slate-600">
+            {completed}/{steps.length} ready
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {steps.map((step) => (
+            <div
+              className="flex min-h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-xs"
+              key={step.label}
+            >
+              {step.done ? (
+                <CheckCircle2 className="size-4 shrink-0 text-blue-700" />
+              ) : (
+                <Circle className="size-4 shrink-0 text-slate-400" />
+              )}
+              <span className="font-semibold text-slate-950">{step.label}</span>
+              <span className="font-medium text-slate-500">{step.value}</span>
+              {step.action ? (
+                <button
+                  className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-900"
+                  type="button"
+                  onClick={step.action.onClick}
+                >
+                  {step.action.label}
+                  <ArrowRight className="size-3" />
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   )
 }
 
