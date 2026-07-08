@@ -100,7 +100,7 @@ MVP nên thêm local account thay vì cloud signup trước:
 | --- | --- | --- |
 | First-run setup | Nếu chưa có admin, `/setup` tạo account local owner | Không vào Studio được trước khi setup hoặc khi auth disabled có chủ đích |
 | Login/logout | Email/username + password, secure session cookie | Cookie HttpOnly, SameSite, expiry rõ |
-| Password storage | Hash bằng Argon2 hoặc bcrypt | Không lưu password plain text |
+| Password storage | Hash bằng scrypt, Argon2 hoặc bcrypt | Không lưu password plain text |
 | Session store | File-backed hoặc SQLite-backed local store | Logout invalidates session |
 | Recovery | Recovery key hoặc documented reset command | Không cần email reset trong MVP local |
 | API automation | Giữ `X-Vassil-API-Key`/Bearer API key | Smoke scripts không phụ thuộc browser login |
@@ -344,26 +344,16 @@ Một phase chỉ xem là xong khi:
 
 ## Recommended Next Action
 
-Bắt đầu Phase 2 theo lát cắt nhỏ: **Product Shell + Local Auth Foundation**.
+Baseline MVP theo kế hoạch này đã hoàn tất cho local-first product: public shell, local auth,
+protected Studio, onboarding, diagnostics, retention, smoke/check gate, benchmark scripts, operations
+docs, release metadata, và Docker config đều có commit, verification, và changelog.
 
-Deliverable đầu tiên nên gồm:
+Các bước tiếp theo nên là hardening ngoài phạm vi MVP nhỏ:
 
-- `.env.example`
-- auth config keys
-- local account/session store skeleton
-- `GET /api/v1/auth/status`
-- `POST /api/v1/auth/setup`
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/logout`
-- protected `/studio` behavior behind config flag
-- frontend setup/login screens tối giản
-- tests cho setup/login/protected Studio/API key compatibility
-
-Commit mục tiêu:
-
-```text
-feat: add local auth foundation
-```
+- Chọn license chính thức cho repository trước khi phân phối ngoài nội bộ.
+- Chạy optional `-RunE2E`, `-RunLanguageMatrix`, và `-RunDocker` trên máy release.
+- Nếu có phát hành binary/native installer, thêm signing, versioned artifacts, và installer smoke.
+- Nếu mở cloud/billing, thiết kế lại auth theo multi-user/team workspace thay vì local owner account.
 
 ## Implementation Progress
 
