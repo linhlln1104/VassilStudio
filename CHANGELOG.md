@@ -16,6 +16,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Auth/product smoke in `scripts/check.ps1`.
 - Latency benchmark scripts for TTS, ASR, and realtime chunking.
 - Operations guide with install, model layout, auth, smoke, Docker, backup, and troubleshooting.
+- Product-grade trust pages for privacy, support, license, changelog, and operations.
 
 ### Hardened
 

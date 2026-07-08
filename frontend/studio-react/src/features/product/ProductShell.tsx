@@ -3,8 +3,119 @@ import { ArrowRight, AudioLines, Captions, Database, ShieldCheck } from 'lucide-
 import { Button } from '@/components/ui/button'
 import { BRAND_LOGO_SRC, BRAND_NAME } from '@/lib/brand'
 
+type InfoPageId = 'privacy' | 'license' | 'support' | 'changelog' | 'operations'
+
 type ProductShellProps = {
-  page?: 'home' | 'privacy' | 'license' | 'support' | 'changelog' | 'operations'
+  page?: 'home' | InfoPageId
+}
+
+type InfoPageContent = {
+  title: string
+  summary: string
+  rows: Array<{ label: string; value: string }>
+  primaryAction?: { label: string; href: string }
+  secondaryAction?: { label: string; href: string }
+}
+
+const infoPages: Record<InfoPageId, InfoPageContent> = {
+  privacy: {
+    title: 'Privacy',
+    summary: 'VassilStudio is designed for local voice work where data stays in the workspace.',
+    rows: [
+      {
+        label: 'Local data',
+        value: 'Audio, transcripts, voice profiles, outputs, jobs, and auth data stay under local paths by default.',
+      },
+      {
+        label: 'Telemetry',
+        value: 'External telemetry is off for this MVP. Operators can inspect config before enabling integrations.',
+      },
+      {
+        label: 'Diagnostics',
+        value: 'Support bundles redact API keys, session secrets, cookies, transcripts, and private audio.',
+      },
+    ],
+    primaryAction: { label: 'Open Studio', href: '/studio' },
+    secondaryAction: { label: 'Support', href: '/support' },
+  },
+  license: {
+    title: 'License',
+    summary: 'Distribution depends on app, dependency, and model terms being reviewed together.',
+    rows: [
+      {
+        label: 'Application',
+        value: 'No repository LICENSE file is declared yet. Add one before external redistribution.',
+      },
+      {
+        label: 'Models',
+        value: 'Keep ZipFormer, ZipVoice, tokenizer, vocoder, and dataset license notes with downloaded assets.',
+      },
+      {
+        label: 'Dependencies',
+        value: 'Python and npm packages retain their upstream licenses and notices.',
+      },
+    ],
+    primaryAction: { label: 'Operations guide', href: '/operations' },
+  },
+  support: {
+    title: 'Support',
+    summary: 'Start with readiness, logs, and a redacted diagnostics bundle before opening an issue.',
+    rows: [
+      {
+        label: 'Readiness',
+        value: 'Check Settings, /model-status, /health, and scripts/doctor.ps1 for missing runtime assets.',
+      },
+      {
+        label: 'Bundle',
+        value: 'Download /diagnostics/bundle after reproducing the issue. It is designed for safe sharing.',
+      },
+      {
+        label: 'Quality gate',
+        value: 'Run scripts/check.ps1 before reporting regressions from local source changes.',
+      },
+    ],
+    primaryAction: { label: 'Operations guide', href: '/operations' },
+    secondaryAction: { label: 'Open Studio', href: '/studio' },
+  },
+  changelog: {
+    title: 'Changelog',
+    summary: 'Production hardening work is tracked in commits and CHANGELOG.md.',
+    rows: [
+      {
+        label: 'Current release',
+        value: '0.1.0-local-product covers auth, onboarding, diagnostics, storage retention, and benchmarks.',
+      },
+      {
+        label: 'Verification',
+        value: 'Each production slice records scripts/check.ps1 results before commit and push.',
+      },
+      {
+        label: 'Contracts',
+        value: 'OpenAPI contracts are regenerated as part of the default quality gate.',
+      },
+    ],
+    primaryAction: { label: 'Open Studio', href: '/studio' },
+  },
+  operations: {
+    title: 'Operations guide',
+    summary: 'The runbook lives at docs/operations.md and covers local install through release checks.',
+    rows: [
+      {
+        label: 'Setup',
+        value: 'Install, model layout, config, local auth, smoke scripts, and Docker are documented.',
+      },
+      {
+        label: 'Maintenance',
+        value: 'Storage cleanup, diagnostics bundles, backup, restore, and Windows path notes are included.',
+      },
+      {
+        label: 'Release',
+        value: 'Use the guide checklist with CHANGELOG.md and scripts/check.ps1 before distributing builds.',
+      },
+    ],
+    primaryAction: { label: 'Open Studio', href: '/studio' },
+    secondaryAction: { label: 'Support', href: '/support' },
+  },
 }
 
 export function ProductShell({ page = 'home' }: ProductShellProps) {
@@ -131,18 +242,12 @@ function PreviewRow({
   )
 }
 
-function InfoPage({ page }: { page: 'privacy' | 'license' | 'support' | 'changelog' | 'operations' }) {
-  const content = {
-    privacy: ['Privacy', 'Audio, transcripts, voice profiles, jobs, and diagnostics stay in the local workspace by default. External telemetry is off by default.'],
-    license: ['License', 'App, model, and third-party license notes belong here before a packaged release.'],
-    support: ['Support', 'Run diagnostics, check model readiness, review logs, then attach a redacted support bundle when reporting issues.'],
-    changelog: ['Changelog', 'Production hardening, local auth, onboarding, diagnostics, storage retention, and benchmark tooling are tracked in the repository changelog.'],
-    operations: ['Operations guide', 'Install, model layout, config, local auth, smoke tests, Docker, backup, and troubleshooting live in docs/operations.md.'],
-  }[page]
+function InfoPage({ page }: { page: InfoPageId }) {
+  const content = infoPages[page]
 
   return (
     <div className="min-h-screen bg-white text-slate-950">
-      <div className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-4 sm:px-6">
+      <div className="mx-auto flex min-h-screen max-w-4xl flex-col px-4 py-4 sm:px-6">
         <header className="flex h-12 items-center justify-between">
           <a href="/">
             <img className="h-8 w-auto" src={BRAND_LOGO_SRC} alt={BRAND_NAME} />
@@ -152,8 +257,31 @@ function InfoPage({ page }: { page: 'privacy' | 'license' | 'support' | 'changel
           </Button>
         </header>
         <main className="flex flex-1 flex-col justify-center py-12">
-          <h1 className="text-4xl font-semibold tracking-normal">{content[0]}</h1>
-          <p className="mt-4 text-sm leading-6 text-slate-600">{content[1]}</p>
+          <h1 className="text-4xl font-semibold tracking-normal">{content.title}</h1>
+          <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">{content.summary}</p>
+          <div className="mt-6 grid gap-2 md:grid-cols-3">
+            {content.rows.map((row) => (
+              <div key={row.label} className="rounded-md border border-slate-200 bg-white p-3">
+                <div className="text-xs font-semibold text-slate-950">{row.label}</div>
+                <p className="mt-2 text-xs leading-5 text-slate-600">{row.value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 flex flex-wrap gap-2">
+            {content.primaryAction ? (
+              <Button asChild>
+                <a href={content.primaryAction.href}>
+                  {content.primaryAction.label}
+                  <ArrowRight className="size-3.5" />
+                </a>
+              </Button>
+            ) : null}
+            {content.secondaryAction ? (
+              <Button asChild variant="secondary">
+                <a href={content.secondaryAction.href}>{content.secondaryAction.label}</a>
+              </Button>
+            ) : null}
+          </div>
         </main>
       </div>
     </div>

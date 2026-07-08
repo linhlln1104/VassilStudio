@@ -71,6 +71,9 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Download diagnostics" in script
     assert "Storage and retention" in script
     assert "Operations guide" in script
+    assert "No repository LICENSE file is declared yet" in script
+    assert "External telemetry is off" in script
+    assert "belong here" not in script
     assert "Change password" in script
     assert "Changelog" in script
     assert "Warm models" in script
