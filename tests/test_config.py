@@ -103,6 +103,11 @@ def test_parse_settings_resolves_paths() -> None:
     assert settings.jobs.asr_max_workers == 1
     assert settings.jobs.tts_max_workers == 1
     assert settings.security.api_keys == ("secret-1",)
+    assert settings.security.auth_required is False
+    assert settings.security.auth_db_path == root / "data/auth.sqlite3"
+    assert settings.security.session_cookie_name == "vassil_session"
+    assert settings.security.session_ttl_seconds == 604800
+    assert settings.security.secure_cookies is False
 
 
 def test_load_settings_uses_vvoice_root_for_relative_paths(tmp_path, monkeypatch) -> None:
@@ -238,6 +243,31 @@ def test_parse_settings_appends_vassil_api_keys(tmp_path, monkeypatch) -> None:
     settings = parse_settings(raw, tmp_path)
 
     assert settings.security.api_keys == ("file-secret", "env-secret-1", "env-secret-2")
+
+
+def test_parse_settings_supports_local_auth_security_options(tmp_path, monkeypatch) -> None:
+    raw = _minimal_settings_raw()
+    raw["security"] = {
+        "api_keys": [],
+        "auth_required": False,
+        "auth_db_path": "data/custom-auth.sqlite3",
+        "session_cookie_name": "custom_session",
+        "session_ttl_seconds": 120,
+        "secure_cookies": False,
+    }
+
+    monkeypatch.setenv("VASSIL_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("VASSIL_SESSION_SECRET", "env-session-secret")
+    monkeypatch.setenv("VASSIL_SECURE_COOKIES", "1")
+
+    settings = parse_settings(raw, tmp_path)
+
+    assert settings.security.auth_required is True
+    assert settings.security.auth_db_path == tmp_path / "data/custom-auth.sqlite3"
+    assert settings.security.session_cookie_name == "custom_session"
+    assert settings.security.session_ttl_seconds == 120
+    assert settings.security.session_secret == "env-session-secret"
+    assert settings.security.secure_cookies is True
 
 
 def test_parse_settings_supports_job_worker_limits(tmp_path) -> None:

@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import re
+from types import SimpleNamespace
 
-from vvoice.app.studio.router import STATIC_DIR, _resolve_studio_dir, router
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from vvoice.app.auth.service import LocalAuthService
+from vvoice.app.studio.router import STATIC_DIR, _resolve_studio_dir, _safe_static_path, router
+from vvoice.core.config import SecuritySettings
 
 
 def test_studio_route_and_react_assets_are_registered() -> None:
@@ -70,3 +76,36 @@ def test_studio_dir_prefers_vassil_env(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("VASSIL_STUDIO_DIR", str(studio_dir))
 
     assert _resolve_studio_dir() == studio_dir
+
+
+def test_studio_static_path_rejects_traversal() -> None:
+    assert _safe_static_path("../../pyproject.toml") is None
+
+
+def test_studio_redirects_to_setup_until_local_session_exists(tmp_path) -> None:
+    settings = SecuritySettings(
+        api_keys=(),
+        auth_required=True,
+        auth_db_path=tmp_path / "auth.sqlite3",
+        session_cookie_name="vassil_session",
+        session_ttl_seconds=3600,
+        session_secret="test-session-secret",
+        secure_cookies=False,
+    )
+    auth = LocalAuthService(settings)
+    app = FastAPI()
+    app.state.container = SimpleNamespace(settings=SimpleNamespace(security=settings), auth=auth)
+    app.include_router(router)
+    client = TestClient(app)
+
+    response = client.get("/studio", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/setup"
+
+    account = auth.create_owner("owner", "correct horse battery")
+    session = auth.create_session(account)
+    client.cookies.set(settings.session_cookie_name, session.token)
+
+    authorized_response = client.get("/studio")
+    assert authorized_response.status_code == 200
+    assert "VassilStudio" in authorized_response.text

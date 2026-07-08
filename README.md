@@ -11,8 +11,9 @@ The upstream runtime foundation is cloned locally at `foundation/sherpa-onnx` fo
 - `backend/vvoice/domains/voices`: reference voice profile storage.
 - `backend/vvoice/domains/realtime`: websocket chunked ASR for live microphone workflows.
 - `backend/vvoice/shared/audio`: shared audio decode, resample, and WAV encoding.
-- `backend/vvoice/shared/security`: API key and WebSocket auth helpers.
-- `backend/vvoice/app/studio`: Studio static UI route.
+- `backend/vvoice/shared/security`: API key, Studio session, and WebSocket auth helpers.
+- `backend/vvoice/app/auth`: local owner account and session endpoints.
+- `backend/vvoice/app/studio`: public product shell and Studio static UI route.
 - `backend/vvoice/app/system`: health, model status, and warmup routes.
 - `backend/vvoice/main.py`: FastAPI composition through routers.
 - `frontend/studio-react`: production React Studio UI served by the backend from `/studio`.
@@ -83,9 +84,10 @@ npm.cmd run build
 cd ..\..
 ```
 
-Open the local studio:
+Open the local product shell and Studio:
 
 ```text
+http://127.0.0.1:8000/
 http://127.0.0.1:8000/studio
 ```
 
@@ -182,13 +184,27 @@ The compose service mounts:
 - `./data` -> `/app/data` writable
 - `./logs` -> `/app/logs` writable
 
-## API Key Auth
+## Studio Local Auth And API Keys
 
-API key auth is disabled by default. Enable it by adding keys to `config/vassil.example.json`:
+Studio account auth is disabled by default for local development. To require a browser login for
+`/studio`, copy `.env.example` or set:
+
+```powershell
+$env:VASSIL_AUTH_REQUIRED="true"
+$env:VASSIL_SESSION_SECRET="replace-with-random-32-plus-character-secret"
+```
+
+On the first browser visit, `/studio` redirects to `/setup`. Setup creates one local owner account in
+`data/auth.sqlite3` and stores only a password hash. Browser sessions use an HttpOnly cookie. Logout
+invalidates the server-side session.
+
+API key auth remains available for automation and smoke scripts. Enable it by adding keys to
+`config/vassil.example.json`:
 
 ```json
 "security": {
-  "api_keys": ["change-me"]
+  "api_keys": ["change-me"],
+  "auth_required": true
 }
 ```
 
@@ -213,8 +229,8 @@ $env:VASSIL_API_KEY="change-me"
 
 Legacy `VVOICE_*` environment variables and `X-VVoice-API-Key` are still accepted for existing local setups.
 
-`/health` remains public for health checks. Studio has an API key control in Settings and stores
-the key in browser local storage.
+`/health` and `/livez` remain public for health checks. Protected API routes accept either a valid
+Studio session cookie or a configured API key.
 
 ## API Slice
 

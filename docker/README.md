@@ -2,8 +2,8 @@
 
 Docker assets live here so the repository root stays focused on source layout.
 
-The Docker image builds `frontend/studio-react` in a Node stage and serves the generated assets
-from `/studio` through the FastAPI app.
+The Docker image builds `frontend/studio-react` in a Node stage and serves the public product shell
+from `/` plus the Studio app from `/studio` through the FastAPI app.
 
 Run from the repository root:
 
@@ -34,3 +34,12 @@ The compose service mounts:
 - `../logs` -> `/app/logs` writable
 
 Copy `.env.example` to `.env` if you want local defaults for compose variables.
+
+To require browser login in Docker, set these values in `.env` before starting compose:
+
+```powershell
+VASSIL_AUTH_REQUIRED=true
+VASSIL_SESSION_SECRET=replace-with-random-32-plus-character-secret
+```
+
+The local account/session database is stored under the writable `../data` volume.

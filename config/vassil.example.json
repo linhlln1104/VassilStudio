@@ -92,6 +92,12 @@
     "logs_dir": "logs"
   },
   "security": {
-    "api_keys": []
+    "api_keys": [],
+    "auth_required": false,
+    "auth_db_path": "data/auth.sqlite3",
+    "session_cookie_name": "vassil_session",
+    "session_ttl_seconds": 604800,
+    "session_secret": "",
+    "secure_cookies": false
   }
 }

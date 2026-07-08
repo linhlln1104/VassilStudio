@@ -13,6 +13,9 @@ services:
       VASSIL_CONFIG: /app/config/vassil.example.json
       VASSIL_STUDIO_DIR: /app/frontend/studio-react/dist
       VASSIL_API_KEYS: ${VASSIL_API_KEYS:-${VVOICE_API_KEYS:-}}
+      VASSIL_AUTH_REQUIRED: ${VASSIL_AUTH_REQUIRED:-false}
+      VASSIL_SESSION_SECRET: ${VASSIL_SESSION_SECRET:-}
+      VASSIL_SECURE_COOKIES: ${VASSIL_SECURE_COOKIES:-false}
       VVOICE_ROOT: /app
       VVOICE_CONFIG: /app/config/vvoice.example.json
       VVOICE_STUDIO_DIR: /app/frontend/studio-react/dist

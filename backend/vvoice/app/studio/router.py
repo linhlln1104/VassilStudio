@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Request
+from fastapi.responses import FileResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 
 from vvoice.core.env import first_env
+from vvoice.shared.security.auth import request_has_valid_session
 
 
 def _resolve_studio_dir() -> Path:
@@ -31,6 +32,7 @@ def _resolve_studio_dir() -> Path:
 
 router = APIRouter()
 STATIC_DIR = _resolve_studio_dir()
+STATIC_DIR_RESOLVED = STATIC_DIR.resolve()
 ASSETS_DIR = STATIC_DIR / "assets"
 
 if ASSETS_DIR.is_dir():
@@ -47,15 +49,74 @@ else:
     )
 
 
+@router.get("/", include_in_schema=False)
+async def product_index():
+    return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@router.get("/login", include_in_schema=False)
+async def login_page():
+    return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@router.get("/setup", include_in_schema=False)
+async def setup_page():
+    return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@router.get("/privacy", include_in_schema=False)
+async def privacy_page():
+    return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@router.get("/license", include_in_schema=False)
+async def license_page():
+    return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@router.get("/support", include_in_schema=False)
+async def support_page():
+    return FileResponse(str(STATIC_DIR / "index.html"))
+
+
 @router.get("/studio", include_in_schema=False)
-async def studio_index():
+async def studio_index(request: Request):
+    redirect = _studio_auth_redirect(request)
+    if redirect:
+        return redirect
+
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
 @router.get("/studio/{path:path}", include_in_schema=False)
-async def studio_static_file_or_index(path: str):
-    asset = STATIC_DIR / path
-    if asset.is_file():
+async def studio_static_file_or_index(request: Request, path: str):
+    asset = _safe_static_path(path)
+    if asset and asset.is_file():
         return FileResponse(str(asset))
 
+    redirect = _studio_auth_redirect(request)
+    if redirect:
+        return redirect
+
     return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+def _safe_static_path(path: str) -> Path | None:
+    candidate = (STATIC_DIR / path).resolve()
+    try:
+        candidate.relative_to(STATIC_DIR_RESOLVED)
+    except ValueError:
+        return None
+    return candidate
+
+
+def _studio_auth_redirect(request: Request) -> RedirectResponse | None:
+    settings = request.app.state.container.settings.security
+    if not getattr(settings, "auth_required", False):
+        return None
+    if request_has_valid_session(request):
+        return None
+
+    auth = getattr(request.app.state.container, "auth", None)
+    target = "/setup" if auth and auth.setup_required else "/login"
+    return RedirectResponse(url=target, status_code=303)

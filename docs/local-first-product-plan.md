@@ -364,3 +364,9 @@ Commit mục tiêu:
 ```text
 feat: add local auth foundation
 ```
+
+## Implementation Progress
+
+| Date | Slice | Status | Evidence |
+| --- | --- | --- | --- |
+| 2026-07-08 | Product Shell + Local Auth Foundation | Done | `.env.example`, `/api/v1/auth/*`, local SQLite account/session store, `/` product shell, `/setup`, `/login`, protected `/studio`, auth/API key compatibility tests, `scripts/check.ps1` pass |

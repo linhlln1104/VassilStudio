@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from vvoice.app.auth.service import LocalAuthService
 from vvoice.core.config import Settings
 from vvoice.domains.asr.jobs import AsrJobService
 from vvoice.domains.asr.service import AsrService
@@ -16,6 +17,7 @@ class AppContainer:
 
     def __post_init__(self) -> None:
         self._ensure_storage_dirs()
+        self.auth = LocalAuthService(self.settings.security)
         self.asr = AsrService(self.settings.asr, self.settings.runtime)
         self.tts = ZipVoiceService(self.settings.tts, self.settings.runtime)
         self.voices = VoiceStore(self.settings.storage.voices_dir)
@@ -50,5 +52,6 @@ class AppContainer:
             self.settings.storage.uploads_dir,
             self.settings.storage.outputs_dir,
             self.settings.storage.logs_dir,
+            self.settings.security.auth_db_path.parent,
         ]:
             path.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,9 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { AppShell } from '@/components/app-shell/AppShell'
+import { AuthGate } from '@/features/auth/AuthGate'
+import { AuthPage } from '@/features/auth/AuthPage'
+import { ProductShell } from '@/features/product/ProductShell'
 
 import { AppProviders } from './providers'
 import { routeFromHash, routes, type RouteId } from './routes'
@@ -74,7 +77,41 @@ function RouteLoadingFallback() {
 export default function App() {
   return (
     <AppProviders>
-      <StudioApp />
+      <RootRouter />
     </AppProviders>
   )
+}
+
+function RootRouter() {
+  const [path, setPath] = useState(() => normalizedPath())
+
+  useEffect(() => {
+    const handleNavigation = () => setPath(normalizedPath())
+    window.addEventListener('popstate', handleNavigation)
+    return () => window.removeEventListener('popstate', handleNavigation)
+  }, [])
+
+  if (path === '/') {
+    return <ProductShell />
+  }
+  if (path === '/privacy' || path === '/license' || path === '/support') {
+    return <ProductShell page={path.slice(1) as 'privacy' | 'license' | 'support'} />
+  }
+  if (path === '/setup') {
+    return <AuthPage mode="setup" />
+  }
+  if (path === '/login') {
+    return <AuthPage mode="login" />
+  }
+
+  return (
+    <AuthGate>
+      <StudioApp />
+    </AuthGate>
+  )
+}
+
+function normalizedPath() {
+  const path = window.location.pathname.replace(/\/+$/, '')
+  return path || '/'
 }

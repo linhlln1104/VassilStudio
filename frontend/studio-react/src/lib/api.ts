@@ -154,10 +154,35 @@ export type AsrJob = {
 
 export type JobStatus = 'queued' | 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
 
+export type AuthUser = {
+  account_id: string
+  username: string
+  role: string
+}
+
+export type AuthStatusResponse = {
+  auth_required: boolean
+  setup_required: boolean
+  authenticated: boolean
+  api_key_auth_enabled: boolean
+  user: AuthUser | null
+}
+
+export type AuthSessionResponse = {
+  authenticated: boolean
+  user: AuthUser
+  expires_at: string
+}
+
+export type AuthLogoutResponse = {
+  logged_out: boolean
+}
+
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const apiKey = getStoredApiKey()
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    credentials: init?.credentials ?? 'same-origin',
     headers: {
       Accept: 'application/json',
       ...(apiKey ? { 'X-Vassil-API-Key': apiKey } : {}),
@@ -231,6 +256,23 @@ function errorDetailToString(value: unknown): string {
 }
 
 export const api = {
+  authStatus: () => fetchJson<AuthStatusResponse>('/api/v1/auth/status'),
+  authSetup: (payload: { username: string; password: string }) =>
+    fetchJson<AuthSessionResponse>('/api/v1/auth/setup', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  authLogin: (payload: { username: string; password: string }) =>
+    fetchJson<AuthSessionResponse>('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  authLogout: () =>
+    fetchJson<AuthLogoutResponse>('/api/v1/auth/logout', {
+      method: 'POST',
+    }),
   health: () => fetchJson<HealthResponse>('/health'),
   modelStatus: () => fetchJson<ModelStatusResponse>('/model-status'),
   warmup: () => fetchJson<WarmupAllResponse>('/warmup', { method: 'POST' }),

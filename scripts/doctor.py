@@ -70,6 +70,7 @@ def model_checks(config_path: str | None) -> list[Check]:
         "storage.uploads_dir": settings.storage.uploads_dir,
         "storage.outputs_dir": settings.storage.outputs_dir,
         "storage.logs_dir": settings.storage.logs_dir,
+        "security.auth_db_dir": settings.security.auth_db_path.parent,
     }
     for language, model in settings.asr.models.items():
         prefix = f"asr.models.{language}"
@@ -125,6 +126,21 @@ def model_checks(config_path: str | None) -> list[Check]:
             "security.api_key_auth",
             True,
             "enabled" if settings.security.api_keys else "disabled",
+        ),
+        Check(
+            "security.studio_auth",
+            True,
+            "enabled" if settings.security.auth_required else "disabled",
+        ),
+        Check(
+            "security.session_cookie",
+            bool(settings.security.session_cookie_name),
+            settings.security.session_cookie_name,
+        ),
+        Check(
+            "security.session_ttl_seconds",
+            settings.security.session_ttl_seconds > 0,
+            str(settings.security.session_ttl_seconds),
         ),
     ]
 

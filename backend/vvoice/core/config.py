@@ -185,6 +185,12 @@ class StorageSettings:
 @dataclass(frozen=True)
 class SecuritySettings:
     api_keys: tuple[str, ...]
+    auth_required: bool
+    auth_db_path: Path
+    session_cookie_name: str
+    session_ttl_seconds: int
+    session_secret: str
+    secure_cookies: bool
 
 
 @dataclass(frozen=True)
@@ -334,6 +340,27 @@ def parse_settings(raw: dict[str, Any], root: Path) -> Settings:
         ),
         security=SecuritySettings(
             api_keys=_parse_api_keys(security.get("api_keys", [])),
+            auth_required=_parse_bool(
+                first_env("VASSIL_AUTH_REQUIRED", "VVOICE_AUTH_REQUIRED"),
+                bool(security.get("auth_required", False)),
+            ),
+            auth_db_path=_resolve(
+                root,
+                first_env("VASSIL_AUTH_DB_PATH", "VVOICE_AUTH_DB_PATH")
+                or security.get("auth_db_path", paths.data_root / "auth.sqlite3"),
+            ),
+            session_cookie_name=str(
+                security.get("session_cookie_name", "vassil_session"),
+            ),
+            session_ttl_seconds=_positive_int(
+                security.get("session_ttl_seconds", 60 * 60 * 24 * 7),
+                "security.session_ttl_seconds",
+            ),
+            session_secret=str(first_env("VASSIL_SESSION_SECRET", "VVOICE_SESSION_SECRET") or security.get("session_secret", "")),
+            secure_cookies=_parse_bool(
+                first_env("VASSIL_SECURE_COOKIES", "VVOICE_SECURE_COOKIES"),
+                bool(security.get("secure_cookies", False)),
+            ),
         ),
     )
 
@@ -355,6 +382,19 @@ def _non_negative_float(value: Any, name: str) -> float:
     if parsed < 0:
         raise ValueError(f"{name} must be greater than or equal to 0.")
     return parsed
+
+
+def _parse_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean value: {value!r}.")
 
 
 def _parse_asr_settings(raw: dict[str, Any], root: Path) -> AsrSettings:

@@ -98,9 +98,31 @@ the existing service boundary.
 
 `backend/vvoice/shared/security`
 
-Owns optional API key checks for HTTP and WebSocket boundaries. Authentication is disabled when no
-keys are configured. HTTP clients can use `X-Vassil-API-Key` or `Authorization: Bearer`; browser
-WebSocket clients can pass `api_key` in the query string. Legacy `X-VVoice-API-Key` is still accepted.
+Owns API credential checks for HTTP and WebSocket boundaries. Protected APIs accept either a valid
+Studio session cookie or an API key. HTTP clients can use `X-Vassil-API-Key` or
+`Authorization: Bearer`; browser WebSocket clients can pass `api_key` in the query string or rely on
+the Studio session cookie. Legacy `X-VVoice-API-Key` is still accepted.
+
+### Local Auth
+
+`backend/vvoice/app/auth`
+
+Owns local-first browser account setup and session lifecycle. When `security.auth_required` or
+`VASSIL_AUTH_REQUIRED` is enabled, `/studio` redirects to `/setup` until a local owner account exists,
+then to `/login` until the browser has a valid session. Accounts and server-side sessions are stored
+in a small SQLite database at `security.auth_db_path`, defaulting to `data/auth.sqlite3`. Passwords
+are hashed with PBKDF2-HMAC-SHA256. Session cookies are HttpOnly and can be configured with
+`security.session_cookie_name`, `security.session_ttl_seconds`, and `security.secure_cookies`.
+
+API key auth remains available for smoke scripts and automation even when Studio auth is required.
+
+### Product Shell
+
+`backend/vvoice/app/studio`
+
+Serves the public product shell at `/`, auth screens at `/setup` and `/login`, support/trust pages,
+and the Studio app at `/studio`. Static file lookup resolves paths inside the built Studio directory
+before serving files so traversal attempts do not escape the asset root.
 
 ### Observability
 
@@ -126,6 +148,8 @@ not written by the app middleware.
 - Clean terminal speech jobs with `DELETE /api/v1/tts/jobs`.
 - Stream microphone PCM to `/api/v1/realtime/asr?language=vi` and receive chunked transcripts.
 - Require API keys for model/voice/job APIs when `security.api_keys` or `VASSIL_API_KEYS` is set.
+- Require browser login for Studio and protected APIs when `security.auth_required` or
+  `VASSIL_AUTH_REQUIRED` is set.
 - Preload lazy ASR/TTS runtimes with `/warmup`, `/warmup/asr`, and `/warmup/tts`.
 - Check process liveness with `/livez` and model/storage readiness with `/readyz`.
 

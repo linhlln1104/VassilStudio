@@ -25,6 +25,7 @@ from vvoice.core.observability import (
     reset_request_id,
     set_request_id,
 )
+from vvoice.app.auth.router import router as auth_router
 from vvoice.domains.asr.router import router as asr_router
 from vvoice.domains.realtime.router import router as realtime_router
 from vvoice.shared.security.auth import require_api_key
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(system_router, tags=["system"])
+    app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
     protected = [Depends(require_api_key)]
 
     app.include_router(asr_router, prefix="/api/v1/asr", tags=["asr"], dependencies=protected)

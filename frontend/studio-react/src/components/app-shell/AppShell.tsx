@@ -1,11 +1,14 @@
 import { useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import {
+  LogOut,
   Menu,
   X,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { api } from '@/lib/api'
 import { BRAND_LOGO_SRC, BRAND_NAME } from '@/lib/brand'
 import { cn } from '@/lib/utils'
 import { routes, type RouteId, type StudioRoute } from '@/app/routes'
@@ -89,6 +92,8 @@ export function AppShell({ activeRoute, onRouteChange, children }: AppShellProps
                   <span className="truncate">{activeRouteData.label}</span>
                 </div>
               </div>
+
+              <SessionControl />
             </div>
             <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-blue-500/25 to-transparent" />
           </header>
@@ -106,6 +111,41 @@ export function AppShell({ activeRoute, onRouteChange, children }: AppShellProps
           </div>
         </main>
       </div>
+    </div>
+  )
+}
+
+function SessionControl() {
+  const authQuery = useQuery({
+    queryKey: ['auth-status'],
+    queryFn: api.authStatus,
+    staleTime: 10_000,
+  })
+  const logoutMutation = useMutation({
+    mutationFn: api.authLogout,
+    onSuccess: () => {
+      window.location.assign('/login')
+    },
+  })
+
+  if (!authQuery.data?.auth_required) {
+    return null
+  }
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <div className="hidden max-w-[180px] truncate text-xs font-medium text-slate-500 sm:block">
+        {authQuery.data.user?.username ?? 'Signed in'}
+      </div>
+      <Button
+        size="icon"
+        variant="ghost"
+        aria-label="Sign out"
+        onClick={() => logoutMutation.mutate()}
+        disabled={logoutMutation.isPending}
+      >
+        <LogOut className="size-4" />
+      </Button>
     </div>
   )
 }
