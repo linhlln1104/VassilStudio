@@ -37,14 +37,14 @@ Một sản phẩm nhỏ nhưng hoàn chỉnh cần có đủ các lớp sau:
 
 Các baseline nên dùng để thiết kế phần sản phẩm và bảo mật:
 
-| Chủ đề | Baseline | Áp dụng cho VassilStudio |
-| --- | --- | --- |
-| Web app security | OWASP ASVS | Checklist cho auth, session, access control, validation |
-| Session security | OWASP Session Management Cheat Sheet | Cookie flags, session lifecycle, logout, expiry |
-| FastAPI auth | FastAPI OAuth2/JWT docs | Tham khảo pattern password hashing/token; MVP ưu tiên cookie session local |
-| Billing future | Stripe Subscriptions và Customer Portal | Chỉ đưa vào roadmap, chưa cần implement nếu chưa bán subscription |
-| Product onboarding | Product-led onboarding/aha moment | Onboarding phải dẫn tới output thật, không chỉ tour UI |
-| Observability | OpenTelemetry, Sentry | MVP dùng structured logs/local diagnostics; external telemetry opt-in |
+| Chủ đề | Baseline | Source | Áp dụng cho VassilStudio |
+| --- | --- | --- | --- |
+| Web app security | OWASP ASVS | <https://owasp.org/www-project-application-security-verification-standard/> | Checklist cho auth, session, access control, validation |
+| Session security | OWASP Session Management Cheat Sheet | <https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html> | Cookie flags, session lifecycle, logout, expiry |
+| FastAPI auth | FastAPI OAuth2/JWT docs | <https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/> | Tham khảo pattern password hashing/token; MVP ưu tiên cookie session local |
+| Billing future | Stripe Subscriptions và Customer Portal | <https://docs.stripe.com/subscriptions>, <https://docs.stripe.com/customer-management/integrate-customer-portal> | Chỉ đưa vào roadmap, chưa cần implement nếu chưa bán subscription |
+| Product onboarding | Product-led onboarding/aha moment | <https://openviewpartners.com/blog/your-guide-to-product-led-onboarding/> | Onboarding phải dẫn tới output thật, không chỉ tour UI |
+| Observability | OpenTelemetry, Sentry | <https://opentelemetry.io/>, <https://docs.sentry.io/> | MVP dùng structured logs/local diagnostics; external telemetry opt-in |
 
 ## Product Surface
 
