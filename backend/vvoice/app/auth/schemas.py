@@ -27,6 +27,11 @@ class AuthLoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=512)
 
 
+class AuthChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=512)
+    new_password: str = Field(min_length=8, max_length=512)
+
+
 class AuthSessionResponse(BaseModel):
     authenticated: bool
     user: AuthUser
@@ -35,3 +40,8 @@ class AuthSessionResponse(BaseModel):
 
 class AuthLogoutResponse(BaseModel):
     logged_out: bool
+
+
+class AuthPasswordChangeResponse(BaseModel):
+    password_changed: bool
+    other_sessions_revoked: int

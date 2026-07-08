@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 USERNAME = "smoke-owner"
 PASSWORD = "correct horse battery"
+NEW_PASSWORD = "new correct horse battery"
 API_KEY = "smoke-api-key"
 
 
@@ -33,9 +34,13 @@ def main() -> None:
             assert_session_allows_studio_and_api(client)
             assert_logout_redirects_to_login(client)
             assert_login_restores_session(client)
+            assert_change_password(client)
             assert_api_key_still_allows_automation(client)
 
-    print("Auth/product smoke passed: setup, login, logout, protected Studio, API key automation")
+    print(
+        "Auth/product smoke passed: setup, login, password change, "
+        "protected Studio, API key automation",
+    )
 
 
 def configure_environment(temp_dir: Path) -> None:
@@ -117,6 +122,47 @@ def assert_login_restores_session(client: TestClient) -> None:
     me_response.raise_for_status()
     if me_response.json()["username"] != USERNAME:
         raise RuntimeError(f"Unexpected authenticated user: {me_response.json()}")
+
+
+def assert_change_password(client: TestClient) -> None:
+    bad_response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "wrong password", "new_password": NEW_PASSWORD},
+    )
+    if bad_response.status_code != 400:
+        raise RuntimeError(
+            f"Expected bad password change to fail with 400, got {bad_response.status_code}",
+        )
+
+    response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": PASSWORD, "new_password": NEW_PASSWORD},
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if not payload["password_changed"]:
+        raise RuntimeError(f"Unexpected password change payload: {payload}")
+
+    me_response = client.get("/api/v1/auth/me")
+    me_response.raise_for_status()
+
+    logout_response = client.post("/api/v1/auth/logout")
+    logout_response.raise_for_status()
+
+    old_password_response = client.post(
+        "/api/v1/auth/login",
+        json={"username": USERNAME, "password": PASSWORD},
+    )
+    if old_password_response.status_code != 401:
+        raise RuntimeError(
+            f"Expected old password to fail with 401, got {old_password_response.status_code}",
+        )
+
+    new_password_response = client.post(
+        "/api/v1/auth/login",
+        json={"username": USERNAME, "password": NEW_PASSWORD},
+    )
+    new_password_response.raise_for_status()
 
 
 def assert_api_key_still_allows_automation(client: TestClient) -> None:

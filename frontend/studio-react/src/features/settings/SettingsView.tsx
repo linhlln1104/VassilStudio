@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { type FormEvent, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -76,6 +76,9 @@ export function SettingsView() {
   const [apiKeySaved, setApiKeySaved] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordChangeResult, setPasswordChangeResult] = useState<string | null>(null)
   const [cleanupTarget, setCleanupTarget] = useState<RetentionOption | null>(null)
   const [cleanupResult, setCleanupResult] = useState<string | null>(null)
   const [clearKeyConfirmOpen, setClearKeyConfirmOpen] = useState(false)
@@ -111,6 +114,19 @@ export function SettingsView() {
     mutationFn: api.authLogout,
     onSuccess: () => {
       window.location.assign('/login')
+    },
+  })
+  const changePasswordMutation = useMutation({
+    mutationFn: api.authChangePassword,
+    onSuccess: (result) => {
+      setCurrentPassword('')
+      setNewPassword('')
+      setPasswordChangeResult(
+        result.other_sessions_revoked > 0
+          ? `Password updated. Revoked ${result.other_sessions_revoked} other sessions.`
+          : 'Password updated.',
+      )
+      void queryClient.invalidateQueries({ queryKey: ['auth-status'] })
     },
   })
   const diagnosticsBundleMutation = useMutation({
@@ -219,7 +235,30 @@ export function SettingsView() {
           secureCookies={Boolean(diagnosticsQuery.data?.security.secure_cookies)}
           authDbPath={diagnosticsQuery.data?.storage.find((item) => item.name === 'auth_db')?.path ?? 'data/auth.sqlite3'}
           signingOut={logoutMutation.isPending}
+          currentPassword={currentPassword}
+          newPassword={newPassword}
+          passwordChangeRunning={changePasswordMutation.isPending}
+          passwordChangeResult={passwordChangeResult}
+          passwordChangeError={
+            changePasswordMutation.error instanceof Error ? changePasswordMutation.error.message : null
+          }
           onSignOut={() => logoutMutation.mutate()}
+          onCurrentPasswordChange={(value) => {
+            setCurrentPassword(value)
+            setPasswordChangeResult(null)
+            changePasswordMutation.reset()
+          }}
+          onNewPasswordChange={(value) => {
+            setNewPassword(value)
+            setPasswordChangeResult(null)
+            changePasswordMutation.reset()
+          }}
+          onChangePassword={(event) => {
+            event.preventDefault()
+            setPasswordChangeResult(null)
+            changePasswordMutation.reset()
+            changePasswordMutation.mutate({ currentPassword, newPassword })
+          }}
         />
         <LicenseCard
           status={diagnosticsQuery.data?.license.status ?? 'local'}
@@ -353,7 +392,15 @@ function AccountSessionCard({
   secureCookies,
   authDbPath,
   signingOut,
+  currentPassword,
+  newPassword,
+  passwordChangeRunning,
+  passwordChangeResult,
+  passwordChangeError,
   onSignOut,
+  onCurrentPasswordChange,
+  onNewPasswordChange,
+  onChangePassword,
 }: {
   authRequired: boolean
   authenticated: boolean
@@ -365,8 +412,18 @@ function AccountSessionCard({
   secureCookies: boolean
   authDbPath: string
   signingOut: boolean
+  currentPassword: string
+  newPassword: string
+  passwordChangeRunning: boolean
+  passwordChangeResult: string | null
+  passwordChangeError: string | null
   onSignOut: () => void
+  onCurrentPasswordChange: (value: string) => void
+  onNewPasswordChange: (value: string) => void
+  onChangePassword: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const canChangePassword = currentPassword.length > 0 && newPassword.length >= 8 && !passwordChangeRunning
+
   return (
     <Card>
       <CardHeader>
@@ -395,10 +452,58 @@ function AccountSessionCard({
           <div className="mt-1 break-all text-xs font-semibold text-slate-950">{authDbPath}</div>
         </div>
         {authRequired && authenticated ? (
-          <Button className="mt-3" variant="secondary" onClick={onSignOut} disabled={signingOut}>
-            <LogOut className="size-4" />
-            {signingOut ? 'Signing out' : 'Sign out'}
-          </Button>
+          <>
+            <form
+              className="mt-3 grid gap-2 rounded-md border border-slate-200 bg-white p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+              onSubmit={onChangePassword}
+            >
+              <label className="block min-w-0">
+                <span className="mb-2 block text-xs font-semibold text-slate-700">Current password</span>
+                <input
+                  className="h-8 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-950 outline-none placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  type="password"
+                  value={currentPassword}
+                  autoComplete="current-password"
+                  onChange={(event) => onCurrentPasswordChange(event.target.value)}
+                />
+              </label>
+              <label className="block min-w-0">
+                <span className="mb-2 block text-xs font-semibold text-slate-700">New password</span>
+                <input
+                  className="h-8 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-950 outline-none placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  type="password"
+                  value={newPassword}
+                  autoComplete="new-password"
+                  minLength={8}
+                  onChange={(event) => onNewPasswordChange(event.target.value)}
+                />
+              </label>
+              <div className="flex items-end">
+                <Button className="w-full lg:w-auto" type="submit" disabled={!canChangePassword}>
+                  {passwordChangeRunning ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <KeyRound className="size-4" />
+                  )}
+                  {passwordChangeRunning ? 'Updating' : 'Change password'}
+                </Button>
+              </div>
+            </form>
+            {passwordChangeResult ? (
+              <div className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-blue-700">
+                {passwordChangeResult}
+              </div>
+            ) : null}
+            {passwordChangeError ? (
+              <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                {passwordChangeError}
+              </div>
+            ) : null}
+            <Button className="mt-3" variant="secondary" onClick={onSignOut} disabled={signingOut}>
+              <LogOut className="size-4" />
+              {signingOut ? 'Signing out' : 'Sign out'}
+            </Button>
+          </>
         ) : null}
       </CardContent>
     </Card>

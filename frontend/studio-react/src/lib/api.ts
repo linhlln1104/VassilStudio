@@ -203,6 +203,11 @@ export type AuthLogoutResponse = {
   logged_out: boolean
 }
 
+export type AuthPasswordChangeResponse = {
+  password_changed: boolean
+  other_sessions_revoked: number
+}
+
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithAuth(path, init)
 
@@ -311,6 +316,15 @@ export const api = {
   authLogout: () =>
     fetchJson<AuthLogoutResponse>('/api/v1/auth/logout', {
       method: 'POST',
+    }),
+  authChangePassword: (payload: { currentPassword: string; newPassword: string }) =>
+    fetchJson<AuthPasswordChangeResponse>('/api/v1/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        current_password: payload.currentPassword,
+        new_password: payload.newPassword,
+      }),
+      headers: { 'Content-Type': 'application/json' },
     }),
   health: () => fetchJson<HealthResponse>('/health'),
   modelStatus: () => fetchJson<ModelStatusResponse>('/model-status'),

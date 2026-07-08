@@ -51,6 +51,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "/api/v1/asr/jobs" in script
     assert "/api/v1/voices/import" in script
     assert "/api/v1/voices/" in script
+    assert "/api/v1/auth/change-password" in script
     assert "PATCH" in script
     assert "DELETE" in script
     assert "/model-status" in script
@@ -68,6 +69,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Run diagnostics" in script
     assert "Download diagnostics" in script
     assert "Storage and retention" in script
+    assert "Change password" in script
     assert "Changelog" in script
     assert "Warm models" in script
     assert "Render mode" in script

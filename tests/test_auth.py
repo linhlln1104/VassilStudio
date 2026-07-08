@@ -94,6 +94,70 @@ def test_local_auth_setup_login_logout_and_session_protection(tmp_path) -> None:
     assert login_response.status_code == 200
     assert client.get("/api/v1/auth/me").json()["username"] == "owner@local"
 
+    bad_change_response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "wrong password", "new_password": "new correct horse battery"},
+    )
+    assert bad_change_response.status_code == 400
+
+    change_response = client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": "correct horse battery",
+            "new_password": "new correct horse battery",
+        },
+    )
+    assert change_response.status_code == 200
+    assert change_response.json() == {"password_changed": True, "other_sessions_revoked": 0}
+    assert client.get("/protected").status_code == 200
+
+    logout_after_change = client.post("/api/v1/auth/logout")
+    assert logout_after_change.status_code == 200
+
+    old_password_response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "owner@local", "password": "correct horse battery"},
+    )
+    assert old_password_response.status_code == 401
+
+    new_password_response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "owner@local", "password": "new correct horse battery"},
+    )
+    assert new_password_response.status_code == 200
+
+
+def test_change_password_revokes_other_sessions(tmp_path) -> None:
+    settings = make_security_settings(tmp_path, auth_required=True)
+    app = make_auth_app(settings)
+    client_one = TestClient(app)
+    client_two = TestClient(app)
+
+    setup_response = client_one.post(
+        "/api/v1/auth/setup",
+        json={"username": "owner", "password": "correct horse battery"},
+    )
+    assert setup_response.status_code == 201
+
+    second_login_response = client_two.post(
+        "/api/v1/auth/login",
+        json={"username": "owner", "password": "correct horse battery"},
+    )
+    assert second_login_response.status_code == 200
+
+    change_response = client_one.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": "correct horse battery",
+            "new_password": "new correct horse battery",
+        },
+    )
+
+    assert change_response.status_code == 200
+    assert change_response.json() == {"password_changed": True, "other_sessions_revoked": 1}
+    assert client_one.get("/protected").status_code == 200
+    assert client_two.get("/protected").status_code == 401
+
 
 def test_api_key_still_authorizes_when_local_auth_is_required(tmp_path) -> None:
     settings = make_security_settings(tmp_path, auth_required=True, api_keys=("api-secret",))

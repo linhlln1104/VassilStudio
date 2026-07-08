@@ -8,6 +8,7 @@ All notable VassilStudio productionization changes are tracked here.
 
 - Product shell at `/` with public trust/support/license/changelog routes.
 - Local owner setup, login, logout, HttpOnly session cookies, and protected Studio routing.
+- Local owner password change from Settings with other-session revocation.
 - API key compatibility for automation when Studio auth is required.
 - Settings account/session surface, local license placeholder, diagnostics metadata, and redacted diagnostics bundle.
 - First output onboarding checklist in Generate.

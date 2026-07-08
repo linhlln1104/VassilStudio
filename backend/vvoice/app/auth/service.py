@@ -197,6 +197,70 @@ class LocalAuthService:
             )
             return cursor.rowcount > 0
 
+    def change_password(
+        self,
+        account_id: str,
+        current_password: str,
+        new_password: str,
+        current_session_token: str | None,
+    ) -> int:
+        _validate_password(new_password)
+        current_token_hash = (
+            self._hash_session_token(current_session_token) if current_session_token else None
+        )
+        now = _utc_now()
+
+        with self._lock, self._connect() as db:
+            row = db.execute(
+                """
+                select account_id, password_hash
+                from accounts
+                where account_id = ?
+                """,
+                (account_id,),
+            ).fetchone()
+            if row is None:
+                raise AuthError("Local account was not found.")
+
+            password_hash = str(row["password_hash"])
+            if not _verify_password(current_password, password_hash):
+                raise AuthError("Current password is incorrect.")
+            if _verify_password(new_password, password_hash):
+                raise AuthError("New password must be different.")
+
+            db.execute(
+                """
+                update accounts
+                set password_hash = ?, updated_at = ?
+                where account_id = ?
+                """,
+                (_hash_password(new_password), now, account_id),
+            )
+
+            if current_token_hash:
+                cursor = db.execute(
+                    """
+                    update sessions
+                    set revoked_at = ?
+                    where account_id = ?
+                      and token_hash != ?
+                      and revoked_at is null
+                    """,
+                    (now, account_id, current_token_hash),
+                )
+            else:
+                cursor = db.execute(
+                    """
+                    update sessions
+                    set revoked_at = ?
+                    where account_id = ?
+                      and revoked_at is null
+                    """,
+                    (now, account_id),
+                )
+
+            return cursor.rowcount
+
     def _hash_session_token(self, token: str) -> str:
         secret = self.settings.session_secret.encode("utf-8")
         if secret:

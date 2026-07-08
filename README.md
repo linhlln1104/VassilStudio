@@ -208,7 +208,8 @@ $env:VASSIL_SESSION_SECRET="replace-with-random-32-plus-character-secret"
 
 On the first browser visit, `/studio` redirects to `/setup`. Setup creates one local owner account in
 `data/auth.sqlite3` and stores only a password hash. Browser sessions use an HttpOnly cookie. Logout
-invalidates the server-side session.
+invalidates the server-side session. Settings can change the local owner password and revoke other
+active sessions.
 
 API key auth remains available for automation and smoke scripts. Enable it by adding keys to
 `config/vassil.example.json`:

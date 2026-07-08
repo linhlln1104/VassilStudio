@@ -377,3 +377,4 @@ feat: add local auth foundation
 | 2026-07-08 | Auth Product Smoke | Done | `scripts/smoke_auth.py` isolated first-run setup/login/logout/protected Studio/API key smoke in `scripts/check.ps1` |
 | 2026-07-08 | Latency Benchmark Scripts | Done | `benchmark_tts_latency`, `benchmark_asr_latency`, and `benchmark_realtime_chunking` scripts with JSON summaries; `scripts/check.ps1` pass |
 | 2026-07-08 | Changelog And Release Hygiene | Done | Public `/changelog` route, repository `CHANGELOG.md`, and `scripts/check.ps1` pass |
+| 2026-07-08 | Account Password Management | Done | `POST /api/v1/auth/change-password`, Settings password form, other-session revocation tests, auth smoke coverage, and `scripts/check.ps1` pass |

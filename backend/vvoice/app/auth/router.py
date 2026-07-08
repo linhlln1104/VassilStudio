@@ -3,8 +3,10 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from vvoice.app.auth.schemas import (
+    AuthChangePasswordRequest,
     AuthLoginRequest,
     AuthLogoutResponse,
+    AuthPasswordChangeResponse,
     AuthSessionResponse,
     AuthSetupRequest,
     AuthStatusResponse,
@@ -121,6 +123,33 @@ async def me(request: Request) -> AuthUser:
             detail="Missing or invalid Studio session.",
         )
     return _auth_user(account)
+
+
+@router.post("/change-password", response_model=AuthPasswordChangeResponse)
+async def change_password(
+    payload: AuthChangePasswordRequest,
+    request: Request,
+) -> AuthPasswordChangeResponse:
+    auth = _auth_service(request)
+    token = _session_cookie(request)
+    account = auth.account_from_session_token(token) if auth.auth_required else None
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Studio session.",
+        )
+
+    try:
+        revoked_count = auth.change_password(
+            account.account_id,
+            payload.current_password,
+            payload.new_password,
+            current_session_token=token,
+        )
+    except AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return AuthPasswordChangeResponse(password_changed=True, other_sessions_revoked=revoked_count)
 
 
 def _auth_service(request: Request) -> LocalAuthService:

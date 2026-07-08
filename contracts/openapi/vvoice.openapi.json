@@ -184,6 +184,28 @@
         "title": "AsrJobResponse",
         "type": "object"
       },
+      "AuthChangePasswordRequest": {
+        "properties": {
+          "current_password": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 512,
+            "minLength": 8,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "AuthChangePasswordRequest",
+        "type": "object"
+      },
       "AuthLoginRequest": {
         "properties": {
           "password": {
@@ -217,6 +239,24 @@
           "logged_out"
         ],
         "title": "AuthLogoutResponse",
+        "type": "object"
+      },
+      "AuthPasswordChangeResponse": {
+        "properties": {
+          "other_sessions_revoked": {
+            "title": "Other Sessions Revoked",
+            "type": "integer"
+          },
+          "password_changed": {
+            "title": "Password Changed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "password_changed",
+          "other_sessions_revoked"
+        ],
+        "title": "AuthPasswordChangeResponse",
         "type": "object"
       },
       "AuthSessionResponse": {
@@ -1715,6 +1755,47 @@
         "summary": "Transcribe Audio",
         "tags": [
           "asr"
+        ]
+      }
+    },
+    "/api/v1/auth/change-password": {
+      "post": {
+        "operationId": "change_password_api_v1_auth_change_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthPasswordChangeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Password",
+        "tags": [
+          "auth"
         ]
       }
     },
