@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import sqlite3
 from types import SimpleNamespace
 
 from fastapi import Depends, FastAPI
@@ -42,6 +45,33 @@ def test_auth_rejects_missing_or_wrong_key() -> None:
     assert _candidate_from_mapping({}, {}) is None
     assert not _matches(None, ["secret"])
     assert not _matches("wrong", ["secret"])
+
+
+def test_local_auth_uses_scrypt_password_hash_by_default(tmp_path) -> None:
+    settings = make_security_settings(tmp_path, auth_required=True)
+    auth = LocalAuthService(settings)
+
+    auth.create_owner("owner", "correct horse battery")
+
+    password_hash = _stored_password_hash(settings.auth_db_path)
+    assert password_hash.startswith("scrypt_sha256$")
+    assert "correct horse battery" not in password_hash
+    assert auth.authenticate("owner", "correct horse battery") is not None
+
+
+def test_local_auth_accepts_legacy_pbkdf2_hashes(tmp_path) -> None:
+    settings = make_security_settings(tmp_path, auth_required=True)
+    auth = LocalAuthService(settings)
+    account = auth.create_owner("owner", "correct horse battery")
+    legacy_hash = make_legacy_pbkdf2_hash("legacy horse battery")
+    with sqlite3.connect(settings.auth_db_path) as db:
+        db.execute(
+            "update accounts set password_hash = ? where account_id = ?",
+            (legacy_hash, account.account_id),
+        )
+
+    assert auth.authenticate("owner", "legacy horse battery") is not None
+    assert auth.authenticate("owner", "correct horse battery") is None
 
 
 def test_local_auth_setup_login_logout_and_session_protection(tmp_path) -> None:
@@ -274,3 +304,27 @@ def make_auth_app(settings: SecuritySettings) -> FastAPI:
         return {"ok": True}
 
     return app
+
+
+def _stored_password_hash(path) -> str:
+    with sqlite3.connect(path) as db:
+        row = db.execute("select password_hash from accounts limit 1").fetchone()
+    assert row is not None
+    return str(row[0])
+
+
+def make_legacy_pbkdf2_hash(password: str) -> str:
+    salt = b"legacy-test-salt"
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 1)
+    return "$".join(
+        [
+            "pbkdf2_sha256",
+            "1",
+            _b64encode(salt),
+            _b64encode(digest),
+        ],
+    )
+
+
+def _b64encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")

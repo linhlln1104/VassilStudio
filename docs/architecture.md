@@ -111,7 +111,8 @@ Owns local-first browser account setup and session lifecycle. When `security.aut
 `VASSIL_AUTH_REQUIRED` is enabled, `/studio` redirects to `/setup` until a local owner account exists,
 then to `/login` until the browser has a valid session. Accounts and server-side sessions are stored
 in a small SQLite database at `security.auth_db_path`, defaulting to `data/auth.sqlite3`. Passwords
-are hashed with PBKDF2-HMAC-SHA256. Session cookies are HttpOnly and can be configured with
+are hashed with scrypt-SHA256 for new accounts, while legacy PBKDF2-HMAC-SHA256 hashes remain
+verifiable for existing local databases. Session cookies are HttpOnly and can be configured with
 `security.session_cookie_name`, `security.session_ttl_seconds`, and `security.secure_cookies`.
 
 API key auth remains available for smoke scripts and automation even when Studio auth is required.

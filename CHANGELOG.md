@@ -24,6 +24,7 @@ All notable VassilStudio productionization changes are tracked here.
 
 - Request IDs, structured HTTP/job logs, liveness/readiness split, request upload limits, and path-safe Studio static serving.
 - Local auth login and password change attempts are rate-limited with `429` and `Retry-After`.
+- New local account passwords use scrypt hashes while legacy PBKDF2 hashes remain verifiable.
 - ASR/TTS job lifecycle with cancellation, retry metadata, cleanup, and consistent terminal states.
 - Language-aware ASR/TTS runtime selection and model readiness reporting.
 

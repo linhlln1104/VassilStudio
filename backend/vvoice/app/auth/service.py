@@ -18,6 +18,11 @@ import uuid
 from vvoice.core.config import SecuritySettings
 
 
+SCRYPT_ALGORITHM = "scrypt_sha256"
+SCRYPT_N = 2**14
+SCRYPT_R = 8
+SCRYPT_P = 1
+SCRYPT_DKLEN = 32
 PBKDF2_ALGORITHM = "pbkdf2_sha256"
 PBKDF2_ITERATIONS = 390_000
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.@-]{3,80}$")
@@ -393,16 +398,20 @@ def _validate_password(password: str) -> None:
 
 def _hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac(
-        "sha256",
+    digest = hashlib.scrypt(
         password.encode("utf-8"),
-        salt,
-        PBKDF2_ITERATIONS,
+        salt=salt,
+        n=SCRYPT_N,
+        r=SCRYPT_R,
+        p=SCRYPT_P,
+        dklen=SCRYPT_DKLEN,
     )
     return "$".join(
         [
-            PBKDF2_ALGORITHM,
-            str(PBKDF2_ITERATIONS),
+            SCRYPT_ALGORITHM,
+            str(SCRYPT_N),
+            str(SCRYPT_R),
+            str(SCRYPT_P),
             _b64encode(salt),
             _b64encode(digest),
         ],
@@ -411,20 +420,48 @@ def _hash_password(password: str) -> str:
 
 def _verify_password(password: str, encoded_hash: str) -> bool:
     try:
-        algorithm, iterations, salt, expected = encoded_hash.split("$", 3)
-        if algorithm != PBKDF2_ALGORITHM:
-            return False
-        salt_bytes = _b64decode(salt)
-        expected_bytes = _b64decode(expected)
-        candidate = hashlib.pbkdf2_hmac(
-            "sha256",
-            password.encode("utf-8"),
-            salt_bytes,
-            int(iterations),
-        )
-        return hmac.compare_digest(candidate, expected_bytes)
+        algorithm, *parts = encoded_hash.split("$")
+        if algorithm == SCRYPT_ALGORITHM:
+            return _verify_scrypt_password(password, parts)
+        if algorithm == PBKDF2_ALGORITHM:
+            return _verify_pbkdf2_password(password, parts)
+        return False
     except (ValueError, TypeError):
         return False
+
+
+def _verify_scrypt_password(password: str, parts: list[str]) -> bool:
+    if len(parts) != 5:
+        return False
+
+    n, r, p, salt, expected = parts
+    salt_bytes = _b64decode(salt)
+    expected_bytes = _b64decode(expected)
+    candidate = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=salt_bytes,
+        n=int(n),
+        r=int(r),
+        p=int(p),
+        dklen=len(expected_bytes),
+    )
+    return hmac.compare_digest(candidate, expected_bytes)
+
+
+def _verify_pbkdf2_password(password: str, parts: list[str]) -> bool:
+    if len(parts) != 3:
+        return False
+
+    iterations, salt, expected = parts
+    salt_bytes = _b64decode(salt)
+    expected_bytes = _b64decode(expected)
+    candidate = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt_bytes,
+        int(iterations),
+    )
+    return hmac.compare_digest(candidate, expected_bytes)
 
 
 def _account_from_row(row: sqlite3.Row) -> Account:

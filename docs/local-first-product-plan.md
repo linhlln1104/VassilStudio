@@ -383,3 +383,4 @@ feat: add local auth foundation
 | 2026-07-08 | Auth Rate Limiting | Done | Login and password change attempts return `429` with `Retry-After` after repeated failures, with pytest/OpenAPI coverage and `scripts/check.ps1` pass |
 | 2026-07-08 | Release Metadata | Done | Backend app version uses `vvoice.__version__`, `/health` and `/diagnostics` expose version, React package version is `0.1.0`, and `scripts/check.ps1` pass |
 | 2026-07-08 | Local Env Bootstrap | Done | `.env.example` points to `config/vassil.example.json`, `scripts/run_api.ps1` loads `.env` without overriding shell env, with tests and `scripts/check.ps1` pass |
+| 2026-07-08 | Password Hash Upgrade | Done | New local accounts use scrypt password hashes, legacy PBKDF2 hashes remain verifiable, with pytest coverage and `scripts/check.ps1` pass |
