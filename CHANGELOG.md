@@ -18,6 +18,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Operations guide with install, model layout, auth, smoke, Docker, backup, and troubleshooting.
 - Product-grade trust pages for privacy, support, license, changelog, and operations.
 - Release metadata aligned across backend, health/diagnostics, OpenAPI, and React package files.
+- Native `run_api.ps1` loads `.env`, and `.env.example` points to an existing default config.
 
 ### Hardened
 

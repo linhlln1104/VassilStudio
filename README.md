@@ -207,6 +207,9 @@ $env:VASSIL_AUTH_REQUIRED="true"
 $env:VASSIL_SESSION_SECRET="replace-with-random-32-plus-character-secret"
 ```
 
+`scripts/run_api.ps1` loads `.env` automatically for native local runs while preserving any
+environment variables already set in the shell.
+
 On the first browser visit, `/studio` redirects to `/setup`. Setup creates one local owner account in
 `data/auth.sqlite3` and stores only a password hash. Browser sessions use an HttpOnly cookie. Logout
 invalidates the server-side session. Settings can change the local owner password and revoke other

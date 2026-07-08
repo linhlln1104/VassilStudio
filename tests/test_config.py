@@ -4,6 +4,9 @@ from pathlib import Path
 from vvoice.core.config import load_settings, parse_settings
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 def _minimal_settings_raw() -> dict:
     return {
         "runtime": {"provider": "cpu", "num_threads": 2, "debug": False},
@@ -27,6 +30,28 @@ def _minimal_settings_raw() -> dict:
         },
         "security": {"api_keys": []},
     }
+
+
+def test_env_example_points_to_existing_default_config() -> None:
+    env_example = ROOT / ".env.example"
+    values = {}
+    for line in env_example.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        values[name] = value
+
+    config_path = ROOT / values["VASSIL_CONFIG"]
+
+    assert config_path.is_file()
+
+
+def test_run_api_loads_local_env_file() -> None:
+    script = ROOT.joinpath("scripts", "run_api.ps1").read_text(encoding="utf-8")
+
+    assert "Import-LocalEnvFile" in script
+    assert 'Join-Path $root ".env"' in script
 
 
 def test_parse_settings_resolves_paths() -> None:

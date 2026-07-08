@@ -36,6 +36,8 @@ VASSIL_SESSION_SECRET=replace-with-random-32-plus-character-secret
 ```
 
 On first visit, `/studio` redirects to `/setup` and creates the local owner account.
+`scripts/run_api.ps1` loads `.env` automatically for native local runs. Existing process
+environment variables still take precedence.
 
 ## Workspace Layout
 
