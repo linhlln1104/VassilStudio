@@ -8,6 +8,8 @@ import { ProductShell } from '@/features/product/ProductShell'
 import { AppProviders } from './providers'
 import { routeFromHash, routes, type RouteId } from './routes'
 
+type ProductPage = 'privacy' | 'license' | 'support' | 'changelog' | 'operations'
+
 function StudioApp() {
   const [activeRoute, setActiveRoute] = useState<RouteId>(() => routeFromHash(window.location.hash))
 
@@ -94,8 +96,14 @@ function RootRouter() {
   if (path === '/') {
     return <ProductShell />
   }
-  if (path === '/privacy' || path === '/license' || path === '/support' || path === '/changelog') {
-    return <ProductShell page={path.slice(1) as 'privacy' | 'license' | 'support' | 'changelog'} />
+  if (
+    path === '/privacy' ||
+    path === '/license' ||
+    path === '/support' ||
+    path === '/changelog' ||
+    path === '/operations'
+  ) {
+    return <ProductShell page={path.slice(1) as ProductPage} />
   }
   if (path === '/setup') {
     return <AuthPage mode="setup" />

@@ -16,6 +16,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "/" in paths
     assert "/changelog" in paths
     assert "/support" in paths
+    assert "/operations" in paths
     assert "/privacy" in paths
     assert "/license" in paths
     assert "/studio" in paths
@@ -69,6 +70,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Run diagnostics" in script
     assert "Download diagnostics" in script
     assert "Storage and retention" in script
+    assert "Operations guide" in script
     assert "Change password" in script
     assert "Changelog" in script
     assert "Warm models" in script

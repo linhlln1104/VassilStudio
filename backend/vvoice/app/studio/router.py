@@ -79,6 +79,11 @@ async def support_page():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
+@router.get("/operations", include_in_schema=False)
+async def operations_page():
+    return FileResponse(str(STATIC_DIR / "index.html"))
+
+
 @router.get("/changelog", include_in_schema=False)
 async def changelog_page():
     return FileResponse(str(STATIC_DIR / "index.html"))

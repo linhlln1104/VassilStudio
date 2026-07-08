@@ -1,6 +1,7 @@
 # VassilStudio Docker
 
 Docker assets live here so the repository root stays focused on source layout.
+See `../docs/operations.md` for the full local operations runbook.
 
 The Docker image builds `frontend/studio-react` in a Node stage and serves the public product shell
 from `/` plus the Studio app from `/studio` through the FastAPI app.

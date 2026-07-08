@@ -15,6 +15,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Storage usage and terminal job retention controls in Settings.
 - Auth/product smoke in `scripts/check.ps1`.
 - Latency benchmark scripts for TTS, ASR, and realtime chunking.
+- Operations guide with install, model layout, auth, smoke, Docker, backup, and troubleshooting.
 
 ### Hardened
 
