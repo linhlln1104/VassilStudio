@@ -94,8 +94,8 @@ function RootRouter() {
   if (path === '/') {
     return <ProductShell />
   }
-  if (path === '/privacy' || path === '/license' || path === '/support') {
-    return <ProductShell page={path.slice(1) as 'privacy' | 'license' | 'support'} />
+  if (path === '/privacy' || path === '/license' || path === '/support' || path === '/changelog') {
+    return <ProductShell page={path.slice(1) as 'privacy' | 'license' | 'support' | 'changelog'} />
   }
   if (path === '/setup') {
     return <AuthPage mode="setup" />

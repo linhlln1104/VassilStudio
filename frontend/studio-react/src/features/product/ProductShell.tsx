@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { BRAND_LOGO_SRC, BRAND_NAME } from '@/lib/brand'
 
 type ProductShellProps = {
-  page?: 'home' | 'privacy' | 'license' | 'support'
+  page?: 'home' | 'privacy' | 'license' | 'support' | 'changelog'
 }
 
 export function ProductShell({ page = 'home' }: ProductShellProps) {
@@ -20,6 +20,7 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
             <img className="h-8 w-auto" src={BRAND_LOGO_SRC} alt={BRAND_NAME} />
           </a>
           <nav className="hidden items-center gap-5 text-xs font-medium text-slate-500 sm:flex">
+            <a className="hover:text-slate-950" href="/changelog">Changelog</a>
             <a className="hover:text-slate-950" href="/support">Support</a>
             <a className="hover:text-slate-950" href="/privacy">Privacy</a>
             <a className="hover:text-slate-950" href="/license">License</a>
@@ -129,11 +130,12 @@ function PreviewRow({
   )
 }
 
-function InfoPage({ page }: { page: 'privacy' | 'license' | 'support' }) {
+function InfoPage({ page }: { page: 'privacy' | 'license' | 'support' | 'changelog' }) {
   const content = {
     privacy: ['Privacy', 'Audio, transcripts, voice profiles, jobs, and diagnostics stay in the local workspace by default. External telemetry is off by default.'],
     license: ['License', 'App, model, and third-party license notes belong here before a packaged release.'],
     support: ['Support', 'Run diagnostics, check model readiness, review logs, then attach a redacted support bundle when reporting issues.'],
+    changelog: ['Changelog', 'Production hardening, local auth, onboarding, diagnostics, storage retention, and benchmark tooling are tracked in the repository changelog.'],
   }[page]
 
   return (

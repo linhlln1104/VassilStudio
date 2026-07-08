@@ -13,6 +13,11 @@ from vvoice.core.config import SecuritySettings
 
 def test_studio_route_and_react_assets_are_registered() -> None:
     paths = {route.path for route in router.routes if hasattr(route, "path")}
+    assert "/" in paths
+    assert "/changelog" in paths
+    assert "/support" in paths
+    assert "/privacy" in paths
+    assert "/license" in paths
     assert "/studio" in paths
     assert "/studio/assets" in paths
     assert "/studio/{path:path}" in paths
@@ -63,6 +68,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Run diagnostics" in script
     assert "Download diagnostics" in script
     assert "Storage and retention" in script
+    assert "Changelog" in script
     assert "Warm models" in script
     assert "Render mode" in script
     assert "First output checklist" in script

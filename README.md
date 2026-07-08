@@ -4,6 +4,8 @@ VassilStudio is a modular monolith for local voice workflows built around ZipFor
 
 The upstream runtime foundation is cloned locally at `foundation/sherpa-onnx` for reference. VassilStudio itself stays rooted in this repository and uses `sherpa-onnx` for ZipFormer ASR plus a direct ONNX runtime path for ZipVoice TTS.
 
+See `CHANGELOG.md` for productionization milestones.
+
 ## Current Shape
 
 - `backend/vvoice/domains/asr`: language-aware ZipFormer transcription.

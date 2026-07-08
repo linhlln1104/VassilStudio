@@ -79,6 +79,11 @@ async def support_page():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
+@router.get("/changelog", include_in_schema=False)
+async def changelog_page():
+    return FileResponse(str(STATIC_DIR / "index.html"))
+
+
 @router.get("/studio", include_in_schema=False)
 async def studio_index(request: Request):
     redirect = _studio_auth_redirect(request)
