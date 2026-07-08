@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import io
+import json
 from pathlib import Path
+import platform
+import sys
+import zipfile
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 
 from vvoice.app.system.schemas import (
     DiagnosticsResponse,
@@ -80,6 +86,64 @@ async def model_status(request: Request):
 async def diagnostics(request: Request):
     container = request.app.state.container
     settings = request.app.state.container.settings
+    return _diagnostics_payload(container, settings)
+
+
+@router.get(
+    "/diagnostics/bundle",
+    dependencies=[Depends(require_api_key)],
+)
+async def diagnostics_bundle(request: Request):
+    container = request.app.state.container
+    settings = request.app.state.container.settings
+    payload = _diagnostics_payload(container, settings)
+    readiness_checks = {
+        **_model_file_checks(settings),
+        **_storage_checks(settings),
+    }
+    generated_at = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, mode="w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr("diagnostics.json", _json_bytes(payload))
+        bundle.writestr(
+            "readiness.json",
+            _json_bytes(
+                {
+                    "status": "ready" if all(readiness_checks.values()) else "not_ready",
+                    "checks": readiness_checks,
+                }
+            ),
+        )
+        bundle.writestr(
+            "environment.json",
+            _json_bytes(
+                {
+                    "python": sys.version.split()[0],
+                    "platform": platform.platform(),
+                }
+            ),
+        )
+        bundle.writestr(
+            "README.txt",
+            (
+                "VassilStudio diagnostics bundle\n"
+                "This bundle contains redacted runtime, readiness, storage, and environment metadata.\n"
+                "It does not include API keys, session secrets, cookies, transcripts, or audio files.\n"
+            ),
+        )
+
+    archive.seek(0)
+    return StreamingResponse(
+        archive,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="vassilstudio-diagnostics-{generated_at}.zip"',
+        },
+    )
+
+
+def _diagnostics_payload(container, settings) -> dict:
     return {
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "runtime": _runtime_status(container, settings),
@@ -188,6 +252,10 @@ def _diagnostic_storage_items(settings) -> list[dict[str, object]]:
         }
         for name, path in paths.items()
     ]
+
+
+def _json_bytes(payload: object) -> bytes:
+    return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
 
 
 def _model_file_checks(settings) -> dict[str, bool]:

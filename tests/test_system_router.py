@@ -1,4 +1,7 @@
+import io
+import json
 from types import SimpleNamespace
+import zipfile
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -57,6 +60,28 @@ def test_diagnostics_reports_redacted_operations_metadata(tmp_path) -> None:
     assert "api_keys" not in payload["security"]
     assert "session_secret" not in payload["security"]
     assert any(item["name"] == "auth_db" for item in payload["storage"])
+
+
+def test_diagnostics_bundle_is_redacted_zip(tmp_path) -> None:
+    app, _, _ = make_app(tmp_path)
+    client = TestClient(app)
+
+    response = client.get("/diagnostics/bundle")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    with zipfile.ZipFile(io.BytesIO(response.content)) as bundle:
+        assert sorted(bundle.namelist()) == [
+            "README.txt",
+            "diagnostics.json",
+            "environment.json",
+            "readiness.json",
+        ]
+        diagnostics = json.loads(bundle.read("diagnostics.json"))
+
+    assert diagnostics["security"]["auth_required"] is False
+    assert "api_keys" not in diagnostics["security"]
+    assert "session_secret" not in diagnostics["security"]
 
 
 def test_liveness_probe_is_process_only(tmp_path) -> None:

@@ -2593,6 +2593,25 @@
         ]
       }
     },
+    "/diagnostics/bundle": {
+      "get": {
+        "operationId": "diagnostics_bundle_diagnostics_bundle_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Diagnostics Bundle",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health_health_get",

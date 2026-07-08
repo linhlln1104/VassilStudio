@@ -202,8 +202,28 @@ export type AuthLogoutResponse = {
 }
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetchWithAuth(path, init)
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response))
+  }
+
+  return response.json() as Promise<T>
+}
+
+export async function fetchBlob(path: string, init?: RequestInit): Promise<Blob> {
+  const response = await fetchWithAuth(path, init)
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response))
+  }
+
+  return response.blob()
+}
+
+function fetchWithAuth(path: string, init?: RequestInit): Promise<Response> {
   const apiKey = getStoredApiKey()
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  return fetch(`${API_BASE_URL}${path}`, {
     ...init,
     credentials: init?.credentials ?? 'same-origin',
     headers: {
@@ -212,12 +232,6 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
       ...init?.headers,
     },
   })
-
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response))
-  }
-
-  return response.json() as Promise<T>
 }
 
 async function readErrorMessage(response: Response) {
@@ -299,6 +313,7 @@ export const api = {
   health: () => fetchJson<HealthResponse>('/health'),
   modelStatus: () => fetchJson<ModelStatusResponse>('/model-status'),
   diagnostics: () => fetchJson<DiagnosticsResponse>('/diagnostics'),
+  diagnosticsBundle: () => fetchBlob('/diagnostics/bundle'),
   warmup: () => fetchJson<WarmupAllResponse>('/warmup', { method: 'POST' }),
   voices: () => fetchJson<Voice[]>('/api/v1/voices'),
   importCandidates: () => fetchJson<ImportCandidate[]>('/api/v1/voices/import-candidates'),

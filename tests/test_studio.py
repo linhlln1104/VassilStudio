@@ -61,6 +61,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Delete voice profile?" in script
     assert "Voice selected" in script
     assert "Run diagnostics" in script
+    assert "Download diagnostics" in script
     assert "Warm models" in script
     assert "Render mode" in script
     assert "First output checklist" in script

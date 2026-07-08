@@ -372,3 +372,4 @@ feat: add local auth foundation
 | 2026-07-08 | Product Shell + Local Auth Foundation | Done | `.env.example`, `/api/v1/auth/*`, local SQLite account/session store, `/` product shell, `/setup`, `/login`, protected `/studio`, auth/API key compatibility tests, `scripts/check.ps1` pass |
 | 2026-07-08 | Settings Account, License, Diagnostics | Done | `/diagnostics` redacted metadata endpoint, Settings account/session surface, local license placeholder, `scripts/check.ps1` pass |
 | 2026-07-08 | First Output Onboarding | Done | Generate first-run checklist for runtime readiness, voice profile, script, queued render, playable output, and `scripts/check.ps1` pass |
+| 2026-07-08 | Redacted Diagnostics Bundle | Done | `/diagnostics/bundle` zip endpoint, Settings download action, redaction tests, and `scripts/check.ps1` pass |

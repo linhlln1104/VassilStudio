@@ -7,6 +7,7 @@ import {
   BadgeCheck,
   Copy,
   Database,
+  Download,
   Eye,
   EyeOff,
   ExternalLink,
@@ -81,6 +82,10 @@ export function SettingsView() {
       window.location.assign('/login')
     },
   })
+  const diagnosticsBundleMutation = useMutation({
+    mutationFn: api.diagnosticsBundle,
+    onSuccess: (blob) => downloadBlob(blob, `vassilstudio-diagnostics-${Date.now()}.zip`),
+  })
 
   const health = healthQuery.data
   const model = modelQuery.data
@@ -133,13 +138,18 @@ export function SettingsView() {
         checks={checks}
         diagnosticsRunning={diagnosticsRunning}
         warmupRunning={warmupMutation.isPending}
+        bundleRunning={diagnosticsBundleMutation.isPending}
         warmupError={warmupMutation.error instanceof Error ? warmupMutation.error.message : null}
+        bundleError={
+          diagnosticsBundleMutation.error instanceof Error ? diagnosticsBundleMutation.error.message : null
+        }
         onRunDiagnostics={() => {
           void healthQuery.refetch()
           void modelQuery.refetch()
           void diagnosticsQuery.refetch()
         }}
         onWarmup={() => warmupMutation.mutate()}
+        onDownloadBundle={() => diagnosticsBundleMutation.mutate()}
       />
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -371,9 +381,12 @@ function SystemDiagnosticsCard({
   checks,
   diagnosticsRunning,
   warmupRunning,
+  bundleRunning,
   warmupError,
+  bundleError,
   onRunDiagnostics,
   onWarmup,
+  onDownloadBundle,
 }: {
   backendOffline: boolean
   runtimeReady: boolean
@@ -391,9 +404,12 @@ function SystemDiagnosticsCard({
   checks: Array<[string, boolean]>
   diagnosticsRunning: boolean
   warmupRunning: boolean
+  bundleRunning: boolean
   warmupError: string | null
+  bundleError: string | null
   onRunDiagnostics: () => void
   onWarmup: () => void
+  onDownloadBundle: () => void
 }) {
   const healthy = !backendOffline && runtimeReady && passedChecks === totalChecks && totalChecks > 0
   const headline = healthy ? 'Runtime available' : 'Runtime needs attention'
@@ -442,10 +458,23 @@ function SystemDiagnosticsCard({
           )}
           {warmupRunning ? 'Warming' : 'Warm models'}
         </Button>
+        <Button variant="secondary" disabled={bundleRunning || backendOffline} onClick={onDownloadBundle}>
+          {bundleRunning ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Download className="size-4" />
+          )}
+          {bundleRunning ? 'Preparing' : 'Download diagnostics'}
+        </Button>
       </div>
       {warmupError ? (
         <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
           {warmupError}
+        </div>
+      ) : null}
+      {bundleError ? (
+        <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
+          {bundleError}
         </div>
       ) : null}
 
@@ -577,6 +606,17 @@ function formatDiagnosticTime(value: string) {
     return value
   }
   return date.toLocaleString()
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
 }
 
 function AdvancedSettings() {
