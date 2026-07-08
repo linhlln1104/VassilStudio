@@ -374,3 +374,4 @@ feat: add local auth foundation
 | 2026-07-08 | First Output Onboarding | Done | Generate first-run checklist for runtime readiness, voice profile, script, queued render, playable output, and `scripts/check.ps1` pass |
 | 2026-07-08 | Redacted Diagnostics Bundle | Done | `/diagnostics/bundle` zip endpoint, Settings download action, redaction tests, and `scripts/check.ps1` pass |
 | 2026-07-08 | Storage Usage And Retention | Done | `/diagnostics` storage byte/file counts, Settings terminal job retention cleanup controls, and `scripts/check.ps1` pass |
+| 2026-07-08 | Auth Product Smoke | Done | `scripts/smoke_auth.py` isolated first-run setup/login/logout/protected Studio/API key smoke in `scripts/check.ps1` |

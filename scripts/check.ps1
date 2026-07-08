@@ -136,6 +136,10 @@ Invoke-Step "pytest" {
   & $Python -m pytest
 }
 
+Invoke-Step "auth/product smoke" {
+  & $Python (Join-Path $PSScriptRoot "smoke_auth.py")
+}
+
 if (-not $SkipCompose) {
   if (-not (Test-CommandAvailable "docker")) {
     throw "Docker CLI is required for compose config validation. Install Docker or rerun with -SkipCompose."

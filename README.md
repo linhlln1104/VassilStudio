@@ -245,6 +245,7 @@ Invoke-WebRequest http://127.0.0.1:8000/diagnostics
 Invoke-WebRequest http://127.0.0.1:8000/diagnostics/bundle -OutFile diagnostics.zip
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\export_openapi.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_auth.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_api.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_voices.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_asr.ps1
