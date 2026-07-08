@@ -249,9 +249,29 @@ def _diagnostic_storage_items(settings) -> list[dict[str, object]]:
             "path": str(path),
             "exists": path.exists(),
             "is_dir": path.is_dir(),
+            **_path_usage(path),
         }
         for name, path in paths.items()
     ]
+
+
+def _path_usage(path: Path) -> dict[str, int]:
+    if path.is_file():
+        return {"size_bytes": path.stat().st_size, "file_count": 1}
+    if not path.is_dir():
+        return {"size_bytes": 0, "file_count": 0}
+
+    size_bytes = 0
+    file_count = 0
+    for item in path.rglob("*"):
+        if not item.is_file():
+            continue
+        try:
+            size_bytes += item.stat().st_size
+            file_count += 1
+        except OSError:
+            continue
+    return {"size_bytes": size_bytes, "file_count": file_count}
 
 
 def _json_bytes(payload: object) -> bytes:

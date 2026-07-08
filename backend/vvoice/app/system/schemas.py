@@ -22,6 +22,8 @@ class DiagnosticsStorageItem(BaseModel):
     path: str
     exists: bool
     is_dir: bool
+    size_bytes: int
+    file_count: int
 
 
 class DiagnosticsSecurity(BaseModel):

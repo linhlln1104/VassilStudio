@@ -134,7 +134,8 @@ ASR/TTS job lifecycle events. Request logging records the path without query str
 not written by the app middleware.
 
 `GET /diagnostics` returns redacted operations metadata for the Studio Settings surface and support
-workflows: runtime configuration, auth mode, storage paths, and local license placeholder state.
+workflows: runtime configuration, auth mode, storage paths with file counts/byte sizes, and local
+license placeholder state.
 `GET /diagnostics/bundle` packages the same metadata with readiness and environment JSON into a zip
 for support. These diagnostics do not return API keys, session secrets, cookies, transcripts, or
 audio content.
@@ -160,6 +161,7 @@ audio content.
 - Check process liveness with `/livez` and model/storage readiness with `/readyz`.
 - Inspect redacted runtime/auth/storage/license metadata with `/diagnostics`.
 - Download a redacted support zip with `/diagnostics/bundle`.
+- Review storage usage and clean terminal ASR/TTS jobs from Settings.
 
 ## Configuration
 

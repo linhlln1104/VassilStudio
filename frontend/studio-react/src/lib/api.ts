@@ -82,6 +82,8 @@ export type DiagnosticsResponse = {
     path: string
     exists: boolean
     is_dir: boolean
+    size_bytes: number
+    file_count: number
   }>
   license: {
     status: string
@@ -319,12 +321,12 @@ export const api = {
   importCandidates: () => fetchJson<ImportCandidate[]>('/api/v1/voices/import-candidates'),
   ttsJobs: () => fetchJson<TtsJob[]>('/api/v1/tts/jobs'),
   asrJobs: () => fetchJson<AsrJob[]>('/api/v1/asr/jobs'),
-  cleanupTtsJobs: () =>
-    fetchJson<JobCleanupResponse>('/api/v1/tts/jobs', {
+  cleanupTtsJobs: (maxAgeSeconds?: number) =>
+    fetchJson<JobCleanupResponse>(cleanupPath('/api/v1/tts/jobs', maxAgeSeconds), {
       method: 'DELETE',
     }),
-  cleanupAsrJobs: () =>
-    fetchJson<JobCleanupResponse>('/api/v1/asr/jobs', {
+  cleanupAsrJobs: (maxAgeSeconds?: number) =>
+    fetchJson<JobCleanupResponse>(cleanupPath('/api/v1/asr/jobs', maxAgeSeconds), {
       method: 'DELETE',
     }),
   deleteTtsJob: (jobId: string) =>
@@ -419,4 +421,12 @@ export const api = {
     fetchJson<VoiceDeleteResponse>(`/api/v1/voices/${encodeURIComponent(voiceId)}`, {
       method: 'DELETE',
     }),
+}
+
+function cleanupPath(path: string, maxAgeSeconds?: number) {
+  if (maxAgeSeconds === undefined) {
+    return path
+  }
+  const params = new URLSearchParams({ max_age_seconds: String(maxAgeSeconds) })
+  return `${path}?${params.toString()}`
 }

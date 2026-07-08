@@ -44,6 +44,8 @@ def test_model_status_reports_job_workers(tmp_path) -> None:
 
 def test_diagnostics_reports_redacted_operations_metadata(tmp_path) -> None:
     app, _, _ = make_app(tmp_path)
+    (tmp_path / "voices" / "sample.wav").write_bytes(b"1234")
+    (tmp_path / "auth.sqlite3").write_bytes(b"auth")
     client = TestClient(app)
 
     response = client.get("/diagnostics")
@@ -59,7 +61,11 @@ def test_diagnostics_reports_redacted_operations_metadata(tmp_path) -> None:
     assert payload["security"]["api_key_auth_enabled"] is False
     assert "api_keys" not in payload["security"]
     assert "session_secret" not in payload["security"]
-    assert any(item["name"] == "auth_db" for item in payload["storage"])
+    storage = {item["name"]: item for item in payload["storage"]}
+    assert storage["voices"]["size_bytes"] == 4
+    assert storage["voices"]["file_count"] == 1
+    assert storage["auth_db"]["size_bytes"] == 4
+    assert storage["auth_db"]["file_count"] == 1
 
 
 def test_diagnostics_bundle_is_redacted_zip(tmp_path) -> None:

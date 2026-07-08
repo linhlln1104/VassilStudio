@@ -8,6 +8,7 @@ import {
   Copy,
   Database,
   Download,
+  Eraser,
   Eye,
   EyeOff,
   ExternalLink,
@@ -26,6 +27,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { api, getStoredApiKey, setStoredApiKey } from '@/lib/api'
 import { API_BRAND_NAME } from '@/lib/brand'
+import { formatBytes } from '@/lib/format'
 
 const storageRows = [
   { label: 'Source models', value: 'models/source', description: 'Original checkpoints and research assets.' },
@@ -42,11 +44,40 @@ const endpointRows = [
   { label: 'FastAPI docs', href: '/docs' },
 ]
 
+type RetentionOption = {
+  id: string
+  label: string
+  description: string
+  maxAgeSeconds?: number
+}
+
+const retentionOptions: RetentionOption[] = [
+  {
+    id: '7d',
+    label: '7 days',
+    description: 'Terminal jobs older than one week.',
+    maxAgeSeconds: 7 * 24 * 60 * 60,
+  },
+  {
+    id: '30d',
+    label: '30 days',
+    description: 'Terminal jobs older than one month.',
+    maxAgeSeconds: 30 * 24 * 60 * 60,
+  },
+  {
+    id: 'all',
+    label: 'All terminal',
+    description: 'Every succeeded, failed, or cancelled job.',
+  },
+]
+
 export function SettingsView() {
   const [apiKeyDraft, setApiKeyDraft] = useState(() => getStoredApiKey())
   const [apiKeySaved, setApiKeySaved] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [cleanupTarget, setCleanupTarget] = useState<RetentionOption | null>(null)
+  const [cleanupResult, setCleanupResult] = useState<string | null>(null)
   const [clearKeyConfirmOpen, setClearKeyConfirmOpen] = useState(false)
   const queryClient = useQueryClient()
   const healthQuery = useQuery({
@@ -86,12 +117,36 @@ export function SettingsView() {
     mutationFn: api.diagnosticsBundle,
     onSuccess: (blob) => downloadBlob(blob, `vassilstudio-diagnostics-${Date.now()}.zip`),
   })
+  const cleanupJobsMutation = useMutation({
+    mutationFn: async (retention: RetentionOption) => {
+      const [tts, asr] = await Promise.all([
+        api.cleanupTtsJobs(retention.maxAgeSeconds),
+        api.cleanupAsrJobs(retention.maxAgeSeconds),
+      ])
+      return {
+        deleted: tts.deleted + asr.deleted,
+        ttsDeleted: tts.deleted,
+        asrDeleted: asr.deleted,
+      }
+    },
+    onSuccess: (result) => {
+      setCleanupResult(
+        result.deleted > 0
+          ? `Removed ${result.deleted} terminal jobs (${result.ttsDeleted} TTS, ${result.asrDeleted} ASR).`
+          : 'No terminal jobs matched that retention window.',
+      )
+      setCleanupTarget(null)
+      void queryClient.invalidateQueries({ queryKey: ['diagnostics'] })
+      void queryClient.invalidateQueries({ queryKey: ['tts-jobs'] })
+      void queryClient.invalidateQueries({ queryKey: ['asr-jobs'] })
+    },
+  })
 
   const health = healthQuery.data
   const model = modelQuery.data
   const checks = useMemo(() => Object.entries(model?.checks ?? {}), [model?.checks])
   const passedChecks = checks.filter(([, passed]) => passed).length
-  const diagnosticsRunning = healthQuery.isFetching || modelQuery.isFetching
+  const diagnosticsRunning = healthQuery.isFetching || modelQuery.isFetching || diagnosticsQuery.isFetching
   const backendOffline = healthQuery.isError || modelQuery.isError
   const runtimeReady = !backendOffline && Boolean(model?.ready)
 
@@ -174,6 +229,17 @@ export function SettingsView() {
         />
       </div>
 
+      <StorageManagementCard
+        storageItems={diagnosticsQuery.data?.storage ?? []}
+        cleanupRunning={cleanupJobsMutation.isPending}
+        cleanupResult={cleanupResult}
+        cleanupError={cleanupJobsMutation.error instanceof Error ? cleanupJobsMutation.error.message : null}
+        onRefresh={() => {
+          void diagnosticsQuery.refetch()
+        }}
+        onRequestCleanup={(option) => setCleanupTarget(option)}
+      />
+
       <Card>
         <CardHeader>
           <div>
@@ -237,6 +303,29 @@ export function SettingsView() {
           </p>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(cleanupTarget)}
+        title="Clean terminal jobs?"
+        description={
+          cleanupTarget
+            ? `${cleanupTarget.description} This removes matching ASR/TTS job metadata and job files. Active jobs are kept.`
+            : ''
+        }
+        confirmLabel="Clean jobs"
+        busy={cleanupJobsMutation.isPending}
+        busyLabel="Cleaning"
+        onOpenChange={(open) => {
+          if (!open) {
+            setCleanupTarget(null)
+          }
+        }}
+        onConfirm={() => {
+          if (cleanupTarget) {
+            cleanupJobsMutation.mutate(cleanupTarget)
+          }
+        }}
+      />
 
       <ConfirmDialog
         open={clearKeyConfirmOpen}
@@ -353,6 +442,144 @@ function LicenseCard({
       </CardContent>
     </Card>
   )
+}
+
+function StorageManagementCard({
+  storageItems,
+  cleanupRunning,
+  cleanupResult,
+  cleanupError,
+  onRefresh,
+  onRequestCleanup,
+}: {
+  storageItems: Array<{
+    name: string
+    path: string
+    exists: boolean
+    is_dir: boolean
+    size_bytes: number
+    file_count: number
+  }>
+  cleanupRunning: boolean
+  cleanupResult: string | null
+  cleanupError: string | null
+  onRefresh: () => void
+  onRequestCleanup: (option: RetentionOption) => void
+}) {
+  const dataRoot = storageItems.find((item) => item.name === 'data')
+  const jobStorage = storageItems.filter((item) => item.name === 'asr_jobs' || item.name === 'tts_jobs')
+  const jobBytes = jobStorage.reduce((sum, item) => sum + item.size_bytes, 0)
+  const jobFiles = jobStorage.reduce((sum, item) => sum + item.file_count, 0)
+  const visibleStorage = storageItems.filter((item) =>
+    ['voices', 'asr_jobs', 'tts_jobs', 'uploads', 'outputs', 'logs', 'auth_db'].includes(item.name),
+  )
+
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <div className="text-sm font-semibold text-slate-950">Storage and retention</div>
+          <div className="mt-1 text-xs text-slate-600">
+            Local workspace usage and terminal job cleanup.
+          </div>
+        </div>
+        <Database className="size-5 text-slate-500" />
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-2 md:grid-cols-3">
+          <SettingsMetric label="Data root" value={formatBytes(dataRoot?.size_bytes ?? 0)} />
+          <SettingsMetric label="Job files" value={`${formatBytes(jobBytes)} / ${jobFiles} files`} />
+          <SettingsMetric label="Tracked paths" value={`${visibleStorage.length} paths`} />
+        </div>
+
+        <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-4">
+          {visibleStorage.map((item) => (
+            <StoragePathRow key={item.name} item={item} />
+          ))}
+        </div>
+
+        <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-xs font-semibold text-slate-950">Terminal job retention</div>
+              <div className="mt-1 text-xs leading-5 text-slate-600">
+                Cleanup removes succeeded, failed, and cancelled ASR/TTS jobs only.
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={onRefresh}>
+                <ShieldCheck className="size-4" />
+                Refresh usage
+              </Button>
+              {retentionOptions.map((option) => (
+                <Button
+                  key={option.id}
+                  variant="secondary"
+                  disabled={cleanupRunning}
+                  onClick={() => onRequestCleanup(option)}
+                >
+                  {cleanupRunning ? <Loader2 className="size-4 animate-spin" /> : <Eraser className="size-4" />}
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          {cleanupResult ? (
+            <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-blue-700">
+              {cleanupResult}
+            </div>
+          ) : null}
+          {cleanupError ? (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+              {cleanupError}
+            </div>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function StoragePathRow({
+  item,
+}: {
+  item: {
+    name: string
+    path: string
+    exists: boolean
+    is_dir: boolean
+    size_bytes: number
+    file_count: number
+  }
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="truncate text-xs font-semibold text-slate-950">{storageLabel(item.name)}</div>
+        <div
+          className={
+            item.exists
+              ? 'rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700'
+              : 'rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700'
+          }
+        >
+          {item.exists ? (item.is_dir ? 'dir' : 'file') : 'missing'}
+        </div>
+      </div>
+      <div className="mt-2 text-xs font-semibold text-slate-800">{formatBytes(item.size_bytes)}</div>
+      <div className="mt-1 text-xs font-medium text-slate-500">{item.file_count} files</div>
+      <div className="mt-2 truncate text-xs text-slate-500" title={item.path}>
+        {item.path}
+      </div>
+    </div>
+  )
+}
+
+function storageLabel(name: string) {
+  return name
+    .split('_')
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function SettingsMetric({ label, value }: { label: string; value: string }) {

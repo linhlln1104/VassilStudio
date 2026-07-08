@@ -725,6 +725,10 @@
             "title": "Exists",
             "type": "boolean"
           },
+          "file_count": {
+            "title": "File Count",
+            "type": "integer"
+          },
           "is_dir": {
             "title": "Is Dir",
             "type": "boolean"
@@ -736,13 +740,19 @@
           "path": {
             "title": "Path",
             "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
           }
         },
         "required": [
           "name",
           "path",
           "exists",
-          "is_dir"
+          "is_dir",
+          "size_bytes",
+          "file_count"
         ],
         "title": "DiagnosticsStorageItem",
         "type": "object"

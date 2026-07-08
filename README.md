@@ -139,6 +139,8 @@ faster drafts, while Production uses the configured default-quality path. API ca
 Use `/livez` for process liveness and `/readyz` for model/storage readiness. `/health` remains a
 stable compatibility endpoint for the Studio and older scripts, while `/model-status` returns detailed
 model file checks and runtime state.
+Settings also shows local storage usage from `/diagnostics` and can clean terminal ASR/TTS jobs by
+retention window without touching active jobs.
 
 Every HTTP response includes `X-Request-ID`. Clients may send their own `X-Request-ID`; otherwise the
 server generates one. Application logs are structured JSON under the `vvoice` logger and include
