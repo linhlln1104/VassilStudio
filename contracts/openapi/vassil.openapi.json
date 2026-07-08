@@ -714,10 +714,15 @@
             },
             "title": "Storage",
             "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
           }
         },
         "required": [
           "generated_at",
+          "version",
           "runtime",
           "security",
           "storage",
@@ -835,10 +840,15 @@
           "tts_loaded": {
             "title": "Tts Loaded",
             "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
           }
         },
         "required": [
           "status",
+          "version",
           "asr_enabled",
           "tts_enabled",
           "provider",

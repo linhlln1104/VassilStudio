@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
+from vvoice import __version__
 from vvoice.app.system.schemas import (
     DiagnosticsResponse,
     HealthResponse,
@@ -32,6 +33,7 @@ async def health(request: Request):
     container = request.app.state.container
     return {
         "status": "ok",
+        "version": __version__,
         "asr_enabled": settings.asr.enabled,
         "tts_enabled": settings.tts.enabled,
         "provider": settings.runtime.provider,
@@ -146,6 +148,7 @@ async def diagnostics_bundle(request: Request):
 def _diagnostics_payload(container, settings) -> dict:
     return {
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "version": __version__,
         "runtime": _runtime_status(container, settings),
         "security": {
             "auth_required": getattr(settings.security, "auth_required", False),

@@ -38,6 +38,7 @@ export function setStoredApiKey(apiKey: string): void {
 
 export type HealthResponse = {
   status: string
+  version: string
   asr_enabled: boolean
   tts_enabled: boolean
   provider: string
@@ -69,6 +70,7 @@ export type ModelStatusResponse = {
 
 export type DiagnosticsResponse = {
   generated_at: string
+  version: string
   runtime: ModelStatusResponse['runtime']
   security: {
     auth_required: boolean

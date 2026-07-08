@@ -17,6 +17,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Latency benchmark scripts for TTS, ASR, and realtime chunking.
 - Operations guide with install, model layout, auth, smoke, Docker, backup, and troubleshooting.
 - Product-grade trust pages for privacy, support, license, changelog, and operations.
+- Release metadata aligned across backend, health/diagnostics, OpenAPI, and React package files.
 
 ### Hardened
 

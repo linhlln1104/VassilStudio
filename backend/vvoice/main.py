@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
+from vvoice import __version__
 from vvoice.core.brand import API_BRAND_NAME
 from vvoice.core.config import load_settings
 from vvoice.core.container import AppContainer
@@ -50,7 +51,7 @@ def create_app() -> FastAPI:
         finally:
             container.shutdown()
 
-    app = FastAPI(title=API_BRAND_NAME, version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title=API_BRAND_NAME, version=__version__, lifespan=lifespan)
     app.state.container = container
 
     register_request_middleware(app)

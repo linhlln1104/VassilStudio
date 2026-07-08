@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class HealthResponse(BaseModel):
     status: str
+    version: str
     asr_enabled: bool
     tts_enabled: bool
     provider: str
@@ -66,6 +67,7 @@ class ModelStatusResponse(BaseModel):
 
 class DiagnosticsResponse(BaseModel):
     generated_at: str
+    version: str
     runtime: RuntimeStatus
     security: DiagnosticsSecurity
     storage: list[DiagnosticsStorageItem]

@@ -195,6 +195,7 @@ export function SettingsView() {
       <SystemDiagnosticsCard
         backendOffline={backendOffline}
         runtimeReady={runtimeReady}
+        version={health?.version ?? diagnosticsQuery.data?.version ?? 'unknown'}
         provider={model?.runtime.provider ?? health?.provider ?? 'unknown'}
         threads={String(model?.runtime.num_threads ?? 'unknown')}
         ttsLoaded={Boolean(health?.tts_loaded)}
@@ -699,6 +700,7 @@ function SettingsMetric({ label, value }: { label: string; value: string }) {
 function SystemDiagnosticsCard({
   backendOffline,
   runtimeReady,
+  version,
   provider,
   threads,
   ttsLoaded,
@@ -722,6 +724,7 @@ function SystemDiagnosticsCard({
 }: {
   backendOffline: boolean
   runtimeReady: boolean
+  version: string
   provider: string
   threads: string
   ttsLoaded: boolean
@@ -818,7 +821,8 @@ function SystemDiagnosticsCard({
           <ChevronDown className="size-4 text-slate-500 transition-transform group-open:rotate-180" />
         </summary>
         <div className="border-t border-slate-200 p-3">
-          <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-4 xl:grid-cols-7">
+            <SignalMeta label="Version" value={version} />
             <SignalMeta label="Provider" value={provider} />
             <SignalMeta label="Threads" value={threads} />
             <SignalMeta label="Workers" value={`ASR ${asrWorkers} / TTS ${ttsWorkers}`} />

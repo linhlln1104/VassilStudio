@@ -6,6 +6,7 @@ import zipfile
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from vvoice import __version__
 from vvoice.app.system.router import router
 
 
@@ -42,6 +43,16 @@ def test_model_status_reports_job_workers(tmp_path) -> None:
     assert runtime["warmup_on_startup"] is True
 
 
+def test_health_reports_release_version(tmp_path) -> None:
+    app, _, _ = make_app(tmp_path)
+    client = TestClient(app)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["version"] == __version__
+
+
 def test_diagnostics_reports_redacted_operations_metadata(tmp_path) -> None:
     app, _, _ = make_app(tmp_path)
     (tmp_path / "voices" / "sample.wav").write_bytes(b"1234")
@@ -52,6 +63,7 @@ def test_diagnostics_reports_redacted_operations_metadata(tmp_path) -> None:
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["version"] == __version__
     assert payload["license"] == {
         "status": "local",
         "plan": "Local workspace",

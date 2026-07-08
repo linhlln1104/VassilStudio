@@ -260,6 +260,7 @@ Before tagging or distributing a production-like local build:
 
 - `scripts/check.ps1` passes.
 - Optional E2E, language matrix, and Docker smokes pass when models and Docker are available.
+- Backend version, React package version, and `CHANGELOG.md` release name are aligned.
 - `CHANGELOG.md` has the release notes.
 - `contracts/openapi/` is regenerated.
 - `.env.example`, Docker docs, and this operations guide match current behavior.
