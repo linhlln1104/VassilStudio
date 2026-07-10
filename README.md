@@ -38,9 +38,9 @@ voice profile language aligned with the text you generate so English text uses t
 and Vietnamese text uses the Vietnamese tokenizer.
 
 ZipVoice models are trained with eSpeak tokenizers. VassilStudio phonemizes text and reference transcripts
-with `piper_phonemize`, maps those symbols directly into each ZipVoice `tokens.txt`, and runs the
-ZipVoice ONNX models directly. This avoids sending one language through another language's text
-frontend.
+with `phonemizer-fork` and the bundled `espeakng-loader` runtime, maps those symbols directly into
+each ZipVoice `tokens.txt`, and runs the ZipVoice ONNX models directly. This keeps clean Windows and
+Docker installs reproducible without a separately built phonemizer wheel.
 
 Studio, batch ASR jobs, realtime ASR, voice import, and TTS jobs all carry an explicit `language`
 field. Use `vi` for Vietnamese and `en` for English so the backend selects the matching tokenizer,

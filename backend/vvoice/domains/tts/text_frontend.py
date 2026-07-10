@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from functools import reduce
 from pathlib import Path
+from threading import RLock
 
 from vvoice.core.config import TtsModelSettings
 from vvoice.core.errors import ModelConfigurationError
@@ -11,6 +11,7 @@ from vvoice.shared.language import normalize_language
 
 
 _LANGUAGE_TAG_PATTERN = re.compile(r"\(([a-z]{2,3}(?:-[a-z0-9]+)?)\)", re.IGNORECASE)
+_PHONEMIZER_LOCK = RLock()
 
 
 class ZipVoiceTextFrontend:
@@ -42,21 +43,38 @@ class ZipVoiceTextFrontend:
 
     def _phonemize_espeak_tokens(self, text: str, language: str) -> list[str]:
         try:
-            from piper_phonemize import phonemize_espeak
+            from espeakng_loader import get_data_path, get_library_path
+            from phonemizer import phonemize
+            from phonemizer.backend import EspeakBackend
+            from phonemizer.backend.espeak.wrapper import EspeakWrapper
+            from phonemizer.separator import Separator
         except Exception as exc:  # pragma: no cover - exercised by deployment smoke tests
             raise ModelConfigurationError(
-                "ZipVoice requires piper_phonemize for its eSpeak tokenizer. "
+                "ZipVoice requires phonemizer-fork and espeakng-loader for its eSpeak tokenizer. "
                 "Run `python -m pip install -e .` to refresh runtime dependencies."
             ) from exc
 
         espeak_language = "en-us" if language == "en" else language
         try:
-            token_groups = phonemize_espeak(text, espeak_language)
-            tokens = reduce(lambda left, right: left + right, token_groups) if token_groups else []
+            with _PHONEMIZER_LOCK:
+                EspeakBackend.set_library(get_library_path())
+                EspeakWrapper.set_data_path(get_data_path())
+                phonemes = phonemize(
+                    text,
+                    language=espeak_language,
+                    backend="espeak",
+                    separator=Separator(phone="", syllable="", word=" "),
+                    strip=True,
+                    preserve_punctuation=True,
+                    with_stress=True,
+                    language_switch="remove-flags",
+                    words_mismatch="ignore",
+                    njobs=1,
+                )
         except Exception as exc:
             raise ModelConfigurationError(f"ZipVoice {language} tokenization failed: {exc}") from exc
 
-        return [token for token in tokens if not _LANGUAGE_TAG_PATTERN.fullmatch(token)]
+        return list(_LANGUAGE_TAG_PATTERN.sub("", phonemes))
 
     def _validate_symbols(self, phonemes: str, tokens_path: Path) -> None:
         tokens = self._tokens(tokens_path)

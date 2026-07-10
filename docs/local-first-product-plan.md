@@ -376,3 +376,4 @@ Các bước tiếp theo nên là hardening ngoài phạm vi MVP nhỏ:
 | 2026-07-08 | Password Hash Upgrade | Done | New local accounts use scrypt password hashes, legacy PBKDF2 hashes remain verifiable, with pytest coverage and `scripts/check.ps1` pass |
 | 2026-07-10 | Secure Runtime Profiles | Done | Local/development/production/docker profiles, effective log-level overrides, strong session-secret validation, production invariants, diagnostics visibility, and config tests |
 | 2026-07-10 | Automated Quality Gate | Done | Pinned read-only GitHub Actions workflow, Windows/Python 3.12/Node 24 baseline, `scripts/check.ps1 -CI`, clean npm install, generated OpenAPI drift test, and workflow contract tests |
+| 2026-07-10 | Reproducible Phonemizer Install | Done | Removed the unavailable Windows `piper_phonemize` index dependency; ZipVoice now uses `phonemizer-fork` with bundled `espeakng-loader`, stable VI/EN output tests, and fresh-install CI coverage |

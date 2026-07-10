@@ -40,7 +40,6 @@ def dependency_checks() -> list[Check]:
         "onnxruntime",
         "torch",
         "torchaudio",
-        "piper_phonemize",
         "phonemizer",
         "espeakng_loader",
     ]

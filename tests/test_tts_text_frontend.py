@@ -21,6 +21,22 @@ def test_vietnamese_zipvoice_frontend_phonemizes_text() -> None:
     assert "(vi)" not in phonemes
 
 
+def test_zipvoice_frontend_has_stable_espeak_output() -> None:
+    settings = load_settings()
+    frontend = ZipVoiceTextFrontend()
+
+    assert frontend.prepare(
+        "xin ch\u00e0o",
+        language="vi",
+        model_settings=settings.tts.model_for("vi"),
+    ) == "s\u02c8in t\u0283\u02c8a\u02d02w"
+    assert frontend.prepare(
+        "hello world",
+        language="en",
+        model_settings=settings.tts.model_for("en"),
+    ) == "h\u0259l\u02c8o\u028a w\u02c8\u025c\u02d0ld"
+
+
 def test_vietnamese_zipvoice_frontend_returns_model_token_ids() -> None:
     settings = load_settings()
     frontend = ZipVoiceTextFrontend()

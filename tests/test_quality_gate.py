@@ -39,3 +39,11 @@ def test_toolchain_versions_match_container_baseline() -> None:
     dockerfile = ROOT.joinpath("docker", "Dockerfile").read_text(encoding="utf-8")
     assert "FROM python:3.12-slim" in dockerfile
     assert "FROM node:24-alpine" in dockerfile
+
+
+def test_runtime_dependencies_are_resolvable_from_supported_package_indexes() -> None:
+    project = ROOT.joinpath("pyproject.toml").read_text(encoding="utf-8")
+
+    assert '"phonemizer-fork==3.3.2"' in project
+    assert '"espeakng-loader==0.2.4"' in project
+    assert "piper_phonemize" not in project

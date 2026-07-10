@@ -31,6 +31,8 @@ All notable VassilStudio productionization changes are tracked here.
 - Language-aware ASR/TTS runtime selection and model readiness reporting.
 - Auth-enabled startup now requires a strong non-placeholder session secret; production profile
   startup also requires auth, secure cookies, and debug mode off.
+- ZipVoice text processing uses the index-resolvable `phonemizer-fork` and `espeakng-loader` path,
+  removing the clean-install dependency on a separately built `piper_phonemize` wheel.
 
 ### Verified
 
