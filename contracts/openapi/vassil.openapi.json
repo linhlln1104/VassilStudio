@@ -936,9 +936,17 @@
             "title": "Debug",
             "type": "boolean"
           },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
           "job_retry_backoff_seconds": {
             "title": "Job Retry Backoff Seconds",
             "type": "number"
+          },
+          "log_level": {
+            "title": "Log Level",
+            "type": "string"
           },
           "num_threads": {
             "title": "Num Threads",
@@ -980,6 +988,8 @@
           }
         },
         "required": [
+          "environment",
+          "log_level",
           "provider",
           "num_threads",
           "debug",

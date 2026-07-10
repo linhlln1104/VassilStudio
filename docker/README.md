@@ -40,7 +40,11 @@ To require browser login in Docker, set these values in `.env` before starting c
 
 ```powershell
 VASSIL_AUTH_REQUIRED=true
-VASSIL_SESSION_SECRET=replace-with-random-32-plus-character-secret
+VASSIL_SESSION_SECRET=<random value with at least 32 characters>
 ```
+
+Compose uses the `docker` runtime profile by default. For an HTTPS deployment, set
+`VASSIL_ENV=production` and `VASSIL_SECURE_COOKIES=true`; the app validates these production
+invariants before startup.
 
 The local account/session database is stored under the writable `../data` volume.

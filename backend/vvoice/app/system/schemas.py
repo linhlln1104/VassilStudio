@@ -42,6 +42,8 @@ class DiagnosticsLicense(BaseModel):
 
 
 class RuntimeStatus(BaseModel):
+    environment: str
+    log_level: str
     provider: str
     num_threads: int
     debug: bool

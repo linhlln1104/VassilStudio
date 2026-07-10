@@ -32,8 +32,18 @@ For production-like local use, copy `.env.example` to `.env` and set at least:
 
 ```powershell
 VASSIL_AUTH_REQUIRED=true
-VASSIL_SESSION_SECRET=replace-with-random-32-plus-character-secret
+VASSIL_SESSION_SECRET=<random value with at least 32 characters>
 ```
+
+Generate a secret without storing it in shell history, then place the output in `.env`:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+The app refuses to start when auth is enabled with a missing, short, or documented placeholder
+secret. Keep `VASSIL_ENV=local` for a loopback HTTP install. Set `VASSIL_ENV=production` only behind
+HTTPS; the production profile requires auth, `VASSIL_SECURE_COOKIES=true`, and debug mode off.
 
 On first visit, `/studio` redirects to `/setup` and creates the local owner account.
 `scripts/run_api.ps1` loads `.env` automatically for native local runs. Existing process
@@ -92,6 +102,9 @@ Important environment variables:
 | --- | --- |
 | `VASSIL_ROOT` | Repository/workspace root |
 | `VASSIL_CONFIG` | JSON config path |
+| `VASSIL_ENV` | Runtime profile: `local`, `development`, `production`, or `docker` |
+| `VASSIL_DEBUG` | Override runtime debug mode |
+| `VASSIL_WARMUP_ON_STARTUP` | Warm all configured ASR/TTS models during startup |
 | `VASSIL_AUTH_REQUIRED` | Require browser login for Studio and protected APIs |
 | `VASSIL_AUTH_DB_PATH` | Local SQLite account/session database path |
 | `VASSIL_SESSION_SECRET` | HMAC secret for session token hashes |
@@ -113,6 +126,7 @@ Studio local auth is disabled by default for developer convenience. When enabled
 - Settings can change the owner password and revoke other active sessions.
 - Repeated failed login or password change attempts return `429` with `Retry-After`.
 - API key auth remains available for scripts and integrations.
+- Runtime profile, effective log level, and cookie security are visible in redacted diagnostics.
 
 If the owner password is lost, stop the app, back up `data/auth.sqlite3`, then remove or replace the
 auth database and run `/setup` again. This resets local accounts and sessions only; voice profiles and
@@ -253,6 +267,7 @@ To restore, copy the same paths into a fresh checkout, run `scripts/setup_storag
 | TTS fails for a language | TTS language config | Verify ZipVoice tokens, vocoder, eSpeak data, and language selection |
 | Upload rejected | file size/type | Check `limits.max_upload_bytes` and use supported audio formats |
 | Realtime disconnects | WebSocket URL and API key | Include API key when auth is required and verify `/model-status` first |
+| Startup rejects session configuration | `VASSIL_AUTH_REQUIRED`, `VASSIL_SESSION_SECRET`, runtime profile | Generate a random 32+ character secret; for `production`, also enable secure cookies and HTTPS |
 | Docker smoke cannot start | Docker daemon | Start Docker Desktop/service, then rerun `scripts/smoke_docker.ps1` |
 | Diagnostics bundle is needed | `/diagnostics/bundle` | Attach the zip to support; it is redacted by default |
 

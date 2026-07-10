@@ -4,6 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Any
 
 from vvoice.core.env import first_env
@@ -15,6 +16,18 @@ PACKAGE_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PROJECT_ROOT = Path(first_env("VASSIL_ROOT", "VVOICE_ROOT") or PACKAGE_PROJECT_ROOT).resolve()
 DEFAULT_CONFIG = PROJECT_ROOT / "config" / "vassil.example.json"
 LEGACY_DEFAULT_CONFIG = PROJECT_ROOT / "config" / "vvoice.example.json"
+RUNTIME_ENVIRONMENTS = frozenset({"local", "development", "production", "docker"})
+LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+MIN_SESSION_SECRET_CHARS = 32
+INSECURE_SESSION_SECRETS = frozenset(
+    {
+        "change-me",
+        "changeme",
+        "replace-me",
+        "replace-with-random-32-plus-character-secret",
+    }
+)
+COOKIE_NAME_PATTERN = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 
 
 @dataclass(frozen=True)
@@ -26,6 +39,8 @@ class PathSettings:
 
 @dataclass(frozen=True)
 class RuntimeSettings:
+    environment: str
+    log_level: str
     provider: str
     num_threads: int
     debug: bool
@@ -271,16 +286,14 @@ def parse_settings(raw: dict[str, Any], root: Path) -> Settings:
         data_root=_resolve(root, paths_raw.get("data_root", "data")),
         logs_root=_resolve(root, paths_raw.get("logs_root", "logs")),
     )
+    runtime_settings = _parse_runtime_settings(runtime)
+    security_settings = _parse_security_settings(security, root=root, paths=paths)
+    _validate_runtime_security(runtime_settings, security_settings)
 
     return Settings(
         root=root,
         paths=paths,
-        runtime=RuntimeSettings(
-            provider=str(runtime.get("provider", "cpu")),
-            num_threads=int(runtime.get("num_threads", 1)),
-            debug=bool(runtime.get("debug", False)),
-            warmup_on_startup=bool(runtime.get("warmup_on_startup", False)),
-        ),
+        runtime=runtime_settings,
         asr=_parse_asr_settings(asr, root),
         tts=_parse_tts_settings(tts, root),
         realtime=RealtimeSettings(
@@ -338,31 +351,101 @@ def parse_settings(raw: dict[str, Any], root: Path) -> Settings:
             outputs_dir=_resolve(root, storage.get("outputs_dir", paths.data_root / "outputs")),
             logs_dir=_resolve(root, storage.get("logs_dir", paths.logs_root)),
         ),
-        security=SecuritySettings(
-            api_keys=_parse_api_keys(security.get("api_keys", [])),
-            auth_required=_parse_bool(
-                first_env("VASSIL_AUTH_REQUIRED", "VVOICE_AUTH_REQUIRED"),
-                bool(security.get("auth_required", False)),
-            ),
-            auth_db_path=_resolve(
-                root,
-                first_env("VASSIL_AUTH_DB_PATH", "VVOICE_AUTH_DB_PATH")
-                or security.get("auth_db_path", paths.data_root / "auth.sqlite3"),
-            ),
-            session_cookie_name=str(
-                security.get("session_cookie_name", "vassil_session"),
-            ),
-            session_ttl_seconds=_positive_int(
-                security.get("session_ttl_seconds", 60 * 60 * 24 * 7),
-                "security.session_ttl_seconds",
-            ),
-            session_secret=str(first_env("VASSIL_SESSION_SECRET", "VVOICE_SESSION_SECRET") or security.get("session_secret", "")),
-            secure_cookies=_parse_bool(
-                first_env("VASSIL_SECURE_COOKIES", "VVOICE_SECURE_COOKIES"),
-                bool(security.get("secure_cookies", False)),
-            ),
+        security=security_settings,
+    )
+
+
+def _parse_runtime_settings(raw: dict[str, Any]) -> RuntimeSettings:
+    environment = _normalized_choice(
+        first_env("VASSIL_ENV", "VVOICE_ENV") or raw.get("environment", "local"),
+        name="runtime.environment",
+        allowed=RUNTIME_ENVIRONMENTS,
+    )
+    debug = _parse_bool(
+        first_env("VASSIL_DEBUG", "VVOICE_DEBUG"),
+        bool(raw.get("debug", False)),
+    )
+    log_level = _normalized_choice(
+        first_env("VASSIL_LOG_LEVEL", "VVOICE_LOG_LEVEL")
+        or raw.get("log_level", "DEBUG" if debug else "INFO"),
+        name="runtime.log_level",
+        allowed=LOG_LEVELS,
+        uppercase=True,
+    )
+    return RuntimeSettings(
+        environment=environment,
+        log_level=log_level,
+        provider=str(raw.get("provider", "cpu")),
+        num_threads=_positive_int(raw.get("num_threads", 1), "runtime.num_threads"),
+        debug=debug,
+        warmup_on_startup=_parse_bool(
+            first_env("VASSIL_WARMUP_ON_STARTUP", "VVOICE_WARMUP_ON_STARTUP"),
+            bool(raw.get("warmup_on_startup", False)),
         ),
     )
+
+
+def _parse_security_settings(
+    raw: dict[str, Any],
+    *,
+    root: Path,
+    paths: PathSettings,
+) -> SecuritySettings:
+    return SecuritySettings(
+        api_keys=_parse_api_keys(raw.get("api_keys", [])),
+        auth_required=_parse_bool(
+            first_env("VASSIL_AUTH_REQUIRED", "VVOICE_AUTH_REQUIRED"),
+            bool(raw.get("auth_required", False)),
+        ),
+        auth_db_path=_resolve(
+            root,
+            first_env("VASSIL_AUTH_DB_PATH", "VVOICE_AUTH_DB_PATH")
+            or raw.get("auth_db_path", paths.data_root / "auth.sqlite3"),
+        ),
+        session_cookie_name=str(raw.get("session_cookie_name", "vassil_session")).strip(),
+        session_ttl_seconds=_positive_int(
+            raw.get("session_ttl_seconds", 60 * 60 * 24 * 7),
+            "security.session_ttl_seconds",
+        ),
+        session_secret=str(
+            first_env("VASSIL_SESSION_SECRET", "VVOICE_SESSION_SECRET")
+            or raw.get("session_secret", "")
+        ).strip(),
+        secure_cookies=_parse_bool(
+            first_env("VASSIL_SECURE_COOKIES", "VVOICE_SECURE_COOKIES"),
+            bool(raw.get("secure_cookies", False)),
+        ),
+    )
+
+
+def _validate_runtime_security(
+    runtime: RuntimeSettings,
+    security: SecuritySettings,
+) -> None:
+    if not COOKIE_NAME_PATTERN.fullmatch(security.session_cookie_name):
+        raise ValueError(
+            "security.session_cookie_name must be a non-empty HTTP cookie token."
+        )
+
+    if security.auth_required:
+        if len(security.session_secret) < MIN_SESSION_SECRET_CHARS:
+            raise ValueError(
+                "security.session_secret must contain at least "
+                f"{MIN_SESSION_SECRET_CHARS} characters when authentication is required."
+            )
+        if security.session_secret.lower() in INSECURE_SESSION_SECRETS:
+            raise ValueError(
+                "security.session_secret is still a documented placeholder; replace it with a "
+                "random secret."
+            )
+
+    if runtime.environment == "production":
+        if runtime.debug:
+            raise ValueError("runtime.debug must be false in the production environment.")
+        if not security.auth_required:
+            raise ValueError("security.auth_required must be true in the production environment.")
+        if not security.secure_cookies:
+            raise ValueError("security.secure_cookies must be true in the production environment.")
 
 
 def _resolve(root: Path, value: str | os.PathLike[str]) -> Path:
@@ -395,6 +478,21 @@ def _parse_bool(value: Any, default: bool) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     raise ValueError(f"Invalid boolean value: {value!r}.")
+
+
+def _normalized_choice(
+    value: Any,
+    *,
+    name: str,
+    allowed: frozenset[str],
+    uppercase: bool = False,
+) -> str:
+    normalized = str(value).strip()
+    normalized = normalized.upper() if uppercase else normalized.lower()
+    if normalized not in allowed:
+        choices = ", ".join(sorted(allowed))
+        raise ValueError(f"{name} must be one of: {choices}.")
+    return normalized
 
 
 def _parse_asr_settings(raw: dict[str, Any], root: Path) -> AsrSettings:

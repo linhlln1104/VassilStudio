@@ -213,6 +213,8 @@ async def warmup_all(request: Request):
 
 def _runtime_status(container, settings) -> dict:
     return {
+        "environment": settings.runtime.environment,
+        "log_level": settings.runtime.log_level,
         "provider": settings.runtime.provider,
         "num_threads": settings.runtime.num_threads,
         "debug": settings.runtime.debug,

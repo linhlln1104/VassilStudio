@@ -196,6 +196,8 @@ export function SettingsView() {
         backendOffline={backendOffline}
         runtimeReady={runtimeReady}
         version={health?.version ?? diagnosticsQuery.data?.version ?? 'unknown'}
+        environment={model?.runtime.environment ?? diagnosticsQuery.data?.runtime.environment ?? 'unknown'}
+        logLevel={model?.runtime.log_level ?? diagnosticsQuery.data?.runtime.log_level ?? 'unknown'}
         provider={model?.runtime.provider ?? health?.provider ?? 'unknown'}
         threads={String(model?.runtime.num_threads ?? 'unknown')}
         ttsLoaded={Boolean(health?.tts_loaded)}
@@ -701,6 +703,8 @@ function SystemDiagnosticsCard({
   backendOffline,
   runtimeReady,
   version,
+  environment,
+  logLevel,
   provider,
   threads,
   ttsLoaded,
@@ -725,6 +729,8 @@ function SystemDiagnosticsCard({
   backendOffline: boolean
   runtimeReady: boolean
   version: string
+  environment: string
+  logLevel: string
   provider: string
   threads: string
   ttsLoaded: boolean
@@ -821,8 +827,10 @@ function SystemDiagnosticsCard({
           <ChevronDown className="size-4 text-slate-500 transition-transform group-open:rotate-180" />
         </summary>
         <div className="border-t border-slate-200 p-3">
-          <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-4 xl:grid-cols-7">
+          <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-4 xl:grid-cols-9">
             <SignalMeta label="Version" value={version} />
+            <SignalMeta label="Environment" value={environment} />
+            <SignalMeta label="Log level" value={logLevel} />
             <SignalMeta label="Provider" value={provider} />
             <SignalMeta label="Threads" value={threads} />
             <SignalMeta label="Workers" value={`ASR ${asrWorkers} / TTS ${ttsWorkers}`} />

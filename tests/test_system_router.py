@@ -41,6 +41,8 @@ def test_model_status_reports_job_workers(tmp_path) -> None:
     assert runtime["tts_job_max_attempts"] == 2
     assert runtime["job_retry_backoff_seconds"] == 0.01
     assert runtime["warmup_on_startup"] is True
+    assert runtime["environment"] == "local"
+    assert runtime["log_level"] == "INFO"
 
 
 def test_health_reports_release_version(tmp_path) -> None:
@@ -160,7 +162,14 @@ def make_app(tmp_path):
     asr = FakeRuntimeService(("en", "vi"))
     tts = FakeRuntimeService(("en", "vi"))
     settings = SimpleNamespace(
-        runtime=SimpleNamespace(provider="cpu", num_threads=2, debug=False, warmup_on_startup=True),
+        runtime=SimpleNamespace(
+            environment="local",
+            log_level="INFO",
+            provider="cpu",
+            num_threads=2,
+            debug=False,
+            warmup_on_startup=True,
+        ),
         jobs=SimpleNamespace(
             asr_max_workers=2,
             tts_max_workers=3,

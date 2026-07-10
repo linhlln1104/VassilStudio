@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from vvoice.core.config import load_settings, parse_settings
 
 
@@ -110,6 +112,8 @@ def test_parse_settings_resolves_paths() -> None:
     )
 
     assert settings.runtime.num_threads == 2
+    assert settings.runtime.environment == "local"
+    assert settings.runtime.log_level == "INFO"
     assert settings.runtime.warmup_on_startup is False
     assert settings.paths.models_root == root / "models"
     assert settings.paths.data_root == root / "data"
@@ -282,7 +286,7 @@ def test_parse_settings_supports_local_auth_security_options(tmp_path, monkeypat
     }
 
     monkeypatch.setenv("VASSIL_AUTH_REQUIRED", "true")
-    monkeypatch.setenv("VASSIL_SESSION_SECRET", "env-session-secret")
+    monkeypatch.setenv("VASSIL_SESSION_SECRET", "env-session-secret-with-at-least-32-chars")
     monkeypatch.setenv("VASSIL_SECURE_COOKIES", "1")
 
     settings = parse_settings(raw, tmp_path)
@@ -291,8 +295,110 @@ def test_parse_settings_supports_local_auth_security_options(tmp_path, monkeypat
     assert settings.security.auth_db_path == tmp_path / "data/custom-auth.sqlite3"
     assert settings.security.session_cookie_name == "custom_session"
     assert settings.security.session_ttl_seconds == 120
-    assert settings.security.session_secret == "env-session-secret"
+    assert settings.security.session_secret == "env-session-secret-with-at-least-32-chars"
     assert settings.security.secure_cookies is True
+
+
+def test_parse_settings_applies_runtime_environment_overrides(tmp_path, monkeypatch) -> None:
+    raw = _minimal_settings_raw()
+
+    monkeypatch.setenv("VASSIL_ENV", "docker")
+    monkeypatch.setenv("VASSIL_LOG_LEVEL", "warning")
+    monkeypatch.setenv("VASSIL_WARMUP_ON_STARTUP", "true")
+
+    settings = parse_settings(raw, tmp_path)
+
+    assert settings.runtime.environment == "docker"
+    assert settings.runtime.log_level == "WARNING"
+    assert settings.runtime.warmup_on_startup is True
+
+
+def test_parse_settings_requires_strong_session_secret_when_auth_is_enabled(tmp_path) -> None:
+    raw = _minimal_settings_raw()
+    raw["security"] = {
+        "auth_required": True,
+        "session_secret": "too-short",
+    }
+
+    with pytest.raises(ValueError, match="at least 32 characters"):
+        parse_settings(raw, tmp_path)
+
+
+def test_parse_settings_rejects_documented_session_secret_placeholder(tmp_path) -> None:
+    raw = _minimal_settings_raw()
+    raw["security"] = {
+        "auth_required": True,
+        "session_secret": "replace-with-random-32-plus-character-secret",
+    }
+
+    with pytest.raises(ValueError, match="documented placeholder"):
+        parse_settings(raw, tmp_path)
+
+
+@pytest.mark.parametrize("environment", ["production", "PRODUCTION"])
+def test_parse_settings_accepts_hardened_production_profile(tmp_path, environment) -> None:
+    raw = _minimal_settings_raw()
+    raw["runtime"]["environment"] = environment
+    raw["security"] = {
+        "auth_required": True,
+        "session_secret": "production-session-secret-0123456789",
+        "secure_cookies": True,
+    }
+
+    settings = parse_settings(raw, tmp_path)
+
+    assert settings.runtime.environment == "production"
+    assert settings.security.auth_required is True
+    assert settings.security.secure_cookies is True
+
+
+def test_parse_settings_rejects_unsafe_production_profile(tmp_path) -> None:
+    raw = _minimal_settings_raw()
+    raw["runtime"]["environment"] = "production"
+
+    with pytest.raises(ValueError, match="auth_required must be true"):
+        parse_settings(raw, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("runtime_patch", "security_patch", "message"),
+    [
+        ({"debug": True}, {}, "runtime.debug must be false"),
+        ({}, {"secure_cookies": False}, "secure_cookies must be true"),
+    ],
+)
+def test_parse_settings_enforces_production_runtime_invariants(
+    tmp_path,
+    runtime_patch,
+    security_patch,
+    message,
+) -> None:
+    raw = _minimal_settings_raw()
+    raw["runtime"].update({"environment": "production", **runtime_patch})
+    raw["security"] = {
+        "auth_required": True,
+        "session_secret": "production-session-secret-0123456789",
+        "secure_cookies": True,
+        **security_patch,
+    }
+
+    with pytest.raises(ValueError, match=message):
+        parse_settings(raw, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("environment", "staging", "runtime.environment must be one of"),
+        ("log_level", "verbose", "runtime.log_level must be one of"),
+    ],
+)
+def test_parse_settings_rejects_unknown_runtime_options(tmp_path, field, value, message) -> None:
+    raw = _minimal_settings_raw()
+    raw["runtime"][field] = value
+
+    with pytest.raises(ValueError, match=message):
+        parse_settings(raw, tmp_path)
 
 
 def test_parse_settings_supports_job_worker_limits(tmp_path) -> None:

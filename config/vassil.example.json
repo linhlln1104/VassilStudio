@@ -5,6 +5,8 @@
     "logs_root": "logs"
   },
   "runtime": {
+    "environment": "local",
+    "log_level": "INFO",
     "provider": "cpu",
     "num_threads": 2,
     "debug": false,

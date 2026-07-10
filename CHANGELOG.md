@@ -19,6 +19,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Product-grade trust pages for privacy, support, license, changelog, and operations.
 - Release metadata aligned across backend, health/diagnostics, OpenAPI, and React package files.
 - Native `run_api.ps1` loads `.env`, and `.env.example` points to an existing default config.
+- Explicit local/development/production/docker runtime profiles and effective log-level diagnostics.
 
 ### Hardened
 
@@ -27,6 +28,8 @@ All notable VassilStudio productionization changes are tracked here.
 - New local account passwords use scrypt hashes while legacy PBKDF2 hashes remain verifiable.
 - ASR/TTS job lifecycle with cancellation, retry metadata, cleanup, and consistent terminal states.
 - Language-aware ASR/TTS runtime selection and model readiness reporting.
+- Auth-enabled startup now requires a strong non-placeholder session secret; production profile
+  startup also requires auth, secure cookies, and debug mode off.
 
 ### Verified
 

@@ -101,6 +101,8 @@ hardware, increase the worker limits in `config/vassil.example.json`:
 
 ```json
 "runtime": {
+  "environment": "local",
+  "log_level": "INFO",
   "provider": "cpu",
   "num_threads": 2,
   "debug": false,
@@ -204,8 +206,13 @@ Studio account auth is disabled by default for local development. To require a b
 
 ```powershell
 $env:VASSIL_AUTH_REQUIRED="true"
-$env:VASSIL_SESSION_SECRET="replace-with-random-32-plus-character-secret"
+$env:VASSIL_SESSION_SECRET = python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
+
+Startup rejects auth-enabled configurations with missing, short, or documented placeholder session
+secrets. Use `VASSIL_ENV=production` only behind HTTPS; that profile also requires auth, secure
+cookies, and debug mode off. Native loopback installs normally use `local`, while Compose defaults
+to `docker`.
 
 `scripts/run_api.ps1` loads `.env` automatically for native local runs while preserving any
 environment variables already set in the shell.

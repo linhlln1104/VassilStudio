@@ -49,9 +49,13 @@ def reset_request_id(token) -> None:
     _request_id.reset(token)
 
 
-def configure_logging(*, debug: bool = False) -> None:
+def configure_logging(*, debug: bool = False, log_level: str | None = None) -> None:
     logger = logging.getLogger("vvoice")
-    logger.setLevel(logging.DEBUG if debug else logging.INFO)
+    selected_level = (log_level or ("DEBUG" if debug else "INFO")).upper()
+    numeric_level = getattr(logging, selected_level, None)
+    if not isinstance(numeric_level, int):
+        raise ValueError(f"Unsupported log level: {selected_level}")
+    logger.setLevel(numeric_level)
     logger.propagate = False
 
     if any(getattr(handler, "_vassil_structured", False) for handler in logger.handlers):

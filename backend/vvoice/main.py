@@ -38,7 +38,10 @@ from vvoice.domains.voices.router import router as voices_router
 
 def create_app() -> FastAPI:
     settings = load_settings()
-    configure_logging(debug=settings.runtime.debug)
+    configure_logging(
+        debug=settings.runtime.debug,
+        log_level=settings.runtime.log_level,
+    )
     container = AppContainer(settings)
 
     @asynccontextmanager

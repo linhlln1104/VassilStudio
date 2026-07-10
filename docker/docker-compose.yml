@@ -12,6 +12,9 @@ services:
       VASSIL_ROOT: /app
       VASSIL_CONFIG: /app/config/vassil.example.json
       VASSIL_STUDIO_DIR: /app/frontend/studio-react/dist
+      VASSIL_ENV: ${VASSIL_ENV:-docker}
+      VASSIL_LOG_LEVEL: ${VASSIL_LOG_LEVEL:-INFO}
+      VASSIL_WARMUP_ON_STARTUP: ${VASSIL_WARMUP_ON_STARTUP:-false}
       VASSIL_API_KEYS: ${VASSIL_API_KEYS:-${VVOICE_API_KEYS:-}}
       VASSIL_AUTH_REQUIRED: ${VASSIL_AUTH_REQUIRED:-false}
       VASSIL_SESSION_SECRET: ${VASSIL_SESSION_SECRET:-}

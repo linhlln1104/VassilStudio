@@ -50,6 +50,8 @@ export type ModelStatusResponse = {
   ready: boolean
   checks: Record<string, boolean>
   runtime: {
+    environment: string
+    log_level: string
     provider: string
     num_threads: number
     debug: boolean

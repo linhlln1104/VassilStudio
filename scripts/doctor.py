@@ -97,6 +97,8 @@ def model_checks(config_path: str | None) -> list[Check]:
 
     checks = [
         Check("runtime.provider", True, settings.runtime.provider),
+        Check("runtime.environment", True, settings.runtime.environment),
+        Check("runtime.log_level", True, settings.runtime.log_level),
         Check("runtime.num_threads", settings.runtime.num_threads > 0, str(settings.runtime.num_threads)),
         Check("runtime.warmup_on_startup", True, "enabled" if settings.runtime.warmup_on_startup else "disabled"),
         Check("jobs.asr_max_workers", settings.jobs.asr_max_workers > 0, str(settings.jobs.asr_max_workers)),
@@ -141,6 +143,11 @@ def model_checks(config_path: str | None) -> list[Check]:
             "security.session_ttl_seconds",
             settings.security.session_ttl_seconds > 0,
             str(settings.security.session_ttl_seconds),
+        ),
+        Check(
+            "security.session_secret",
+            True,
+            "configured" if settings.security.auth_required else "not required",
         ),
     ]
 
