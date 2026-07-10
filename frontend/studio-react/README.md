@@ -1,6 +1,7 @@
 # VassilStudio UI
 
 Production React interface for VassilStudio. The build output is served by the FastAPI backend from `/studio`.
+Use Node.js 24, matching `.node-version`, CI, and the Docker build stage.
 
 ## Commands
 

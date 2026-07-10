@@ -20,6 +20,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Release metadata aligned across backend, health/diagnostics, OpenAPI, and React package files.
 - Native `run_api.ps1` loads `.env`, and `.env.example` points to an existing default config.
 - Explicit local/development/production/docker runtime profiles and effective log-level diagnostics.
+- A pinned, read-only Windows GitHub Actions quality gate with clean npm installs and OpenAPI drift checks.
 
 ### Hardened
 

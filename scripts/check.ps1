@@ -3,6 +3,7 @@ param(
   [switch]$SkipOpenApi,
   [switch]$SkipNode,
   [switch]$SkipCompose,
+  [switch]$CI,
   [switch]$RunE2E,
   [switch]$RunLanguageMatrix,
   [switch]$RunDocker,
@@ -10,6 +11,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($CI) {
+  $SkipDoctor = $true
+  $SkipCompose = $true
+}
 
 $Root = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
@@ -71,6 +77,14 @@ if (-not $SkipOpenApi) {
   Invoke-Step "export openapi" {
     & $Python (Join-Path $PSScriptRoot "export_openapi.py")
   }
+
+  if ($CI) {
+    Invoke-Step "generated contract drift" {
+      & git diff --exit-code -- `
+        (Join-Path $Root "contracts\openapi\vassil.openapi.json") `
+        (Join-Path $Root "contracts\openapi\vvoice.openapi.json")
+    }
+  }
 }
 
 Invoke-Step "ruff" {
@@ -88,7 +102,7 @@ if (-not $SkipNode) {
   }
 
   $StudioReact = Join-Path $Root "frontend\studio-react"
-  if (-not (Test-Path (Join-Path $StudioReact "node_modules"))) {
+  if ($CI -or -not (Test-Path (Join-Path $StudioReact "node_modules"))) {
     Invoke-Step "studio-react npm ci" {
       Push-Location $StudioReact
       try {

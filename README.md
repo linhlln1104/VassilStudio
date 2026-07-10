@@ -1,5 +1,7 @@
 # VassilStudio
 
+[![Quality](https://github.com/linhlln1104/VassilStudio/actions/workflows/quality.yml/badge.svg)](https://github.com/linhlln1104/VassilStudio/actions/workflows/quality.yml)
+
 VassilStudio is a modular monolith for local voice workflows built around ZipFormer ASR and ZipVoice TTS models in `models/runtime/`.
 
 The upstream runtime foundation is cloned locally at `foundation/sherpa-onnx` for reference. VassilStudio itself stays rooted in this repository and uses `sherpa-onnx` for ZipFormer ASR plus a direct ONNX runtime path for ZipVoice TTS.
@@ -162,6 +164,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1
 
 The default check runs storage setup, doctor, OpenAPI export, ruff, pytest, React Studio
 lint/build, legacy frontend JavaScript syntax checks, and Docker Compose config validation.
+GitHub Actions runs the Windows CI equivalent with `scripts/check.ps1 -CI`; that mode performs a
+clean npm install and rejects generated OpenAPI drift while leaving model-binary and Docker-daemon
+validation to the release hardware gates below.
 Optional runtime checks:
 
 ```powershell

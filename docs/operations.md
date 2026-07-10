@@ -160,6 +160,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1
 Default check includes storage setup, doctor, OpenAPI export, ruff, React lint/build, legacy frontend
 syntax checks, pytest, auth/product smoke, and Docker Compose config validation.
 
+The `Quality` GitHub Actions workflow runs on pushes to `main`, pull requests, and manual dispatch.
+It uses the same script with `-CI`, a clean npm install, pinned action revisions, read-only repository
+permissions, and generated OpenAPI drift detection. CI skips doctor/model binaries and Compose
+because those require the release workspace; the default local gate and optional checks cover them.
+
 Optional release checks:
 
 ```powershell
@@ -275,6 +280,7 @@ To restore, copy the same paths into a fresh checkout, run `scripts/setup_storag
 
 Before tagging or distributing a production-like local build:
 
+- The latest `Quality` workflow is green for the release commit.
 - `scripts/check.ps1` passes.
 - Optional E2E, language matrix, and Docker smokes pass when models and Docker are available.
 - Backend version, React package version, and `CHANGELOG.md` release name are aligned.
