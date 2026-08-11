@@ -862,7 +862,7 @@ function SignalBars({ healthy }: { healthy: boolean }) {
           key={index}
           className={
             healthy
-              ? 'w-full rounded-t bg-gradient-to-t from-blue-600 via-sky-400 to-fuchsia-400'
+              ? 'w-full rounded-t bg-emerald-500'
               : 'w-full rounded-t bg-amber-500'
           }
           initial={{ height: 10 + ((index * 7) % 20), opacity: 0.65 }}
@@ -893,7 +893,7 @@ function SignalRow({ label, value, good }: { label: string; value: string; good:
     <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
       <div className="flex items-center gap-2">
         {good ? (
-          <CheckCircle2 className="size-4 shrink-0 text-blue-700" />
+          <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
         ) : (
           <XCircle className="size-4 shrink-0 text-amber-700" />
         )}
@@ -910,7 +910,7 @@ function CheckRow({ label, passed }: { label: string; passed: boolean }) {
   return (
     <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2">
       {passed ? (
-        <CheckCircle2 className="size-4 shrink-0 text-blue-700" />
+        <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
       ) : (
         <XCircle className="size-4 shrink-0 text-amber-700" />
       )}

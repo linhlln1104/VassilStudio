@@ -433,7 +433,7 @@ function JobRow({
       )}
     >
       <div className="flex min-w-0 items-start gap-3">
-        <div className="grid size-9 shrink-0 place-items-center rounded-md bg-gradient-to-br from-sky-400 via-blue-600 to-fuchsia-500 text-white">
+        <div className="grid size-9 shrink-0 place-items-center rounded-md bg-blue-600 text-white">
           {job.type === 'TTS' ? <FileAudio className="size-4" /> : <Captions className="size-4" />}
         </div>
         <div className="min-w-0 flex-1">
@@ -574,7 +574,7 @@ function Metric({
   tone: 'success' | 'warning' | 'danger' | 'neutral'
 }) {
   const toneClass = {
-    success: 'border-sky-200 text-blue-700',
+    success: 'border-emerald-200 text-emerald-700',
     warning: 'border-amber-200 text-amber-700',
     danger: 'border-red-200 text-red-700',
     neutral: 'border-slate-200 text-slate-600',

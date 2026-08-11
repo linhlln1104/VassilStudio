@@ -29,7 +29,7 @@ export function SegmentedControl<T extends string>({
   return (
     <div
       className={cn(
-        'inline-flex h-8 min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white',
+        'inline-flex h-9 min-w-0 gap-0.5 rounded-lg border border-neutral-200 bg-neutral-100 p-0.5',
         equalWidth && 'w-full',
         className,
       )}
@@ -43,12 +43,12 @@ export function SegmentedControl<T extends string>({
             type="button"
             aria-pressed={option.value === value}
             className={cn(
-              'inline-flex h-8 items-center justify-center whitespace-nowrap border-r border-slate-200 px-3 text-xs font-medium leading-none text-slate-600 transition-colors last:border-r-0',
+              'inline-flex h-[30px] items-center justify-center whitespace-nowrap rounded-md px-3 text-xs font-medium leading-none text-neutral-600 transition-colors',
               equalWidth ? 'min-w-0 flex-1' : 'shrink-0',
               option.value === value
-                ? 'bg-sky-50 text-blue-700'
-                : 'hover:bg-slate-50 hover:text-slate-950',
-              itemDisabled && 'cursor-not-allowed opacity-60 hover:bg-white hover:text-slate-600',
+                ? 'bg-white text-blue-700 ring-1 ring-inset ring-neutral-200'
+                : 'hover:bg-white/70 hover:text-neutral-950',
+              itemDisabled && 'cursor-not-allowed opacity-60 hover:bg-transparent hover:text-neutral-600',
               itemClassName,
             )}
             title={option.title}

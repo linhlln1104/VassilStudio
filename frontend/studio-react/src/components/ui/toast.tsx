@@ -53,7 +53,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
     <div
       className={cn(
         'flex items-start gap-2 rounded-md border bg-white p-3 shadow-md',
-        item.variant === 'success' && 'border-sky-200',
+        item.variant === 'success' && 'border-emerald-200',
         item.variant === 'danger' && 'border-red-200',
         item.variant === 'info' && 'border-slate-200',
       )}
@@ -61,7 +61,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
       <Icon
         className={cn(
           'mt-0.5 size-5 shrink-0',
-          item.variant === 'success' && 'text-blue-600',
+          item.variant === 'success' && 'text-emerald-600',
           item.variant === 'danger' && 'text-red-600',
           item.variant === 'info' && 'text-slate-600',
         )}

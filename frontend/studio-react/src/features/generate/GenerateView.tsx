@@ -375,7 +375,7 @@ function FirstRunChecklist({
   }
 
   return (
-    <section className="mb-3 rounded-md border border-slate-200 bg-white p-3">
+    <section className="mb-3 min-w-0 rounded-md border border-studio-border bg-white p-3">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="text-sm font-semibold text-slate-950">First output checklist</div>
@@ -383,22 +383,22 @@ function FirstRunChecklist({
             {completed}/{steps.length} ready
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex min-w-0 flex-wrap gap-2">
           {steps.map((step) => (
             <div
-              className="flex min-h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-xs"
+              className="flex min-h-8 max-w-full min-w-0 items-center gap-2 rounded-md border border-studio-border bg-white px-2.5 text-xs"
               key={step.label}
             >
               {step.done ? (
-                <CheckCircle2 className="size-4 shrink-0 text-blue-700" />
+                <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
               ) : (
                 <Circle className="size-4 shrink-0 text-slate-400" />
               )}
               <span className="font-semibold text-slate-950">{step.label}</span>
-              <span className="font-medium text-slate-500">{step.value}</span>
+              <span className="hidden font-medium text-slate-500 sm:inline">{step.value}</span>
               {step.action ? (
                 <button
-                  className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-900"
+                  className="inline-flex shrink-0 items-center gap-1 font-semibold text-blue-700 hover:text-blue-900"
                   type="button"
                   onClick={step.action.onClick}
                 >
@@ -430,7 +430,7 @@ function MobileGenerateFeedback({
       className={
         generateError
           ? 'rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700'
-          : 'rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-blue-700'
+          : 'rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700'
       }
     >
       {generateError ?? 'Job queued. Output refreshes automatically.'}
@@ -629,7 +629,7 @@ function GenerateActionContent({
       ) : null}
 
       {generateSuccess ? (
-        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-blue-700">
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
           Job queued. Output refreshes automatically.
         </div>
       ) : null}
@@ -660,7 +660,7 @@ function ScriptEditor({
 }) {
   const suggestions = promptSuggestions[language]
   return (
-    <Card className="overflow-hidden">
+    <Card className="min-w-0 overflow-hidden">
       <CardHeader className="flex-wrap border-b border-slate-200 bg-white">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-slate-950">Script editor</div>
@@ -683,14 +683,14 @@ function ScriptEditor({
           className="min-h-[180px] w-full resize-y border-0 bg-white p-3 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-500 sm:min-h-[260px] lg:min-h-[300px] xl:min-h-[320px]"
         />
         <div className="border-t border-slate-200 bg-white px-2.5 py-2">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex min-w-0 flex-wrap gap-2">
             {suggestions.map((prompt) => (
               <button
                 key={prompt}
                 type="button"
                 title={prompt}
                 onClick={() => onScriptChange(prompt)}
-                className="w-full truncate rounded-md border border-slate-200 bg-white px-2 py-1 text-left text-xs font-medium leading-4 text-slate-700 transition-colors hover:border-sky-200 hover:bg-sky-50/60 hover:text-blue-700 sm:w-auto sm:max-w-[240px]"
+                className="w-full min-w-0 max-w-full flex-none truncate rounded-md border border-slate-200 bg-white px-2 py-1.5 text-left text-xs font-medium leading-4 text-slate-700 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 sm:w-auto sm:max-w-[240px] sm:flex-1"
               >
                 {prompt}
               </button>
@@ -943,11 +943,11 @@ function ModelParameter({ label, value }: { label: string; value: string }) {
 
 function WaveformPreview() {
   return (
-    <div className="mt-3 flex h-10 items-center gap-1 rounded-md bg-gradient-to-r from-sky-50 via-white to-fuchsia-50 px-2">
+    <div className="mt-3 flex h-10 items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2">
       {Array.from({ length: 32 }).map((_, index) => (
         <span
           key={index}
-          className="flex-1 rounded-full bg-gradient-to-t from-blue-600 via-sky-400 to-fuchsia-400"
+          className="flex-1 rounded-full bg-blue-600"
           style={{ height: `${8 + ((index * 17) % 24)}px` }}
         />
       ))}

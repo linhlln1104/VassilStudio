@@ -397,7 +397,7 @@ function VoiceCard({
     <article className="min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white p-2.5 transition-colors hover:border-sky-300 hover:bg-sky-50/20">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="grid size-8 shrink-0 place-items-center rounded-md bg-gradient-to-br from-sky-400 via-blue-600 to-fuchsia-500 text-xs font-semibold text-white">
+          <div className="grid size-8 shrink-0 place-items-center rounded-md bg-blue-600 text-xs font-semibold text-white">
             {voice.name.slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0">
@@ -593,7 +593,7 @@ function ImportCandidatesPanel({
           candidates.map((candidate) => (
             <div key={candidate.filename} className="min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white p-3">
               <div className="flex items-start gap-3">
-                <div className="grid size-8 shrink-0 place-items-center rounded-md bg-gradient-to-br from-sky-400 via-blue-600 to-fuchsia-500 text-white">
+                <div className="grid size-8 shrink-0 place-items-center rounded-md bg-neutral-900 text-white">
                   <FileAudio className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">

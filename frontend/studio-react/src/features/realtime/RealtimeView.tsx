@@ -471,7 +471,7 @@ export function RealtimeView() {
 
 function StateTile({ label, value, good }: { label: string; value: string; good: boolean }) {
   return (
-    <div className={cn('rounded-md border px-3 py-2', good ? 'border-sky-200 bg-white text-blue-800' : 'border-slate-200 bg-white text-slate-600')}>
+    <div className={cn('rounded-md border px-3 py-2', good ? 'border-emerald-200 bg-emerald-50/40 text-emerald-800' : 'border-slate-200 bg-white text-slate-600')}>
       <div className="text-xs font-medium opacity-80">{label}</div>
       <div className="mt-1 text-xs font-semibold">{value}</div>
     </div>
@@ -492,7 +492,7 @@ function ReadinessRow({
   return (
     <div className="flex items-start gap-2 rounded-md border border-slate-200 bg-white p-3">
       <div className="grid size-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-500">
-        <Icon className={cn('size-4', ready && 'text-blue-700')} />
+        <Icon className={cn('size-4', ready && 'text-emerald-600')} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-xs font-semibold text-slate-900">{label}</div>
