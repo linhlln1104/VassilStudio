@@ -38,6 +38,8 @@ All notable VassilStudio productionization changes are tracked here.
 - Priority-ordered job history with responsive filters, conditional actions, and incremental history rendering.
 - Settings workspace split into focused runtime, account, storage, and security views with real operational states.
 - First-run and login flows with password confirmation, visibility controls, API retry, and guarded submission.
+- Public product shell with an actual Studio workspace image, complete workflow overview, and local-runtime trust signals.
+- Privacy, license, support, changelog, and operations pages with shared navigation and documentation-style sections.
 
 ### Hardened
 

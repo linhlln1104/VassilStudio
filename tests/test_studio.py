@@ -28,6 +28,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert 'href="/studio/brand/vassil-mark.png"' in page
     assert 'src="/studio/assets/' in page
     assert 'href="/studio/assets/' in page
+    assert STATIC_DIR.joinpath("brand", "vassil-studio-realtime.png").is_file()
 
     asset_refs = sorted(set(re.findall(r'["\']\/studio\/assets\/([^"\']+)["\']', page)))
     assert asset_refs
@@ -58,6 +59,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "/model-status" in script
     assert "/warmup" in script
     assert "/studio/brand/vassil-logo.png" in script
+    assert "/studio/brand/vassil-studio-realtime.png" in script
     assert "vassil.apiKey" in script
     assert "vvoice.apiKey" in script
     assert "vassil.selectedVoiceId" in script
@@ -91,7 +93,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Operations guide" in script
     assert "GPL-3.0-or-later" in script
     assert "Models and datasets are installed separately" in script
-    assert "External telemetry is off" in script
+    assert "External telemetry is disabled by default" in script
     assert "belong here" not in script
     assert "Change password" in script
     assert "Changelog" in script
@@ -99,6 +101,10 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Render mode" in script
     assert "First output checklist" in script
     assert "Production" in script
+    assert "Studio workflows" in script
+    assert "Local queue and storage" in script
+    assert "2 voice profiles" not in script
+    assert "Workspace readiness" not in script
     assert "color-scheme:light" in style
     assert "vvoice-soft-grid" not in style
 

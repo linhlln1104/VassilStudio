@@ -1,4 +1,17 @@
-import { ArrowRight, AudioLines, Captions, Database, ShieldCheck } from 'lucide-react'
+import {
+  ArrowRight,
+  AudioLines,
+  Captions,
+  Cpu,
+  Database,
+  HardDrive,
+  History,
+  LockKeyhole,
+  Mic,
+  Settings,
+  ShieldCheck,
+  UsersRound,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { BRAND_LOGO_SRC, BRAND_NAME } from '@/lib/brand'
@@ -17,6 +30,47 @@ type InfoPageContent = {
   secondaryAction?: { label: string; href: string }
 }
 
+const publicLinks: Array<{ label: string; href: string; page: InfoPageId }> = [
+  { label: 'Operations', href: '/operations', page: 'operations' },
+  { label: 'Changelog', href: '/changelog', page: 'changelog' },
+  { label: 'Support', href: '/support', page: 'support' },
+  { label: 'Privacy', href: '/privacy', page: 'privacy' },
+  { label: 'License', href: '/license', page: 'license' },
+]
+
+const workflowItems = [
+  {
+    icon: AudioLines,
+    title: 'Generate',
+    copy: 'Render Vietnamese or English speech from a saved voice profile.',
+  },
+  {
+    icon: Captions,
+    title: 'Transcribe',
+    copy: 'Queue local audio for ZipFormer recognition and reuse the result.',
+  },
+  {
+    icon: Mic,
+    title: 'Realtime',
+    copy: 'Stream microphone audio into a live local transcript session.',
+  },
+  {
+    icon: UsersRound,
+    title: 'Voices',
+    copy: 'Create and maintain reusable reference voice profiles.',
+  },
+  {
+    icon: History,
+    title: 'Jobs',
+    copy: 'Review queue state, outputs, failures, retries, and cleanup.',
+  },
+  {
+    icon: Settings,
+    title: 'Settings',
+    copy: 'Inspect models, storage, authentication, and diagnostics.',
+  },
+]
+
 const infoPages: Record<InfoPageId, InfoPageContent> = {
   privacy: {
     title: 'Privacy',
@@ -24,11 +78,11 @@ const infoPages: Record<InfoPageId, InfoPageContent> = {
     rows: [
       {
         label: 'Local data',
-        value: 'Audio, transcripts, voice profiles, outputs, jobs, and auth data stay under local paths by default.',
+        value: 'Audio, transcripts, voice profiles, outputs, jobs, and auth data stay under configured local paths.',
       },
       {
         label: 'Telemetry',
-        value: 'External telemetry is off for this MVP. Operators can inspect config before enabling integrations.',
+        value: 'External telemetry is disabled by default. Operators control any future integrations through configuration.',
       },
       {
         label: 'Diagnostics',
@@ -59,7 +113,7 @@ const infoPages: Record<InfoPageId, InfoPageContent> = {
   },
   support: {
     title: 'Support',
-    summary: 'Start with readiness, logs, and a redacted diagnostics bundle before opening an issue.',
+    summary: 'Start with readiness, logs, and a redacted diagnostics bundle before reporting an issue.',
     rows: [
       {
         label: 'Readiness',
@@ -79,15 +133,15 @@ const infoPages: Record<InfoPageId, InfoPageContent> = {
   },
   changelog: {
     title: 'Changelog',
-    summary: 'Production hardening work is tracked in commits and CHANGELOG.md.',
+    summary: 'Product and production-hardening work is recorded in commits and CHANGELOG.md.',
     rows: [
       {
         label: 'Current release',
-        value: '0.1.0-local-product covers auth, onboarding, diagnostics, storage retention, and benchmarks.',
+        value: '0.1.0-local-product covers complete voice workflows, local auth, diagnostics, and retention.',
       },
       {
         label: 'Verification',
-        value: 'Each production slice records scripts/check.ps1 results before commit and push.',
+        value: 'Each production phase records scripts/check.ps1 results before commit and push.',
       },
       {
         label: 'Contracts',
@@ -98,11 +152,11 @@ const infoPages: Record<InfoPageId, InfoPageContent> = {
   },
   operations: {
     title: 'Operations guide',
-    summary: 'The runbook lives at docs/operations.md and covers local install through release checks.',
+    summary: 'The runbook in docs/operations.md covers local installation through release checks.',
     rows: [
       {
         label: 'Setup',
-        value: 'Install, model layout, config, local auth, smoke scripts, and Docker are documented.',
+        value: 'Install, model layout, configuration, local auth, smoke scripts, and Docker are documented.',
       },
       {
         label: 'Maintenance',
@@ -110,7 +164,7 @@ const infoPages: Record<InfoPageId, InfoPageContent> = {
       },
       {
         label: 'Release',
-        value: 'Use the guide checklist with CHANGELOG.md and scripts/check.ps1 before distributing builds.',
+        value: 'Use the runbook checklist with CHANGELOG.md and scripts/check.ps1 before distribution.',
       },
     ],
     primaryAction: { label: 'Open Studio', href: '/studio' },
@@ -125,118 +179,134 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
 
   return (
     <div className="min-h-screen bg-white text-slate-950">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95">
-        <div className="mx-auto flex h-14 max-w-[1180px] items-center justify-between px-4 sm:px-6">
-          <a className="inline-flex items-center" href="/">
-            <img className="h-8 w-auto" src={BRAND_LOGO_SRC} alt={BRAND_NAME} />
-          </a>
-          <nav className="hidden items-center gap-5 text-xs font-medium text-slate-500 sm:flex">
-            <a className="hover:text-slate-950" href="/operations">Docs</a>
-            <a className="hover:text-slate-950" href="/changelog">Changelog</a>
-            <a className="hover:text-slate-950" href="/support">Support</a>
-            <a className="hover:text-slate-950" href="/privacy">Privacy</a>
-            <a className="hover:text-slate-950" href="/license">License</a>
-          </nav>
-          <Button asChild size="sm">
-            <a href="/studio">
-              Open Studio
-              <ArrowRight className="size-3.5" />
-            </a>
-          </Button>
-        </div>
-      </header>
-
+      <PublicHeader />
       <main>
-        <section className="mx-auto grid min-h-[calc(100vh-56px)] max-w-[1180px] content-center gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_440px]">
-          <div className="max-w-2xl">
-            <div className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 px-2.5 text-xs font-medium text-slate-600">
-              <ShieldCheck className="size-3.5 text-blue-600" />
-              Local-first voice studio
-            </div>
-            <h1 className="mt-6 text-5xl font-semibold tracking-normal text-slate-950 sm:text-6xl">
-              VassilStudio
-            </h1>
-            <p className="mt-5 max-w-xl text-base leading-7 text-slate-600">
-              A focused workspace for ZipFormer ASR, ZipVoice TTS, reusable voice profiles, and local diagnostics.
-            </p>
-            <div className="mt-7 flex flex-wrap gap-2">
-              <Button asChild>
-                <a href="/studio">
-                  Open Studio
-                  <ArrowRight className="size-3.5" />
-                </a>
-              </Button>
-              <Button asChild variant="secondary">
-                <a href="/operations">Read operations guide</a>
-              </Button>
+        <section className="relative h-[calc(100svh-112px)] min-h-[480px] max-h-[760px] overflow-hidden border-b border-slate-200">
+          <img
+            className="absolute inset-0 size-full object-cover object-top"
+            src="/studio/brand/vassil-studio-realtime.png"
+            alt="VassilStudio realtime transcription workspace"
+          />
+          <div className="absolute inset-0 bg-white/70" aria-hidden="true" />
+          <div className="relative mx-auto flex h-full max-w-[1180px] items-end px-4 pb-10 sm:px-6 sm:pb-14">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-2 text-xs font-semibold text-blue-700">
+                <ShieldCheck className="size-4" />
+                Local-first voice studio
+              </div>
+              <h1 className="mt-4 text-5xl font-semibold tracking-normal text-slate-950 sm:text-6xl">
+                VassilStudio
+              </h1>
+              <p className="mt-4 max-w-xl text-base leading-7 text-slate-700">
+                ZipFormer transcription, ZipVoice rendering, reusable voice profiles, and runtime diagnostics in one local workspace.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-2">
+                <Button asChild>
+                  <a href="/studio">
+                    Open Studio
+                    <ArrowRight className="size-4" />
+                  </a>
+                </Button>
+                <Button asChild variant="secondary">
+                  <a href="/operations">Operations guide</a>
+                </Button>
+              </div>
+              <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs font-medium text-slate-700">
+                <span>Vietnamese + English</span>
+                <span>CPU runtime</span>
+                <span>Local queue and storage</span>
+              </div>
             </div>
           </div>
-
-          <ProductPreview />
         </section>
 
-        <section className="border-t border-slate-200">
-          <div className="mx-auto grid max-w-[1180px] gap-0 px-4 py-10 sm:px-6 md:grid-cols-3">
-            {[
-              ['Voice profiles', 'Import reference audio and keep language metadata attached.'],
-              ['Render queue', 'Preview and production jobs stay visible until cleanup.'],
-              ['Diagnostics', 'Readiness, warmup, storage, and logs stay close to the work.'],
-            ].map(([title, copy]) => (
-              <div className="border-b border-slate-200 py-4 md:border-b-0 md:border-r md:px-5 md:last:border-r-0" key={title}>
-                <div className="text-sm font-semibold text-slate-950">{title}</div>
-                <p className="mt-1 text-xs leading-5 text-slate-600">{copy}</p>
-              </div>
+        <section className="border-b border-slate-200 bg-white" aria-label="Product foundation">
+          <div className="mx-auto grid min-h-24 max-w-[1180px] grid-cols-1 px-4 sm:grid-cols-3 sm:px-6">
+            <FoundationItem icon={HardDrive} title="Local data" copy="Audio and outputs stay in configured workspace paths." />
+            <FoundationItem icon={Cpu} title="Model aware" copy="Readiness, cold starts, and languages stay visible." />
+            <FoundationItem icon={LockKeyhole} title="Operator controlled" copy="Local auth, API keys, diagnostics, and cleanup are explicit." />
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-[1180px] px-4 py-14 sm:px-6 sm:py-16">
+          <div className="max-w-2xl">
+            <div className="text-xs font-semibold text-blue-700">Studio workflows</div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-normal text-slate-950">From reference audio to finished output</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Each workspace view handles one clear job and shares the same local runtime, queue, and language state.
+            </p>
+          </div>
+          <div className="mt-8 grid grid-cols-1 border-t border-slate-200 sm:grid-cols-2 lg:grid-cols-3">
+            {workflowItems.map((item) => (
+              <article className="border-b border-slate-200 py-5 sm:px-4 sm:odd:border-r lg:border-r lg:odd:border-r lg:[&:nth-child(3n)]:border-r-0" key={item.title}>
+                <item.icon className="size-5 text-blue-700" />
+                <h3 className="mt-3 text-sm font-semibold text-slate-950">{item.title}</h3>
+                <p className="mt-1 max-w-sm text-xs leading-5 text-slate-600">{item.copy}</p>
+              </article>
             ))}
           </div>
         </section>
+
+        <section className="border-y border-slate-200 bg-slate-50">
+          <div className="mx-auto flex max-w-[1180px] flex-col gap-4 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+              <div className="text-sm font-semibold text-slate-950">Ready to work locally</div>
+              <div className="mt-1 text-xs leading-5 text-slate-600">Open the studio or review model layout and runtime operations first.</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild>
+                <a href="/studio">Open Studio</a>
+              </Button>
+              <Button asChild variant="secondary">
+                <a href="/operations">Review operations</a>
+              </Button>
+            </div>
+          </div>
+        </section>
       </main>
+      <PublicFooter />
     </div>
   )
 }
 
-function ProductPreview() {
+function PublicHeader() {
   return (
-    <div className="rounded-md border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-        <div className="text-xs font-semibold text-slate-950">Workspace readiness</div>
-        <div className="rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Ready</div>
-      </div>
-      <div className="mt-3 grid gap-2">
-        <PreviewRow icon={AudioLines} title="Generate" value="2 voice profiles" />
-        <PreviewRow icon={Captions} title="Transcribe" value="Vietnamese + English" />
-        <PreviewRow icon={Database} title="Jobs" value="Queue tracked locally" />
-      </div>
-      <div className="mt-4 h-24 rounded-md border border-slate-200 bg-slate-50 p-3">
-        <div className="h-2 w-24 rounded bg-slate-200" />
-        <div className="mt-3 flex items-end gap-1">
-          {[32, 54, 42, 68, 36, 58, 44, 62, 28, 48, 72, 38].map((height, index) => (
-            <div
-              className="w-full rounded-t bg-blue-500"
-              style={{ height }}
-              key={`${height}-${index}`}
-            />
+    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95">
+      <div className="mx-auto flex h-14 max-w-[1180px] items-center justify-between gap-4 px-4 sm:px-6">
+        <a className="inline-flex min-w-0 items-center" href="/" aria-label="VassilStudio home">
+          <img className="h-8 w-auto max-w-[150px]" src={BRAND_LOGO_SRC} alt={BRAND_NAME} />
+        </a>
+        <nav className="hidden items-center gap-5 text-xs font-medium text-slate-500 lg:flex" aria-label="Product navigation">
+          {publicLinks.map((link) => (
+            <a className="hover:text-slate-950" href={link.href} key={link.page}>{link.label}</a>
           ))}
-        </div>
+        </nav>
+        <Button asChild size="sm">
+          <a href="/studio">
+            Open Studio
+            <ArrowRight className="size-3.5" />
+          </a>
+        </Button>
       </div>
-    </div>
+    </header>
   )
 }
 
-function PreviewRow({
+function FoundationItem({
   icon: Icon,
   title,
-  value,
+  copy,
 }: {
-  icon: typeof AudioLines
+  icon: typeof Database
   title: string
-  value: string
+  copy: string
 }) {
   return (
-    <div className="flex min-h-10 items-center gap-2 rounded-md border border-slate-200 px-2.5">
-      <Icon className="size-4 text-slate-500" />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-semibold text-slate-950">{title}</div>
-        <div className="truncate text-xs text-slate-500">{value}</div>
+    <div className="flex items-start gap-3 border-b border-slate-200 py-4 last:border-b-0 sm:border-b-0 sm:border-r sm:px-5 sm:first:pl-0 sm:last:border-r-0 sm:last:pr-0">
+      <Icon className="mt-0.5 size-4 shrink-0 text-emerald-700" />
+      <div>
+        <div className="text-xs font-semibold text-slate-950">{title}</div>
+        <p className="mt-1 text-xs leading-5 text-slate-600">{copy}</p>
       </div>
     </div>
   )
@@ -247,27 +317,36 @@ function InfoPage({ page }: { page: InfoPageId }) {
 
   return (
     <div className="min-h-screen bg-white text-slate-950">
-      <div className="mx-auto flex min-h-screen max-w-4xl flex-col px-4 py-4 sm:px-6">
-        <header className="flex h-12 items-center justify-between">
-          <a href="/">
-            <img className="h-8 w-auto" src={BRAND_LOGO_SRC} alt={BRAND_NAME} />
-          </a>
-          <Button asChild size="sm" variant="secondary">
-            <a href="/studio">Open Studio</a>
-          </Button>
-        </header>
-        <main className="flex flex-1 flex-col justify-center py-12">
+      <PublicHeader />
+      <main className="mx-auto grid max-w-[1040px] gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[190px_minmax(0,1fr)] lg:py-14">
+        <nav className="flex gap-1 overflow-x-auto lg:block lg:space-y-1" aria-label="Trust and operations">
+          {publicLinks.map((link) => (
+            <a
+              className={
+                link.page === page
+                  ? 'inline-flex h-8 shrink-0 items-center rounded-md bg-blue-50 px-2.5 text-xs font-semibold text-blue-700 lg:flex'
+                  : 'inline-flex h-8 shrink-0 items-center rounded-md px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950 lg:flex'
+              }
+              href={link.href}
+              aria-current={link.page === page ? 'page' : undefined}
+              key={link.page}
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
+        <article className="min-w-0">
           <h1 className="text-4xl font-semibold tracking-normal">{content.title}</h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">{content.summary}</p>
-          <div className="mt-6 grid gap-2 md:grid-cols-3">
+          <div className="mt-8 border-t border-slate-200">
             {content.rows.map((row) => (
-              <div key={row.label} className="rounded-md border border-slate-200 bg-white p-3">
-                <div className="text-xs font-semibold text-slate-950">{row.label}</div>
-                <p className="mt-2 text-xs leading-5 text-slate-600">{row.value}</p>
-              </div>
+              <section className="grid gap-2 border-b border-slate-200 py-5 sm:grid-cols-[150px_minmax(0,1fr)]" key={row.label}>
+                <h2 className="text-xs font-semibold text-slate-950">{row.label}</h2>
+                <p className="text-xs leading-5 text-slate-600">{row.value}</p>
+              </section>
             ))}
           </div>
-          <div className="mt-6 flex flex-wrap gap-2">
+          <div className="mt-7 flex flex-wrap gap-2">
             {content.primaryAction ? (
               <Button asChild>
                 <a href={content.primaryAction.href}>
@@ -282,8 +361,24 @@ function InfoPage({ page }: { page: InfoPageId }) {
               </Button>
             ) : null}
           </div>
-        </main>
-      </div>
+        </article>
+      </main>
+      <PublicFooter />
     </div>
+  )
+}
+
+function PublicFooter() {
+  return (
+    <footer className="border-t border-slate-200 bg-white">
+      <div className="mx-auto flex max-w-[1180px] flex-col gap-3 px-4 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <span>VassilStudio local-first voice workspace</span>
+        <nav className="flex flex-wrap gap-x-4 gap-y-2" aria-label="Footer navigation">
+          {publicLinks.map((link) => (
+            <a className="hover:text-slate-950" href={link.href} key={link.page}>{link.label}</a>
+          ))}
+        </nav>
+      </div>
+    </footer>
   )
 }
