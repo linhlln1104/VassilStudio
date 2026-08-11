@@ -1,6 +1,5 @@
 import { type FormEvent, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
 import {
   ChevronDown,
   CheckCircle2,
@@ -17,7 +16,9 @@ import {
   Loader2,
   LockKeyhole,
   LogOut,
+  RefreshCw,
   ShieldCheck,
+  Trash2,
   UserRound,
   XCircle,
 } from 'lucide-react'
@@ -25,6 +26,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { SegmentedControl } from '@/components/ui/segmented-control'
+import { useToast } from '@/components/ui/use-toast'
 import { api, getStoredApiKey, setStoredApiKey } from '@/lib/api'
 import { API_BRAND_NAME } from '@/lib/brand'
 import { formatBytes } from '@/lib/format'
@@ -71,18 +74,30 @@ const retentionOptions: RetentionOption[] = [
   },
 ]
 
+type SettingsTab = 'runtime' | 'account' | 'storage' | 'security'
+
+const settingsTabs: Array<{ value: SettingsTab; label: string }> = [
+  { value: 'runtime', label: 'Runtime' },
+  { value: 'account', label: 'Account' },
+  { value: 'storage', label: 'Storage' },
+  { value: 'security', label: 'Security' },
+]
+
 export function SettingsView() {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('runtime')
   const [apiKeyDraft, setApiKeyDraft] = useState(() => getStoredApiKey())
-  const [apiKeySaved, setApiKeySaved] = useState(false)
+  const [apiKeySaved, setApiKeySaved] = useState(() => Boolean(getStoredApiKey()))
   const [showApiKey, setShowApiKey] = useState(false)
   const [copied, setCopied] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordChangeResult, setPasswordChangeResult] = useState<string | null>(null)
   const [cleanupTarget, setCleanupTarget] = useState<RetentionOption | null>(null)
   const [cleanupResult, setCleanupResult] = useState<string | null>(null)
   const [clearKeyConfirmOpen, setClearKeyConfirmOpen] = useState(false)
   const queryClient = useQueryClient()
+  const { toast } = useToast()
   const healthQuery = useQuery({
     queryKey: ['health'],
     queryFn: api.health,
@@ -108,6 +123,11 @@ export function SettingsView() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['health'] })
       void queryClient.invalidateQueries({ queryKey: ['model-status'] })
+      toast({
+        title: 'Models warmed',
+        description: 'Configured runtimes are ready for the next request.',
+        variant: 'success',
+      })
     },
   })
   const logoutMutation = useMutation({
@@ -115,12 +135,20 @@ export function SettingsView() {
     onSuccess: () => {
       window.location.assign('/login')
     },
+    onError: (error) => {
+      toast({
+        title: 'Sign out failed',
+        description: error instanceof Error ? error.message : 'Unable to end this session.',
+        variant: 'danger',
+      })
+    },
   })
   const changePasswordMutation = useMutation({
     mutationFn: api.authChangePassword,
     onSuccess: (result) => {
       setCurrentPassword('')
       setNewPassword('')
+      setConfirmPassword('')
       setPasswordChangeResult(
         result.other_sessions_revoked > 0
           ? `Password updated. Revoked ${result.other_sessions_revoked} other sessions.`
@@ -131,7 +159,14 @@ export function SettingsView() {
   })
   const diagnosticsBundleMutation = useMutation({
     mutationFn: api.diagnosticsBundle,
-    onSuccess: (blob) => downloadBlob(blob, `vassilstudio-diagnostics-${Date.now()}.zip`),
+    onSuccess: (blob) => {
+      downloadBlob(blob, `vassilstudio-diagnostics-${Date.now()}.zip`)
+      toast({
+        title: 'Diagnostics downloaded',
+        description: 'The redacted support bundle is ready.',
+        variant: 'success',
+      })
+    },
   })
   const cleanupJobsMutation = useMutation({
     mutationFn: async (retention: RetentionOption) => {
@@ -167,18 +202,36 @@ export function SettingsView() {
   const runtimeReady = !backendOffline && Boolean(model?.ready)
 
   const handleApiKeySave = () => {
-    setStoredApiKey(apiKeyDraft)
+    const normalized = apiKeyDraft.trim()
+    if (!normalized) {
+      return
+    }
+    setStoredApiKey(normalized)
+    setApiKeyDraft(normalized)
     setApiKeySaved(true)
     void modelQuery.refetch()
+    toast({
+      title: 'API key saved',
+      description: 'This browser will use the key for protected API requests.',
+      variant: 'success',
+    })
   }
 
   const handleCopyKey = async () => {
     if (!apiKeyDraft || typeof navigator === 'undefined') {
       return
     }
-    await navigator.clipboard.writeText(apiKeyDraft)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1800)
+    try {
+      await navigator.clipboard.writeText(apiKeyDraft)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      toast({
+        title: 'Copy failed',
+        description: 'Clipboard access is unavailable in this browser.',
+        variant: 'danger',
+      })
+    }
   }
 
   const clearApiKey = () => {
@@ -188,12 +241,35 @@ export function SettingsView() {
     setCopied(false)
     setClearKeyConfirmOpen(false)
     void modelQuery.refetch()
+    toast({
+      title: 'API key cleared',
+      description: 'Protected requests no longer use a browser-stored key.',
+      variant: 'success',
+    })
   }
 
   return (
     <div className="space-y-3">
-      <SystemDiagnosticsCard
+      <div className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white p-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="hidden px-1 sm:block">
+          <div className="text-xs font-semibold text-slate-950">Workspace settings</div>
+          <div className="mt-1 text-xs text-slate-500">Local runtime and operator controls.</div>
+        </div>
+        <SegmentedControl
+          equalWidth
+          className="w-full sm:w-[430px]"
+          itemClassName="px-1 sm:px-3"
+          options={settingsTabs}
+          value={activeTab}
+          onChange={setActiveTab}
+        />
+      </div>
+
+      {activeTab === 'runtime' ? (
+        <>
+          <SystemDiagnosticsCard
         backendOffline={backendOffline}
+        loading={healthQuery.isLoading || modelQuery.isLoading}
         runtimeReady={runtimeReady}
         version={health?.version ?? diagnosticsQuery.data?.version ?? 'unknown'}
         environment={model?.runtime.environment ?? diagnosticsQuery.data?.runtime.environment ?? 'unknown'}
@@ -224,10 +300,14 @@ export function SettingsView() {
         }}
         onWarmup={() => warmupMutation.mutate()}
         onDownloadBundle={() => diagnosticsBundleMutation.mutate()}
-      />
+          />
+          <AdvancedSettings />
+        </>
+      ) : null}
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <AccountSessionCard
+      {activeTab === 'account' ? (
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <AccountSessionCard
           authRequired={Boolean(authQuery.data?.auth_required)}
           authenticated={Boolean(authQuery.data?.authenticated)}
           username={authQuery.data?.user?.username ?? null}
@@ -240,6 +320,7 @@ export function SettingsView() {
           signingOut={logoutMutation.isPending}
           currentPassword={currentPassword}
           newPassword={newPassword}
+          confirmPassword={confirmPassword}
           passwordChangeRunning={changePasswordMutation.isPending}
           passwordChangeResult={passwordChangeResult}
           passwordChangeError={
@@ -256,33 +337,47 @@ export function SettingsView() {
             setPasswordChangeResult(null)
             changePasswordMutation.reset()
           }}
+          onConfirmPasswordChange={(value) => {
+            setConfirmPassword(value)
+            setPasswordChangeResult(null)
+            changePasswordMutation.reset()
+          }}
           onChangePassword={(event) => {
             event.preventDefault()
+            if (!currentPassword || newPassword.length < 8 || newPassword !== confirmPassword) {
+              return
+            }
             setPasswordChangeResult(null)
             changePasswordMutation.reset()
             changePasswordMutation.mutate({ currentPassword, newPassword })
           }}
-        />
-        <LicenseCard
-          status={diagnosticsQuery.data?.license.status ?? 'local'}
-          plan={diagnosticsQuery.data?.license.plan ?? 'Local workspace'}
-          billingEnabled={Boolean(diagnosticsQuery.data?.license.billing_enabled)}
-          generatedAt={diagnosticsQuery.data?.generated_at ?? null}
-        />
-      </div>
+          />
+          <LicenseCard
+            status={diagnosticsQuery.data?.license.status ?? 'local'}
+            plan={diagnosticsQuery.data?.license.plan ?? 'Local workspace'}
+            billingEnabled={Boolean(diagnosticsQuery.data?.license.billing_enabled)}
+            generatedAt={diagnosticsQuery.data?.generated_at ?? null}
+          />
+        </div>
+      ) : null}
 
-      <StorageManagementCard
-        storageItems={diagnosticsQuery.data?.storage ?? []}
-        cleanupRunning={cleanupJobsMutation.isPending}
-        cleanupResult={cleanupResult}
-        cleanupError={cleanupJobsMutation.error instanceof Error ? cleanupJobsMutation.error.message : null}
-        onRefresh={() => {
-          void diagnosticsQuery.refetch()
-        }}
-        onRequestCleanup={(option) => setCleanupTarget(option)}
-      />
+      {activeTab === 'storage' ? (
+        <StorageManagementCard
+          storageItems={diagnosticsQuery.data?.storage ?? []}
+          loading={diagnosticsQuery.isLoading}
+          cleanupRunning={cleanupJobsMutation.isPending}
+          cleanupOptionId={cleanupJobsMutation.variables?.id ?? null}
+          cleanupResult={cleanupResult}
+          cleanupError={cleanupJobsMutation.error instanceof Error ? cleanupJobsMutation.error.message : null}
+          onRefresh={() => {
+            void diagnosticsQuery.refetch()
+          }}
+          onRequestCleanup={(option) => setCleanupTarget(option)}
+        />
+      ) : null}
 
-      <Card>
+      {activeTab === 'security' ? (
+        <Card>
         <CardHeader>
           <div>
             <div className="text-sm font-semibold text-slate-950">Security</div>
@@ -321,20 +416,32 @@ export function SettingsView() {
               </div>
             </label>
             <div className="flex flex-wrap items-end gap-2">
-              <Button onClick={handleApiKeySave}>
+              <Button
+                disabled={!apiKeyDraft.trim() || apiKeyDraft.trim() === getStoredApiKey()}
+                onClick={handleApiKeySave}
+              >
                 <KeyRound className="size-4" />
                 Save key
               </Button>
-              <Button variant="secondary" disabled={!apiKeyDraft} onClick={() => { void handleCopyKey() }}>
-                <Copy className="size-4" />
-                {copied ? 'Copied' : 'Copy'}
+              <Button
+                className="w-9 px-0"
+                variant="secondary"
+                disabled={!apiKeyDraft}
+                aria-label={copied ? 'API key copied' : 'Copy API key'}
+                title={copied ? 'Copied' : 'Copy API key'}
+                onClick={() => { void handleCopyKey() }}
+              >
+                {copied ? <CheckCircle2 className="size-4" /> : <Copy className="size-4" />}
               </Button>
               <Button
+                className="w-9 border-red-200 px-0 text-red-700 hover:bg-red-50 hover:text-red-800"
                 variant="secondary"
                 disabled={!apiKeyDraft && !getStoredApiKey()}
+                aria-label="Clear local API key"
+                title="Clear local API key"
                 onClick={() => setClearKeyConfirmOpen(true)}
               >
-                Clear
+                <Trash2 className="size-4" />
               </Button>
             </div>
           </div>
@@ -344,7 +451,8 @@ export function SettingsView() {
               : 'Leave empty when API key auth is disabled.'}
           </p>
         </CardContent>
-      </Card>
+        </Card>
+      ) : null}
 
       <ConfirmDialog
         open={Boolean(cleanupTarget)}
@@ -378,8 +486,6 @@ export function SettingsView() {
         onOpenChange={setClearKeyConfirmOpen}
         onConfirm={clearApiKey}
       />
-
-      <AdvancedSettings />
     </div>
   )
 }
@@ -397,12 +503,14 @@ function AccountSessionCard({
   signingOut,
   currentPassword,
   newPassword,
+  confirmPassword,
   passwordChangeRunning,
   passwordChangeResult,
   passwordChangeError,
   onSignOut,
   onCurrentPasswordChange,
   onNewPasswordChange,
+  onConfirmPasswordChange,
   onChangePassword,
 }: {
   authRequired: boolean
@@ -417,15 +525,23 @@ function AccountSessionCard({
   signingOut: boolean
   currentPassword: string
   newPassword: string
+  confirmPassword: string
   passwordChangeRunning: boolean
   passwordChangeResult: string | null
   passwordChangeError: string | null
   onSignOut: () => void
   onCurrentPasswordChange: (value: string) => void
   onNewPasswordChange: (value: string) => void
+  onConfirmPasswordChange: (value: string) => void
   onChangePassword: (event: FormEvent<HTMLFormElement>) => void
 }) {
-  const canChangePassword = currentPassword.length > 0 && newPassword.length >= 8 && !passwordChangeRunning
+  const [showPasswords, setShowPasswords] = useState(false)
+  const passwordMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword
+  const canChangePassword =
+    currentPassword.length > 0 &&
+    newPassword.length >= 8 &&
+    newPassword === confirmPassword &&
+    !passwordChangeRunning
 
   return (
     <Card>
@@ -457,43 +573,68 @@ function AccountSessionCard({
         {authRequired && authenticated ? (
           <>
             <form
-              className="mt-3 grid gap-2 rounded-md border border-slate-200 bg-white p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+              className="mt-3 rounded-md border border-slate-200 bg-white p-3"
               onSubmit={onChangePassword}
             >
-              <label className="block min-w-0">
-                <span className="mb-2 block text-xs font-semibold text-slate-700">Current password</span>
-                <input
-                  className="h-8 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-950 outline-none placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  type="password"
-                  value={currentPassword}
-                  autoComplete="current-password"
-                  onChange={(event) => onCurrentPasswordChange(event.target.value)}
-                />
-              </label>
-              <label className="block min-w-0">
-                <span className="mb-2 block text-xs font-semibold text-slate-700">New password</span>
-                <input
-                  className="h-8 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-950 outline-none placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  type="password"
-                  value={newPassword}
-                  autoComplete="new-password"
-                  minLength={8}
-                  onChange={(event) => onNewPasswordChange(event.target.value)}
-                />
-              </label>
-              <div className="flex items-end">
-                <Button className="w-full lg:w-auto" type="submit" disabled={!canChangePassword}>
-                  {passwordChangeRunning ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <KeyRound className="size-4" />
-                  )}
-                  {passwordChangeRunning ? 'Updating' : 'Change password'}
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold text-slate-950">Change password</div>
+                  <div className="mt-1 text-xs text-slate-500">At least 8 characters.</div>
+                </div>
+                <Button
+                  className="w-8 px-0"
+                  size="sm"
+                  variant="ghost"
+                  type="button"
+                  aria-label={showPasswords ? 'Hide passwords' : 'Show passwords'}
+                  title={showPasswords ? 'Hide passwords' : 'Show passwords'}
+                  onClick={() => setShowPasswords((current) => !current)}
+                >
+                  {showPasswords ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </Button>
               </div>
+              <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <PasswordField
+                  label="Current password"
+                  value={currentPassword}
+                  visible={showPasswords}
+                  autoComplete="current-password"
+                  onChange={onCurrentPasswordChange}
+                />
+                <PasswordField
+                  label="New password"
+                  value={newPassword}
+                  visible={showPasswords}
+                  autoComplete="new-password"
+                  minLength={8}
+                  onChange={onNewPasswordChange}
+                />
+                <PasswordField
+                  label="Confirm password"
+                  value={confirmPassword}
+                  visible={showPasswords}
+                  autoComplete="new-password"
+                  minLength={8}
+                  invalid={passwordMismatch}
+                  onChange={onConfirmPasswordChange}
+                />
+                <div className="flex items-end">
+                  <Button className="w-full lg:w-auto" type="submit" disabled={!canChangePassword}>
+                    {passwordChangeRunning ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <KeyRound className="size-4" />
+                    )}
+                    {passwordChangeRunning ? 'Updating' : 'Update'}
+                  </Button>
+                </div>
+              </div>
+              {passwordMismatch ? (
+                <div className="mt-2 text-xs font-medium text-red-700" role="alert">Passwords do not match.</div>
+              ) : null}
             </form>
             {passwordChangeResult ? (
-              <div className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-blue-700">
+              <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
                 {passwordChangeResult}
               </div>
             ) : null}
@@ -510,6 +651,41 @@ function AccountSessionCard({
         ) : null}
       </CardContent>
     </Card>
+  )
+}
+
+function PasswordField({
+  label,
+  value,
+  visible,
+  autoComplete,
+  minLength,
+  invalid = false,
+  onChange,
+}: {
+  label: string
+  value: string
+  visible: boolean
+  autoComplete: string
+  minLength?: number
+  invalid?: boolean
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-2 block text-xs font-semibold text-slate-700">{label}</span>
+      <input
+        className="h-8 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-950 outline-none placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 aria-invalid:border-red-400 aria-invalid:ring-red-100"
+        type={visible ? 'text' : 'password'}
+        value={value}
+        autoComplete={autoComplete}
+        minLength={minLength}
+        maxLength={512}
+        required
+        aria-invalid={invalid}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   )
 }
 
@@ -554,7 +730,9 @@ function LicenseCard({
 
 function StorageManagementCard({
   storageItems,
+  loading,
   cleanupRunning,
+  cleanupOptionId,
   cleanupResult,
   cleanupError,
   onRefresh,
@@ -568,7 +746,9 @@ function StorageManagementCard({
     size_bytes: number
     file_count: number
   }>
+  loading: boolean
   cleanupRunning: boolean
+  cleanupOptionId: string | null
   cleanupResult: string | null
   cleanupError: string | null
   onRefresh: () => void
@@ -600,11 +780,23 @@ function StorageManagementCard({
           <SettingsMetric label="Tracked paths" value={`${visibleStorage.length} paths`} />
         </div>
 
-        <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-4">
-          {visibleStorage.map((item) => (
-            <StoragePathRow key={item.name} item={item} />
-          ))}
-        </div>
+        {loading ? (
+          <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-24 animate-pulse rounded-md bg-slate-100" />
+            ))}
+          </div>
+        ) : visibleStorage.length > 0 ? (
+          <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-4">
+            {visibleStorage.map((item) => (
+              <StoragePathRow key={item.name} item={item} />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-3 rounded-md border border-dashed border-slate-300 bg-white p-4 text-center text-xs text-slate-600">
+            Storage diagnostics are unavailable.
+          </div>
+        )}
 
         <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -616,7 +808,7 @@ function StorageManagementCard({
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={onRefresh}>
-                <ShieldCheck className="size-4" />
+                <RefreshCw className="size-4" />
                 Refresh usage
               </Button>
               {retentionOptions.map((option) => (
@@ -626,14 +818,18 @@ function StorageManagementCard({
                   disabled={cleanupRunning}
                   onClick={() => onRequestCleanup(option)}
                 >
-                  {cleanupRunning ? <Loader2 className="size-4 animate-spin" /> : <Eraser className="size-4" />}
+                  {cleanupRunning && cleanupOptionId === option.id ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Eraser className="size-4" />
+                  )}
                   {option.label}
                 </Button>
               ))}
             </div>
           </div>
           {cleanupResult ? (
-            <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-blue-700">
+            <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
               {cleanupResult}
             </div>
           ) : null}
@@ -701,6 +897,7 @@ function SettingsMetric({ label, value }: { label: string; value: string }) {
 
 function SystemDiagnosticsCard({
   backendOffline,
+  loading,
   runtimeReady,
   version,
   environment,
@@ -727,6 +924,7 @@ function SystemDiagnosticsCard({
   onDownloadBundle,
 }: {
   backendOffline: boolean
+  loading: boolean
   runtimeReady: boolean
   version: string
   environment: string
@@ -753,10 +951,10 @@ function SystemDiagnosticsCard({
   onDownloadBundle: () => void
 }) {
   const healthy = !backendOffline && runtimeReady && passedChecks === totalChecks && totalChecks > 0
-  const headline = healthy ? 'Runtime available' : 'Runtime needs attention'
+  const headline = loading ? 'Checking runtime' : healthy ? 'Runtime available' : 'Runtime needs attention'
 
   return (
-    <section className="rounded-md border border-slate-200 bg-white p-3">
+    <section>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs font-medium text-blue-700">
@@ -772,8 +970,16 @@ function SystemDiagnosticsCard({
         </div>
 
         <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[560px]">
-          <SignalRow label="Backend" value={backendOffline ? 'Offline' : 'Online'} good={!backendOffline} />
-          <SignalRow label="Models" value={runtimeReady ? 'Ready' : 'Setup'} good={runtimeReady} />
+          <SignalRow
+            label="Backend"
+            value={loading ? 'Checking' : backendOffline ? 'Offline' : 'Online'}
+            good={!loading && !backendOffline}
+          />
+          <SignalRow
+            label="Models"
+            value={loading ? 'Checking' : runtimeReady ? 'Ready' : 'Setup'}
+            good={!loading && runtimeReady}
+          />
           <SignalRow
             label="Checks"
             value={totalChecks > 0 ? `${passedChecks}/${totalChecks}` : 'Waiting'}
@@ -783,7 +989,7 @@ function SystemDiagnosticsCard({
       </div>
 
       <div className="mt-3 flex flex-wrap justify-start gap-2">
-        <Button variant="secondary" onClick={onRunDiagnostics}>
+        <Button variant="secondary" disabled={diagnosticsRunning} onClick={onRunDiagnostics}>
           {diagnosticsRunning ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
@@ -819,8 +1025,6 @@ function SystemDiagnosticsCard({
         </div>
       ) : null}
 
-      <SignalBars healthy={healthy} />
-
       <details className="group mt-3 rounded-md border border-slate-200 bg-white">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-slate-700">
           Advanced diagnostics
@@ -850,32 +1054,6 @@ function SystemDiagnosticsCard({
         </div>
       </details>
     </section>
-  )
-}
-
-function SignalBars({ healthy }: { healthy: boolean }) {
-  return (
-    <div className="mt-3 flex h-20 items-end gap-1.5 overflow-hidden rounded-md border border-slate-200 bg-white px-3 py-3">
-      {Array.from({ length: 28 }).map((_, index) => (
-        <motion.div
-          // eslint-disable-next-line react/no-array-index-key
-          key={index}
-          className={
-            healthy
-              ? 'w-full rounded-t bg-emerald-500'
-              : 'w-full rounded-t bg-amber-500'
-          }
-          initial={{ height: 10 + ((index * 7) % 20), opacity: 0.65 }}
-          animate={{ height: [12 + ((index * 5) % 22), 30 + ((index * 11) % 18), 14 + ((index * 3) % 20)] }}
-          transition={{
-            duration: 1.6 + (index % 5) * 0.12,
-            repeat: Infinity,
-            repeatType: 'mirror',
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-    </div>
   )
 }
 

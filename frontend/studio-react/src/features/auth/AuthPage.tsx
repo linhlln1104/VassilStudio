@@ -1,6 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowRight, LockKeyhole, UserPlus } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Loader2,
+  LockKeyhole,
+  RefreshCw,
+  UserPlus,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
@@ -13,6 +22,8 @@ type AuthPageProps = {
 export function AuthPage({ mode }: AuthPageProps) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const statusQuery = useQuery({
     queryKey: ['auth-status'],
     queryFn: api.authStatus,
@@ -49,11 +60,22 @@ export function AuthPage({ mode }: AuthPageProps) {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    mutation.mutate({ username, password })
+    if (statusQuery.isPending || statusQuery.isError || (mode === 'setup' && password !== confirmPassword)) {
+      return
+    }
+    mutation.mutate({ username: username.trim(), password })
   }
 
   const isSetup = mode === 'setup'
   const Icon = isSetup ? UserPlus : LockKeyhole
+  const passwordMismatch = isSetup && confirmPassword.length > 0 && password !== confirmPassword
+  const canSubmit =
+    username.trim().length >= 3 &&
+    password.length >= (isSetup ? 8 : 1) &&
+    (!isSetup || password === confirmPassword) &&
+    !statusQuery.isPending &&
+    !statusQuery.isError &&
+    !mutation.isPending
 
   return (
     <div className="min-h-screen bg-white text-slate-950">
@@ -63,7 +85,7 @@ export function AuthPage({ mode }: AuthPageProps) {
             <img className="h-8 w-auto" src={BRAND_LOGO_SRC} alt={BRAND_NAME} />
           </a>
           <a className="text-xs font-medium text-slate-500 hover:text-slate-950" href="/">
-            Product
+            Home
           </a>
         </header>
 
@@ -84,54 +106,162 @@ export function AuthPage({ mode }: AuthPageProps) {
           <form
             className="rounded-md border border-slate-200 bg-white p-4 shadow-sm"
             onSubmit={handleSubmit}
+            aria-busy={mutation.isPending}
           >
             <div className="text-sm font-semibold text-slate-950">
               {isSetup ? 'Create owner account' : 'Sign in'}
             </div>
             <div className="mt-1 text-xs leading-5 text-slate-500">
-              {isSetup ? 'Used only on this local workspace.' : 'Continue to Studio.'}
-            </div>
+               {isSetup ? 'Used only on this local workspace.' : 'Continue to Studio.'}
+             </div>
+
+            {statusQuery.isPending ? (
+              <div className="mt-4 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+                <Loader2 className="size-4 animate-spin" />
+                Checking workspace
+              </div>
+            ) : null}
+            {statusQuery.isError ? (
+              <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3" role="alert">
+                <div className="flex items-start gap-2 text-xs font-semibold text-red-800">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  <span>Unable to reach the local authentication service.</span>
+                </div>
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  variant="secondary"
+                  type="button"
+                  onClick={() => { void statusQuery.refetch() }}
+                >
+                  <RefreshCw className="size-4" />
+                  Retry
+                </Button>
+              </div>
+            ) : null}
 
             <label className="mt-5 block text-xs font-medium text-slate-700">
               Username
               <input
                 className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-sm text-slate-950 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                autoComplete={isSetup ? 'username' : 'username'}
+                onChange={(event) => {
+                  setUsername(event.target.value)
+                  mutation.reset()
+                }}
+                autoComplete="username"
+                autoFocus
                 required
                 minLength={3}
                 maxLength={80}
               />
             </label>
 
-            <label className="mt-3 block text-xs font-medium text-slate-700">
-              Password
-              <input
-                className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-sm text-slate-950 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete={isSetup ? 'new-password' : 'current-password'}
-                required
-                minLength={isSetup ? 8 : 1}
-                maxLength={512}
-              />
-            </label>
+            <AuthPasswordField
+              className="mt-3"
+              label="Password"
+              value={password}
+              visible={showPassword}
+              showToggle
+              autoComplete={isSetup ? 'new-password' : 'current-password'}
+              minLength={isSetup ? 8 : 1}
+              onToggle={() => setShowPassword((current) => !current)}
+              onChange={(value) => {
+                setPassword(value)
+                mutation.reset()
+              }}
+            />
 
-            {mutation.isError ? (
-              <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {mutation.error.message}
+            {isSetup ? (
+              <AuthPasswordField
+                className="mt-3"
+                label="Confirm password"
+                value={confirmPassword}
+                visible={showPassword}
+                autoComplete="new-password"
+                minLength={8}
+                invalid={passwordMismatch}
+                onChange={(value) => {
+                  setConfirmPassword(value)
+                  mutation.reset()
+                }}
+              />
+            ) : null}
+
+            {isSetup ? (
+              <div className={passwordMismatch ? 'mt-2 text-xs font-medium text-red-700' : 'mt-2 text-xs text-slate-500'}>
+                {passwordMismatch ? 'Passwords do not match.' : 'Use at least 8 characters.'}
               </div>
             ) : null}
 
-            <Button className="mt-4 w-full" type="submit" disabled={mutation.isPending}>
+            {mutation.isError ? (
+              <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {mutation.error instanceof Error ? mutation.error.message : 'Authentication failed.'}
+              </div>
+            ) : null}
+
+            <Button className="mt-4 w-full" type="submit" disabled={!canSubmit}>
+              {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
               {mutation.isPending ? 'Working' : isSetup ? 'Create workspace' : 'Open Studio'}
-              <ArrowRight className="size-3.5" />
+              {!mutation.isPending ? <ArrowRight className="size-3.5" /> : null}
             </Button>
           </form>
         </main>
       </div>
     </div>
+  )
+}
+
+function AuthPasswordField({
+  label,
+  value,
+  visible,
+  autoComplete,
+  minLength,
+  invalid = false,
+  showToggle = false,
+  className = '',
+  onChange,
+  onToggle,
+}: {
+  label: string
+  value: string
+  visible: boolean
+  autoComplete: string
+  minLength: number
+  invalid?: boolean
+  showToggle?: boolean
+  className?: string
+  onChange: (value: string) => void
+  onToggle?: () => void
+}) {
+  return (
+    <label className={`block text-xs font-medium text-slate-700 ${className}`}>
+      {label}
+      <div className="mt-1 flex rounded-md border border-slate-200 bg-white focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 aria-invalid:border-red-400 aria-invalid:ring-red-100" aria-invalid={invalid}>
+        <input
+          className="h-9 min-w-0 flex-1 border-0 bg-transparent px-2.5 text-sm text-slate-950 outline-none"
+          type={visible ? 'text' : 'password'}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          autoComplete={autoComplete}
+          required
+          minLength={minLength}
+          maxLength={512}
+          aria-invalid={invalid}
+        />
+        {showToggle ? (
+          <button
+            className="grid size-9 shrink-0 place-items-center text-slate-500 hover:text-slate-950"
+            type="button"
+            aria-label={visible ? 'Hide password' : 'Show password'}
+            title={visible ? 'Hide password' : 'Show password'}
+            onClick={onToggle}
+          >
+            {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
+        ) : null}
+      </div>
+    </label>
   )
 }

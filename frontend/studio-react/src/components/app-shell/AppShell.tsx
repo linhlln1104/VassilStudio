@@ -1,14 +1,16 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Cpu,
+  Loader2,
   LogOut,
   Menu,
   X,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
 import { BRAND_LOGO_SRC, BRAND_NAME } from '@/lib/brand'
 import { cn } from '@/lib/utils'
@@ -31,6 +33,24 @@ export function AppShell({ activeRoute, onRouteChange, children }: AppShellProps
     onRouteChange(routeId)
     setMobileNavOpen(false)
   }
+
+  useEffect(() => {
+    if (!mobileNavOpen) {
+      return
+    }
+    const previousOverflow = document.body.style.overflow
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileNavOpen(false)
+      }
+    }
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [mobileNavOpen])
 
   return (
     <div className="min-h-screen bg-studio-canvas text-studio-ink">
@@ -102,7 +122,7 @@ export function AppShell({ activeRoute, onRouteChange, children }: AppShellProps
                 </div>
               </div>
 
-              <RuntimeStatus />
+              <RuntimeStatus onOpen={() => handleRouteSelect('settings')} />
               <SessionControl />
             </div>
           </header>
@@ -124,7 +144,7 @@ export function AppShell({ activeRoute, onRouteChange, children }: AppShellProps
   )
 }
 
-function RuntimeStatus() {
+function RuntimeStatus({ onOpen }: { onOpen: () => void }) {
   const statusQuery = useQuery({
     queryKey: ['model-status'],
     queryFn: api.modelStatus,
@@ -145,18 +165,22 @@ function RuntimeStatus() {
           : { label: 'Models cold', dot: 'bg-amber-500', text: 'text-neutral-600' }
 
   return (
-    <div
-      className="hidden h-8 items-center gap-2 rounded-md border border-studio-border bg-white px-2.5 text-xs font-medium sm:flex"
+    <button
+      type="button"
+      className="flex h-8 items-center gap-2 rounded-md border border-studio-border bg-white px-2 text-xs font-medium transition-colors hover:bg-neutral-50 sm:px-2.5"
       title={state.label}
+      aria-label={`${state.label}. Open Settings`}
+      onClick={onOpen}
     >
       <Cpu className="size-3.5 text-neutral-500" />
       <span className={cn('size-1.5 rounded-full', state.dot)} />
-      <span className={state.text}>{state.label}</span>
-    </div>
+      <span className={cn('hidden sm:inline', state.text)}>{state.label}</span>
+    </button>
   )
 }
 
 function SessionControl() {
+  const { toast } = useToast()
   const authQuery = useQuery({
     queryKey: ['auth-status'],
     queryFn: api.authStatus,
@@ -166,6 +190,13 @@ function SessionControl() {
     mutationFn: api.authLogout,
     onSuccess: () => {
       window.location.assign('/login')
+    },
+    onError: (error) => {
+      toast({
+        title: 'Sign out failed',
+        description: error instanceof Error ? error.message : 'Unable to end this session.',
+        variant: 'danger',
+      })
     },
   })
 
@@ -185,7 +216,7 @@ function SessionControl() {
         onClick={() => logoutMutation.mutate()}
         disabled={logoutMutation.isPending}
       >
-        <LogOut className="size-4" />
+        {logoutMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
       </Button>
     </div>
   )
@@ -250,6 +281,7 @@ function NavItem({
     <button
       type="button"
       onClick={onSelect}
+      aria-current={active ? 'page' : undefined}
       className={cn(
         'flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-[13px] font-medium transition-colors',
         active

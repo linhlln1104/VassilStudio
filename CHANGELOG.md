@@ -36,6 +36,8 @@ All notable VassilStudio productionization changes are tracked here.
 - Transcription workspace with staged audio validation, explicit queueing, recent results, and transcript handoff to Generate.
 - Realtime workspace with session readiness, chronological combined output, bounded segment rendering, and transcript export.
 - Priority-ordered job history with responsive filters, conditional actions, and incremental history rendering.
+- Settings workspace split into focused runtime, account, storage, and security views with real operational states.
+- First-run and login flows with password confirmation, visibility controls, API retry, and guarded submission.
 
 ### Hardened
 
@@ -45,6 +47,7 @@ All notable VassilStudio productionization changes are tracked here.
 - ASR/TTS job lifecycle with cancellation, retry metadata, cleanup, and consistent terminal states.
 - Language-aware ASR/TTS runtime selection and model readiness reporting.
 - Realtime session shutdown now waits for the backend final transcript before closing the websocket, with a bounded timeout fallback.
+- Studio navigation keeps runtime status actionable on small screens and handles drawer/session failures explicitly.
 - Auth-enabled startup now requires a strong non-placeholder session secret; production profile
   startup also requires auth, secure cookies, and debug mode off.
 - ZipVoice text processing uses the index-resolvable `phonemizer-fork` and `espeakng-loader` path,

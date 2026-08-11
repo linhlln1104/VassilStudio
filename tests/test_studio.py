@@ -82,6 +82,10 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Voice selected" in script
     assert "Run diagnostics" in script
     assert "Download diagnostics" in script
+    assert "Workspace settings" in script
+    assert "Confirm password" in script
+    assert "Passwords do not match" in script
+    assert "Checking workspace" in script
     assert "Storage and retention" in script
     assert "Version" in script
     assert "Operations guide" in script
