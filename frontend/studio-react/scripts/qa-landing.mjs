@@ -37,6 +37,7 @@ try {
       viewport: { width: viewport.width, height: viewport.height },
       colorScheme: 'light',
       deviceScaleFactor: 1,
+      reducedMotion: 'reduce',
     })
     const browserErrors = []
 
@@ -74,6 +75,15 @@ try {
     await page.evaluate(() => window.scrollTo(0, 0))
     await page.waitForTimeout(100)
 
+    const reducedMotionFrame = await page.locator('[data-qa="voiceprint-canvas"]').evaluate((canvas) =>
+      canvas instanceof HTMLCanvasElement ? canvas.toDataURL() : '',
+    )
+    await page.waitForTimeout(160)
+    const reducedMotionFrameAfterWait = await page.locator('[data-qa="voiceprint-canvas"]').evaluate((canvas) =>
+      canvas instanceof HTMLCanvasElement ? canvas.toDataURL() : '',
+    )
+    const voiceprintStableWithReducedMotion = reducedMotionFrame === reducedMotionFrameAfterWait
+
     const metrics = await page.evaluate(() => {
       const viewportWidth = document.documentElement.clientWidth
       const horizontalOverflow = document.documentElement.scrollWidth - viewportWidth
@@ -94,6 +104,23 @@ try {
       const hero = document.querySelector('[data-qa="landing-hero"]')?.getBoundingClientRect()
       const heroContent = document.querySelector('[data-qa="hero-content"]')?.getBoundingClientRect()
       const productStage = document.querySelector('[data-qa="product-stage"]')?.getBoundingClientRect()
+      const voiceprint = document.querySelector('[data-qa="voiceprint-canvas"]')
+      let voiceprintColoredSamples = 0
+
+      if (voiceprint instanceof HTMLCanvasElement) {
+        const context = voiceprint.getContext('2d')
+        const pixels = context?.getImageData(0, 0, voiceprint.width, voiceprint.height).data
+        if (pixels) {
+          for (let index = 0; index < pixels.length; index += 64) {
+            const red = pixels[index]
+            const green = pixels[index + 1]
+            const blue = pixels[index + 2]
+            const alpha = pixels[index + 3]
+            const chroma = Math.max(red, green, blue) - Math.min(red, green, blue)
+            if (alpha > 200 && chroma > 35) voiceprintColoredSamples += 1
+          }
+        }
+      }
 
       return {
         documentWidth: document.documentElement.scrollWidth,
@@ -110,8 +137,13 @@ try {
         productProofVisibleInFirstViewport: Boolean(
           productStage && productStage.top < window.innerHeight && productStage.bottom > 0,
         ),
+        voiceprintCanvasReady: Boolean(
+          voiceprint instanceof HTMLCanvasElement && voiceprint.width > 0 && voiceprint.height > 0,
+        ),
+        voiceprintColoredSamples,
       }
     })
+    metrics.voiceprintStableWithReducedMotion = voiceprintStableWithReducedMotion
 
     if (metrics.horizontalOverflow > 1) {
       throw new Error(`${viewport.name}: horizontal overflow is ${metrics.horizontalOverflow}px`)
@@ -125,6 +157,12 @@ try {
     if (!metrics.productProofVisibleInFirstViewport) {
       throw new Error(`${viewport.name}: actual product proof is not visible in the first viewport`)
     }
+    if (!metrics.voiceprintCanvasReady || metrics.voiceprintColoredSamples < 100) {
+      throw new Error(`${viewport.name}: computational voiceprint did not render a visible signal`)
+    }
+    if (!metrics.voiceprintStableWithReducedMotion) {
+      throw new Error(`${viewport.name}: voiceprint ignored the reduced-motion preference`)
+    }
     if (browserErrors.length > 0) {
       throw new Error(`${viewport.name}: browser errors: ${browserErrors.join(' | ')}`)
     }
@@ -134,6 +172,37 @@ try {
     report.viewports.push({ ...viewport, screenshotPath, ...metrics })
     await page.close()
   }
+
+  const interactionPage = await browser.newPage({
+    viewport: { width: 1440, height: 1000 },
+    colorScheme: 'light',
+    deviceScaleFactor: 1,
+    reducedMotion: 'no-preference',
+  })
+  const response = await interactionPage.goto(`${baseUrl}/`, { waitUntil: 'networkidle' })
+  if (!response || !response.ok()) throw new Error(`interaction QA: landing returned ${response?.status() ?? 'no response'}`)
+
+  const voiceprint = interactionPage.locator('[data-qa="voiceprint-canvas"]')
+  await voiceprint.waitFor({ state: 'visible' })
+  const motionFrame = await voiceprint.evaluate((canvas) => canvas instanceof HTMLCanvasElement ? canvas.toDataURL() : '')
+  await interactionPage.waitForTimeout(180)
+  const motionFrameAfterWait = await voiceprint.evaluate((canvas) => canvas instanceof HTMLCanvasElement ? canvas.toDataURL() : '')
+  const voiceprintAnimated = motionFrame !== motionFrameAfterWait
+  if (!voiceprintAnimated) throw new Error('interaction QA: voiceprint did not animate')
+
+  await interactionPage.evaluate(() => {
+    document.documentElement.style.scrollBehavior = 'auto'
+    window.scrollTo(0, document.documentElement.scrollHeight)
+  })
+  await interactionPage.waitForTimeout(100)
+  const scrollProgressRatio = await interactionPage.locator('[data-qa="scroll-progress"]').evaluate((indicator) => {
+    const parentWidth = indicator.parentElement?.getBoundingClientRect().width ?? 0
+    return parentWidth > 0 ? indicator.getBoundingClientRect().width / parentWidth : 0
+  })
+  if (scrollProgressRatio < 0.98) throw new Error(`interaction QA: scroll progress stopped at ${scrollProgressRatio}`)
+
+  report.interactions = { voiceprintAnimated, scrollProgressRatio }
+  await interactionPage.close()
 } finally {
   await browser.close()
 }

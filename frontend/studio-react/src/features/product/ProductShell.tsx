@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowDown,
   ArrowRight,
@@ -11,7 +11,6 @@ import {
   LockKeyhole,
   Mic,
   PenLine,
-  ShieldCheck,
   Upload,
   UsersRound,
   type LucideIcon,
@@ -19,6 +18,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { BRAND_LOGO_SRC, BRAND_NAME } from '@/lib/brand'
+import { VoiceprintCanvas } from './VoiceprintCanvas'
 
 type InfoPageId = 'privacy' | 'license' | 'support' | 'changelog' | 'operations'
 
@@ -233,39 +233,37 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
 
   return (
     <div className="min-h-screen bg-white text-slate-950">
-      <PublicHeader />
+      <PublicHeader showProgress />
       <main>
         <section
           id="product"
           data-qa="landing-hero"
-          className="relative h-[calc(100svh-320px)] min-h-[520px] max-h-[640px] overflow-hidden border-b border-slate-200 bg-white"
+          className="relative h-[calc(100svh-300px)] min-h-[520px] max-h-[650px] overflow-hidden border-b border-slate-200 bg-white"
         >
-          <img
-            className="absolute inset-0 size-full object-cover object-center"
-            src="/studio/brand/vassil-voice-sculpture.jpg"
-            alt="Translucent acoustic waveform sculpture in VassilStudio brand colors"
-            fetchPriority="high"
-          />
-          <div className="absolute inset-0 bg-white/20" aria-hidden="true" />
+          <VoiceprintCanvas />
+          <div className="pointer-events-none absolute inset-0 mx-auto max-w-[1180px] px-4 font-mono text-[10px] text-slate-400 sm:px-6" aria-hidden="true">
+            <span className="absolute left-4 top-5 sm:left-6">SYSTEM / 00</span>
+            <span className="absolute right-4 top-5 sm:right-6">VI + EN / LOCAL</span>
+          </div>
           <div
             data-qa="hero-content"
-            className="relative mx-auto flex h-full max-w-[1180px] justify-center px-4 pt-9 text-center sm:px-6 sm:pt-12"
+            className="relative mx-auto flex h-full max-w-[1180px] px-4 pt-14 sm:px-6 sm:pt-16"
           >
-            <div className="max-w-3xl">
-              <div className="flex items-center justify-center gap-2 text-xs font-semibold text-blue-700">
-                <ShieldCheck className="size-4" />
-                Local-first voice production
+            <div className="max-w-[760px]">
+              <div className="flex items-center gap-2 text-xs font-semibold text-blue-700">
+                <span className="size-1.5 bg-emerald-500" aria-hidden="true" />
+                Local voice system
               </div>
-              <h1 className="mt-3 text-5xl font-semibold tracking-normal text-slate-950 sm:text-6xl">
+              <h1 className="mt-3 text-5xl font-semibold tracking-normal text-slate-950 sm:text-7xl">
                 VassilStudio
               </h1>
-              <p className="mt-3 text-lg font-medium leading-7 text-slate-900 sm:text-2xl">
-                Private voice production, on your machine.
+              <p className="mt-3 max-w-2xl text-2xl font-medium leading-tight text-slate-950 sm:text-3xl">
+                Voice in. Voice out. Nothing leaves your machine.
               </p>
-              <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Create speech, transcribe recordings, and manage reusable voices with Vietnamese and English models in one focused workspace.
+              <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
+                Generate, transcribe, and reuse voices with local Vietnamese and English models.
               </p>
-              <div className="mt-5 flex flex-wrap justify-center gap-2">
+              <div className="mt-6 flex flex-wrap gap-2">
                 <Button asChild size="lg">
                   <a href="/studio">
                     Open Studio
@@ -287,7 +285,7 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
           <div className="relative mx-auto max-w-[1180px] px-4 sm:px-6">
             <figure
               data-qa="product-stage"
-              className="relative z-10 -mt-16 aspect-[36/25] overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.12)]"
+              className="relative z-10 -mt-16 aspect-[36/25] overflow-hidden rounded-sm border border-slate-300 bg-white"
             >
               <img
                 className="size-full object-cover object-top"
@@ -308,7 +306,7 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
         <section id="workflow" className="scroll-mt-16 border-b border-slate-200 bg-white">
           <div className="mx-auto max-w-[1180px] px-4 py-14 sm:px-6 sm:py-18">
             <div className="max-w-2xl">
-              <div className="text-xs font-semibold text-blue-700">Studio workflows</div>
+              <div className="font-mono text-xs font-semibold text-blue-700">01 / Workflow</div>
               <h2 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950">
                 One local loop from source to output
               </h2>
@@ -338,7 +336,7 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
         <section className="border-b border-slate-200 bg-slate-50">
           <div className="mx-auto max-w-[1180px] px-4 py-14 sm:px-6 sm:py-18">
             <div className="max-w-2xl">
-              <div className="text-xs font-semibold text-blue-700">Inside the Studio</div>
+              <div className="font-mono text-xs font-semibold text-blue-700">02 / Product</div>
               <h2 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950">
                 The actual workspace, not a mockup
               </h2>
@@ -353,7 +351,7 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
         <section id="local-runtime" className="scroll-mt-16 border-b border-slate-200 bg-white">
           <div className="mx-auto grid max-w-[1180px] gap-10 px-4 py-14 sm:px-6 sm:py-18 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)] lg:gap-18">
             <div className="max-w-lg">
-              <div className="text-xs font-semibold text-emerald-700">Local runtime</div>
+              <div className="font-mono text-xs font-semibold text-emerald-700">03 / Runtime</div>
               <h2 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950">
                 Your audio stays where you put it
               </h2>
@@ -387,11 +385,12 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
           </div>
         </section>
 
-        <section className="bg-studio-sapphire text-white">
+        <section className="bg-slate-950 text-white">
           <div className="mx-auto flex max-w-[1180px] flex-col gap-6 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div>
+              <div className="mb-2 font-mono text-xs font-semibold text-cyan-300">04 / Studio</div>
               <h2 className="text-xl font-semibold tracking-normal">Start with the workspace you already own</h2>
-              <p className="mt-2 text-sm leading-6 text-blue-100">
+              <p className="mt-2 text-sm leading-6 text-slate-300">
                 Open Studio to create a voice profile, generate audio, or transcribe a recording.
               </p>
             </div>
@@ -402,7 +401,7 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
                   <ArrowRight className="size-4" />
                 </a>
               </Button>
-              <Button asChild className="border-blue-300 bg-transparent text-white hover:border-white hover:bg-blue-800" size="lg" variant="secondary">
+              <Button asChild className="border-slate-600 bg-transparent text-white hover:border-white hover:bg-slate-900" size="lg" variant="secondary">
                 <a href="/operations">Operations guide</a>
               </Button>
             </div>
@@ -459,7 +458,7 @@ function ProductShowcase() {
             </a>
           </Button>
         </div>
-        <figure className="mt-5 aspect-[36/25] overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.08)]">
+        <figure className="mt-5 aspect-[36/25] overflow-hidden rounded-sm border border-slate-300 bg-white">
           <img
             className="size-full object-cover object-top"
             src={activeItem.image}
@@ -472,7 +471,7 @@ function ProductShowcase() {
   )
 }
 
-function PublicHeader() {
+function PublicHeader({ showProgress = false }: { showProgress?: boolean }) {
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95">
       <div className="mx-auto flex h-14 max-w-[1180px] items-center justify-between gap-4 px-4 sm:px-6">
@@ -491,7 +490,48 @@ function PublicHeader() {
           </a>
         </Button>
       </div>
+      {showProgress ? <ScrollProgress /> : null}
     </header>
+  )
+}
+
+function ScrollProgress() {
+  const indicatorRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let animationFrame = 0
+
+    const update = () => {
+      const scrollRange = Math.max(1, document.documentElement.scrollHeight - window.innerHeight)
+      const progress = Math.min(1, Math.max(0, window.scrollY / scrollRange))
+      if (indicatorRef.current) indicatorRef.current.style.transform = `scaleX(${progress})`
+      animationFrame = 0
+    }
+
+    const scheduleUpdate = () => {
+      if (!animationFrame) animationFrame = window.requestAnimationFrame(update)
+    }
+
+    update()
+    window.addEventListener('scroll', scheduleUpdate, { passive: true })
+    window.addEventListener('resize', scheduleUpdate)
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame)
+      window.removeEventListener('scroll', scheduleUpdate)
+      window.removeEventListener('resize', scheduleUpdate)
+    }
+  }, [])
+
+  return (
+    <div className="absolute inset-x-0 bottom-0 h-px overflow-hidden bg-slate-100" aria-hidden="true">
+      <div
+        ref={indicatorRef}
+        data-qa="scroll-progress"
+        className="h-full origin-left bg-cyan-500"
+        style={{ transform: 'scaleX(0)' }}
+      />
+    </div>
   )
 }
 
