@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
+  ArrowRight,
   AudioLines,
+  Check,
   CheckCircle2,
+  Copy,
+  Download,
   Languages,
   Loader2,
   Mic,
@@ -27,7 +31,7 @@ import {
   voiceLanguageLabel,
   voiceLanguageShortLabel,
 } from '@/lib/language'
-import { getPreferredLanguage, setPreferredLanguage } from '@/lib/studio-preferences'
+import { getPreferredLanguage, setPendingScript, setPreferredLanguage } from '@/lib/studio-preferences'
 import { cn } from '@/lib/utils'
 
 type SessionState = 'idle' | 'connecting' | 'listening' | 'stopping' | 'error'
@@ -64,6 +68,8 @@ export function RealtimeView() {
   const [error, setError] = useState('')
   const [protocol, setProtocol] = useState<RealtimeMessage | null>(null)
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([])
+  const [transcriptText, setTranscriptText] = useState('')
+  const [copied, setCopied] = useState(false)
   const [selectedLanguage, setSelectedLanguage] = useState<VoiceLanguage>(() =>
     normalizeVoiceLanguage(getPreferredLanguage()),
   )
@@ -73,6 +79,7 @@ export function RealtimeView() {
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const gainRef = useRef<GainNode | null>(null)
+  const stopTimeoutRef = useRef<number | null>(null)
 
   const healthQuery = useQuery({
     queryKey: ['health'],
@@ -89,14 +96,25 @@ export function RealtimeView() {
   const backendOnline = healthQuery.data?.status === 'ok'
   const microphoneSupported =
     typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia)
-  const transcriptText = useMemo(
-    () => transcripts.filter((entry) => entry.text).map((entry) => entry.text).join('\n'),
-    [transcripts],
-  )
+  const spokenChunks = transcripts.filter((entry) => !entry.skipped && entry.text).length
+  const capturedDuration = transcripts.reduce((total, entry) => total + (entry.durationSeconds ?? 0), 0)
+  const downloadHref = transcriptText
+    ? `data:text/plain;charset=utf-8,${encodeURIComponent(transcriptText)}`
+    : undefined
   const runtimeLanguageWarning = getRuntimeLanguageWarning(
     selectedLanguage,
     modelStatusQuery.data?.runtime.asr_configured_languages,
   )
+  const modelReadinessMessage = getModelReadinessMessage(
+    selectedLanguage,
+    modelStatusQuery.data?.runtime.asr_configured_languages,
+    modelStatusQuery.data?.runtime.asr_loaded_languages,
+  )
+  const selectedModelLoaded = new Set(
+    (modelStatusQuery.data?.runtime.asr_loaded_languages ?? []).map((language) =>
+      normalizeVoiceLanguage(language),
+    ),
+  ).has(selectedLanguage)
 
   const cleanupMediaResources = () => {
     processorRef.current?.disconnect()
@@ -112,12 +130,20 @@ export function RealtimeView() {
     contextRef.current = null
   }
 
+  const clearStopTimeout = () => {
+    if (stopTimeoutRef.current !== null) {
+      window.clearTimeout(stopTimeoutRef.current)
+      stopTimeoutRef.current = null
+    }
+  }
+
   const cleanupRealtimeResources = () => {
+    clearStopTimeout()
     const websocket = websocketRef.current
+    websocketRef.current = null
     if (websocket && websocket.readyState !== WebSocket.CLOSED) {
       websocket.close()
     }
-    websocketRef.current = null
     cleanupMediaResources()
   }
 
@@ -135,7 +161,18 @@ export function RealtimeView() {
     setProtocol(null)
     setSessionState('connecting')
 
-    const websocket = new WebSocket(buildRealtimeWebSocketUrl(selectedLanguage))
+    let websocket: WebSocket
+    try {
+      websocket = new WebSocket(buildRealtimeWebSocketUrl(selectedLanguage))
+    } catch (connectionError) {
+      setError(
+        connectionError instanceof Error
+          ? connectionError.message
+          : 'Realtime websocket URL is invalid.',
+      )
+      setSessionState('error')
+      return
+    }
     websocketRef.current = websocket
     websocket.binaryType = 'arraybuffer'
 
@@ -150,12 +187,20 @@ export function RealtimeView() {
     }
 
     websocket.onerror = () => {
+      if (websocketRef.current !== websocket) {
+        return
+      }
       setError('Realtime websocket failed to connect.')
       setSessionState('error')
       cleanupRealtimeResources()
     }
 
     websocket.onclose = () => {
+      if (websocketRef.current !== websocket) {
+        return
+      }
+      clearStopTimeout()
+      websocketRef.current = null
       cleanupMediaResources()
       setSessionState((current) => (current === 'error' ? current : 'idle'))
     }
@@ -171,23 +216,35 @@ export function RealtimeView() {
     }
 
     if (message.type === 'transcript') {
-      setTranscripts((current) => [
-        {
-          id: `${message.sequence ?? current.length + 1}-${Date.now()}`,
-          text: message.text ?? '',
-          language: normalizeVoiceLanguage(message.language),
-          final: Boolean(message.final),
-          skipped: Boolean(message.skipped),
-          durationSeconds: message.duration_seconds ?? null,
-          rms: message.rms ?? null,
-        },
-        ...current,
-      ])
+      const recognizedText = message.text?.trim() ?? ''
+      if (recognizedText) {
+        setTranscriptText((current) => current ? `${current} ${recognizedText}` : recognizedText)
+      }
+      setTranscripts((current) =>
+        [
+          {
+            id: `${message.sequence ?? current.length + 1}-${Date.now()}`,
+            text: message.text ?? '',
+            language: normalizeVoiceLanguage(message.language),
+            final: Boolean(message.final),
+            skipped: Boolean(message.skipped),
+            durationSeconds: message.duration_seconds ?? null,
+            rms: message.rms ?? null,
+          },
+          ...current,
+        ],
+      )
       return
     }
 
     if (message.type === 'cleared') {
       setTranscripts([])
+      setTranscriptText('')
+      return
+    }
+
+    if (message.type === 'closed') {
+      setSessionState('idle')
       return
     }
 
@@ -215,6 +272,11 @@ export function RealtimeView() {
         throw new Error('This browser does not expose Web Audio capture.')
       }
       const audioContext = new AudioContextCtor()
+      if (websocketRef.current !== websocket || websocket.readyState !== WebSocket.OPEN) {
+        stream.getTracks().forEach((track) => track.stop())
+        await audioContext.close()
+        return
+      }
       const source = audioContext.createMediaStreamSource(stream)
       const processor = audioContext.createScriptProcessor(4096, 1, 1)
       const gain = audioContext.createGain()
@@ -256,17 +318,26 @@ export function RealtimeView() {
   const stopSession = () => {
     setSessionState('stopping')
     const websocket = websocketRef.current
+    cleanupMediaResources()
     if (websocket?.readyState === WebSocket.OPEN) {
-      websocket.send(JSON.stringify({ type: 'flush' }))
       websocket.send(JSON.stringify({ type: 'close' }))
+      clearStopTimeout()
+      stopTimeoutRef.current = window.setTimeout(() => {
+        if (websocketRef.current === websocket) {
+          cleanupRealtimeResources()
+          setSessionState('idle')
+        }
+      }, 5000)
+      return
     }
     cleanupRealtimeResources()
-    setProtocol(null)
     setSessionState('idle')
   }
 
   const clearSession = () => {
     setTranscripts([])
+    setTranscriptText('')
+    setCopied(false)
     const websocket = websocketRef.current
     if (websocket?.readyState === WebSocket.OPEN) {
       websocket.send(JSON.stringify({ type: 'clear' }))
@@ -279,25 +350,73 @@ export function RealtimeView() {
     setProtocol(null)
   }
 
+  const handleCopy = async () => {
+    if (!transcriptText || typeof navigator === 'undefined') {
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(transcriptText)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setError('Clipboard access failed. Download the transcript instead.')
+    }
+  }
+
+  const handleUseInGenerate = () => {
+    if (!transcriptText) {
+      return
+    }
+    setPendingScript(transcriptText)
+    setPreferredLanguage(selectedLanguage)
+    window.location.hash = '/generate'
+  }
+
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <section className="space-y-3">
+    <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="min-w-0 space-y-3">
         <Card>
           <CardHeader className="flex-wrap">
             <div>
-              <div className="text-sm font-semibold text-slate-950">Session controls</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-sm font-semibold text-slate-950">Realtime session</div>
+                <SessionStatusBadge state={sessionState} />
+              </div>
               <div className="mt-1 text-xs text-slate-600">
-                Capture microphone audio and stream it to the realtime {voiceLanguageLabel(selectedLanguage)} ASR websocket.
+                Stream microphone audio to {voiceLanguageLabel(selectedLanguage)} ASR.
               </div>
             </div>
-            <div className="flex flex-col items-start gap-2 sm:flex-row">
-              {sessionState === 'listening' || sessionState === 'connecting' ? (
-                <Button variant="destructive" onClick={stopSession}>
-                  {sessionState === 'connecting' ? <Loader2 className="size-4 animate-spin" /> : <Square className="size-4" />}
-                  Stop session
+            <div className="flex w-full gap-2 sm:w-auto">
+              {transcripts.length > 0 ? (
+                <Button
+                  className="w-8 shrink-0 px-0"
+                  size="sm"
+                  variant="secondary"
+                  aria-label="Clear realtime transcript"
+                  title="Clear realtime transcript"
+                  disabled={sessionState === 'stopping'}
+                  onClick={clearSession}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              ) : null}
+              {sessionState === 'listening' || sessionState === 'connecting' || sessionState === 'stopping' ? (
+                <Button
+                  className="min-w-0 flex-1 sm:flex-none"
+                  variant="destructive"
+                  disabled={sessionState === 'stopping'}
+                  onClick={stopSession}
+                >
+                  {sessionState === 'stopping' || sessionState === 'connecting' ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Square className="size-4" />
+                  )}
+                  {sessionState === 'stopping' ? 'Finalizing' : 'Stop and finalize'}
                 </Button>
               ) : (
                 <Button
+                  className="min-w-0 flex-1 sm:flex-none"
                   disabled={!backendOnline || !microphoneSupported || Boolean(runtimeLanguageWarning)}
                   onClick={startSession}
                 >
@@ -305,13 +424,9 @@ export function RealtimeView() {
                   Start session
                 </Button>
               )}
-              <Button variant="secondary" onClick={clearSession}>
-                <Trash2 className="size-4" />
-                Clear transcript
-              </Button>
             </div>
           </CardHeader>
-          <CardContent className="border-t border-slate-200">
+          <CardContent className="space-y-3 border-t border-slate-200">
             <LanguagePicker
               disabled={sessionState !== 'idle' && sessionState !== 'error'}
               value={selectedLanguage}
@@ -319,149 +434,199 @@ export function RealtimeView() {
               onChange={handleLanguageSelect}
             />
             {runtimeLanguageWarning ? (
-              <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
                 {runtimeLanguageWarning}
+              </div>
+            ) : modelReadinessMessage ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800">
+                {modelReadinessMessage}
+              </div>
+            ) : null}
+            {!healthQuery.isLoading && !backendOnline ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
+                Realtime backend is unavailable. Check diagnostics before starting a session.
+              </div>
+            ) : null}
+            {error ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700" role="alert">
+                {error}
               </div>
             ) : null}
           </CardContent>
-          {error ? (
-            <CardContent>
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold leading-6 text-red-700">
-              {error}
-            </div>
-            </CardContent>
-          ) : null}
         </Card>
 
         <Card>
-          <CardContent className="p-3">
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              <div
-                className={cn(
-                  'rounded-md border p-3',
-                  sessionState === 'listening'
-                    ? 'border-sky-200 bg-sky-50'
-                    : 'border-slate-200 bg-white',
-                )}
-              >
-                <div className="grid size-9 place-items-center rounded-md bg-white text-blue-700">
-                  {sessionState === 'listening' ? <Mic className="size-5" /> : <MicOff className="size-5" />}
-                </div>
-                <h2 className="mt-3 text-sm font-semibold text-slate-950">Live input</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-700">
-                  {sessionState === 'listening'
-                    ? `Microphone frames are being downsampled and streamed as ${voiceLanguageLabel(selectedLanguage)} PCM.`
-                    : 'Start a session to request microphone permission and open the websocket.'}
-                </p>
-                <div className="mt-3 grid grid-cols-1 gap-2 text-xs font-semibold sm:grid-cols-2">
-                  <StateTile label="Mic" value={microphoneSupported ? 'Available' : 'Missing'} good={microphoneSupported} />
-                  <StateTile label="Socket" value={sessionState === 'listening' ? 'Open' : 'Idle'} good={sessionState === 'listening'} />
-                </div>
-              </div>
-              <div className="rounded-md border border-slate-200 bg-white p-3">
-                <div className="grid size-9 place-items-center rounded-md bg-sky-50 text-blue-700">
-                  <AudioLines className="size-5" />
-                </div>
-                <h2 className="mt-3 text-sm font-semibold text-slate-950">Live transcript</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-700">
-                  New transcript chunks appear at the top. Silence chunks are tracked but visually muted.
-                </p>
-                <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
-                  <div className="text-xs font-semibold text-slate-600">Combined text</div>
-                  <div className="mt-2 min-h-14 text-xs leading-5 text-slate-900">
-                    {transcriptText || 'No transcript yet.'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
+          <CardHeader className="flex-wrap">
             <div>
-              <div className="text-sm font-semibold text-slate-950">Transcript stream</div>
-              <div className="mt-1 text-xs text-slate-600">Chunk results from the websocket session.</div>
+              <div className="text-sm font-semibold text-slate-950">Live transcript</div>
+              <div className="mt-1 text-xs text-slate-600">
+                {spokenChunks > 0 ? `${spokenChunks} speech chunks / ${capturedDuration.toFixed(1)}s captured` : 'Combined recognition output'}
+              </div>
             </div>
+            {transcriptText ? (
+              <div className="flex gap-2">
+                <Button
+                  className="w-8 px-0"
+                  size="sm"
+                  variant="secondary"
+                  aria-label={copied ? 'Realtime transcript copied' : 'Copy realtime transcript'}
+                  title={copied ? 'Copied' : 'Copy realtime transcript'}
+                  onClick={() => { void handleCopy() }}
+                >
+                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                </Button>
+                <Button
+                  className="w-8 px-0"
+                  size="sm"
+                  variant="secondary"
+                  asChild
+                  aria-label="Download realtime transcript"
+                  title="Download realtime transcript"
+                >
+                  <a href={downloadHref} download={`vassil-realtime-${selectedLanguage}.txt`}>
+                    <Download className="size-4" />
+                  </a>
+                </Button>
+              </div>
+            ) : null}
           </CardHeader>
           <CardContent>
-            {transcripts.length > 0 ? (
-              <div className="space-y-3">
-                {transcripts.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className={cn(
-                      'rounded-md border p-3',
-                      entry.skipped ? 'border-slate-200 bg-white text-slate-500' : 'border-slate-200 bg-white',
-                    )}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap gap-1.5">
-                        <Badge variant={entry.final ? 'success' : entry.skipped ? 'muted' : 'default'}>
-                          {entry.skipped ? 'Silence' : entry.final ? 'Final' : 'Partial'}
-                        </Badge>
-                        <Badge variant="muted">{voiceLanguageShortLabel(entry.language)}</Badge>
-                      </div>
-                      <span className="text-xs font-semibold text-slate-600">
-                        {entry.durationSeconds ? `${entry.durationSeconds.toFixed(2)}s` : 'duration pending'}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-slate-800">
-                      {entry.text || 'Silence skipped.'}
-                    </p>
-                  </div>
-                ))}
-              </div>
+            {transcriptText ? (
+              <>
+                <div className="min-h-[220px] whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-900">
+                  {transcriptText}
+                </div>
+                <Button className="mt-3 w-full" onClick={handleUseInGenerate}>
+                  <AudioLines className="size-4" />
+                  Use as Generate script
+                  <ArrowRight className="size-4" />
+                </Button>
+              </>
             ) : (
-              <div className="rounded-md border border-dashed border-slate-300 bg-white p-4 text-center">
-                <Activity className="mx-auto size-6 text-slate-500" />
-                <div className="mt-2 text-sm font-semibold text-slate-950">No realtime chunks yet</div>
-                <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-slate-600">
-                  Start a session, speak into the microphone, then stop or flush to finalize remaining audio.
-                </p>
+              <div className="grid min-h-[220px] place-items-center rounded-md border border-dashed border-slate-300 bg-white p-4 text-center">
+                <div>
+                  {sessionState === 'listening' ? (
+                    <Mic className="mx-auto size-6 text-blue-600" />
+                  ) : (
+                    <AudioLines className="mx-auto size-6 text-slate-400" />
+                  )}
+                  <div className="mt-2 text-sm font-semibold text-slate-950">
+                    {sessionState === 'listening' ? 'Listening for speech' : 'No realtime transcript'}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    {sessionState === 'listening' ? 'Recognition text will appear as chunks complete.' : 'Start a session when the microphone is ready.'}
+                  </p>
+                </div>
               </div>
             )}
           </CardContent>
         </Card>
+
+        <section>
+          <div className="mb-3 flex items-start justify-between gap-3 px-1">
+            <div>
+              <div className="text-sm font-semibold text-slate-950">Transcript segments</div>
+              <div className="mt-1 text-xs text-slate-600">Newest recognition chunks appear first.</div>
+            </div>
+            <Badge variant="muted">{transcripts.length}</Badge>
+          </div>
+          {transcripts.length > 0 ? (
+            <div className="space-y-2">
+              {transcripts.slice(0, 20).map((entry) => (
+                <article
+                  key={entry.id}
+                  className={cn(
+                    'rounded-md border border-slate-200 bg-white p-3',
+                    entry.skipped && 'text-slate-500',
+                  )}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge variant={entry.final ? 'success' : entry.skipped ? 'muted' : 'default'}>
+                        {entry.skipped ? 'Silence' : entry.final ? 'Final' : 'Live'}
+                      </Badge>
+                      <Badge variant="muted">{voiceLanguageShortLabel(entry.language)}</Badge>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-600">
+                      {entry.durationSeconds ? `${entry.durationSeconds.toFixed(2)}s` : 'Duration pending'}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-800">{entry.text || 'Silence skipped.'}</p>
+                </article>
+              ))}
+              {transcripts.length > 20 ? (
+                <div className="px-1 text-xs font-medium text-slate-500">Showing the latest 20 of {transcripts.length} chunks.</div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed border-slate-300 bg-white p-4 text-center">
+              <Activity className="mx-auto size-6 text-slate-400" />
+              <div className="mt-2 text-sm font-semibold text-slate-950">No transcript segments</div>
+              <p className="mt-1 text-xs leading-5 text-slate-600">Speech and skipped silence chunks will be listed here.</p>
+            </div>
+          )}
+        </section>
       </section>
 
       <aside className="space-y-3">
         <Card>
           <CardHeader>
             <div>
-              <div className="text-sm font-semibold text-slate-950">Session readiness</div>
-              <div className="mt-1 text-xs text-slate-600">Realtime browser and backend state.</div>
+              <div className="text-sm font-semibold text-slate-950">Session status</div>
+              <div className="mt-1 text-xs text-slate-600">Browser, model, and stream readiness.</div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <ReadinessRow
-              icon={backendOnline ? Wifi : WifiOff}
-              label="Backend websocket"
-              detail="/api/v1/realtime/asr"
-              ready={Boolean(backendOnline)}
-            />
-            <ReadinessRow
-              icon={microphoneSupported ? Mic : MicOff}
-              label="Microphone capture"
-              detail={microphoneSupported ? 'getUserMedia available' : 'Browser API unavailable'}
-              ready={microphoneSupported}
-            />
-            <ReadinessRow
-              icon={CheckCircle2}
-              label="PCM protocol"
-              detail={
-                protocol
-                  ? `${voiceLanguageShortLabel(protocol.language)} - ${protocol.encoding} - ${protocol.sample_rate} Hz`
-                  : 'Negotiated after connect'
-              }
-              ready={Boolean(protocol)}
-            />
-            <ReadinessRow
-              icon={RotateCcw}
-              label="Chunking"
-              detail={protocol ? `${protocol.chunk_seconds}s chunks` : 'Uses backend defaults'}
-              ready={Boolean(protocol)}
-            />
+          <CardContent>
+            <div className="flex items-center gap-3 pb-3">
+              <div
+                className={cn(
+                  'grid size-10 shrink-0 place-items-center rounded-md',
+                  sessionState === 'listening' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600',
+                  sessionState === 'error' && 'bg-red-50 text-red-700',
+                )}
+              >
+                {sessionState === 'listening' ? <Mic className="size-5" /> : <MicOff className="size-5" />}
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-950">{sessionStateLabel(sessionState)}</div>
+                <div className="mt-1 text-xs leading-5 text-slate-600">{sessionStateDescription(sessionState)}</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 divide-x divide-slate-200 border-y border-slate-200 py-3">
+              <SessionMetric label="Chunks" value={transcripts.length.toString()} />
+              <SessionMetric label="Speech" value={spokenChunks.toString()} />
+              <SessionMetric label="Audio" value={`${capturedDuration.toFixed(1)}s`} />
+            </div>
+            <div className="divide-y divide-slate-200 pt-1">
+              <ReadinessRow
+                icon={backendOnline ? Wifi : WifiOff}
+                label="Backend websocket"
+                detail={healthQuery.isLoading ? 'Checking connection' : backendOnline ? 'Available' : 'Unavailable'}
+                ready={Boolean(backendOnline)}
+              />
+              <ReadinessRow
+                icon={microphoneSupported ? Mic : MicOff}
+                label="Microphone capture"
+                detail={microphoneSupported ? 'Browser API available' : 'Browser API unavailable'}
+                ready={microphoneSupported}
+              />
+              <ReadinessRow
+                icon={CheckCircle2}
+                label={`${voiceLanguageShortLabel(selectedLanguage)} ASR model`}
+                detail={modelStatusQuery.isError ? 'Status unavailable' : selectedModelLoaded ? 'Loaded in memory' : runtimeLanguageWarning ? 'Not configured' : 'Cold start expected'}
+                ready={selectedModelLoaded}
+              />
+              <ReadinessRow
+                icon={RotateCcw}
+                label="Stream protocol"
+                detail={
+                  protocol
+                    ? `${protocol.encoding} / ${protocol.sample_rate} Hz / ${protocol.chunk_seconds}s`
+                    : 'Negotiated after connect'
+                }
+                ready={Boolean(protocol)}
+              />
+            </div>
           </CardContent>
         </Card>
       </aside>
@@ -469,13 +634,51 @@ export function RealtimeView() {
   )
 }
 
-function StateTile({ label, value, good }: { label: string; value: string; good: boolean }) {
+function SessionMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className={cn('rounded-md border px-3 py-2', good ? 'border-emerald-200 bg-emerald-50/40 text-emerald-800' : 'border-slate-200 bg-white text-slate-600')}>
-      <div className="text-xs font-medium opacity-80">{label}</div>
-      <div className="mt-1 text-xs font-semibold">{value}</div>
+    <div className="min-w-0 px-2 text-center">
+      <div className="truncate text-sm font-semibold tabular-nums text-slate-950">{value}</div>
+      <div className="mt-1 text-[10px] font-medium uppercase text-slate-500">{label}</div>
     </div>
   )
+}
+
+function SessionStatusBadge({ state }: { state: SessionState }) {
+  if (state === 'listening') {
+    return <Badge variant="success">Listening</Badge>
+  }
+  if (state === 'connecting' || state === 'stopping') {
+    return (
+      <Badge variant="warning">
+        <Loader2 className="mr-1 size-3 animate-spin" />
+        {state === 'connecting' ? 'Connecting' : 'Finalizing'}
+      </Badge>
+    )
+  }
+  if (state === 'error') {
+    return <Badge variant="danger">Attention</Badge>
+  }
+  return <Badge variant="muted">Idle</Badge>
+}
+
+function sessionStateLabel(state: SessionState) {
+  return {
+    idle: 'Ready to start',
+    connecting: 'Opening session',
+    listening: 'Microphone live',
+    stopping: 'Finalizing audio',
+    error: 'Session needs attention',
+  }[state]
+}
+
+function sessionStateDescription(state: SessionState) {
+  return {
+    idle: 'No microphone audio is being sent.',
+    connecting: 'Waiting for browser and backend readiness.',
+    listening: 'Audio frames are streaming to local ASR.',
+    stopping: 'Waiting for the final transcript chunk.',
+    error: 'Review the error and start a new session.',
+  }[state]
 }
 
 function ReadinessRow({
@@ -490,8 +693,8 @@ function ReadinessRow({
   ready: boolean
 }) {
   return (
-    <div className="flex items-start gap-2 rounded-md border border-slate-200 bg-white p-3">
-      <div className="grid size-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-500">
+    <div className="flex items-start gap-2 py-3">
+      <div className="grid size-7 shrink-0 place-items-center rounded-md bg-slate-50 text-slate-500">
         <Icon className={cn('size-4', ready && 'text-emerald-600')} />
       </div>
       <div className="min-w-0 flex-1">
@@ -576,6 +779,22 @@ function getRuntimeLanguageWarning(
     .map((language) => voiceLanguageLabel(language))
     .join(', ')
   return `${voiceLanguageLabel(selectedLanguage)} ASR is not configured on this backend. Available runtime: ${available}.`
+}
+
+function getModelReadinessMessage(
+  selectedLanguage: VoiceLanguage,
+  configuredLanguages: string[] | undefined,
+  loadedLanguages: string[] | undefined,
+) {
+  if (!configuredLanguages?.length) {
+    return null
+  }
+  const configured = new Set(configuredLanguages.map((language) => normalizeVoiceLanguage(language)))
+  const loaded = new Set((loadedLanguages ?? []).map((language) => normalizeVoiceLanguage(language)))
+  if (!configured.has(selectedLanguage) || loaded.has(selectedLanguage)) {
+    return null
+  }
+  return `${voiceLanguageLabel(selectedLanguage)} ASR model is cold. The first session may take longer to begin.`
 }
 
 function downsampleFloat32(input: Float32Array, inputSampleRate: number, outputSampleRate: number) {

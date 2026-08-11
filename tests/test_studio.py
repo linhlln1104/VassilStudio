@@ -70,6 +70,12 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Search voices or files" in script
     assert "Add voice profile" in script
     assert "Upload audio" in script
+    assert "Queue transcription" in script
+    assert "No transcript output" in script
+    assert "Stop and finalize" in script
+    assert "No realtime transcript" in script
+    assert "Queue activity" in script
+    assert "Search ID, text, language, or status" in script
     assert "Create voice profile" in script
     assert "reference_audio" in script
     assert "Delete voice profile?" in script

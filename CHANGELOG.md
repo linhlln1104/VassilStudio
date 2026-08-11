@@ -33,6 +33,9 @@ All notable VassilStudio productionization changes are tracked here.
 - Reproducible benchmark protocol, RC Windows CPU baseline, and model fingerprints.
 - Generate workspace with persistent drafts, script metadata, reference-audio preview, and real queue/output state.
 - Voice library with direct audio upload, local candidate mode, language filters, selected-profile state, and inline validation.
+- Transcription workspace with staged audio validation, explicit queueing, recent results, and transcript handoff to Generate.
+- Realtime workspace with session readiness, chronological combined output, bounded segment rendering, and transcript export.
+- Priority-ordered job history with responsive filters, conditional actions, and incremental history rendering.
 
 ### Hardened
 
@@ -41,6 +44,7 @@ All notable VassilStudio productionization changes are tracked here.
 - New local account passwords use scrypt hashes while legacy PBKDF2 hashes remain verifiable.
 - ASR/TTS job lifecycle with cancellation, retry metadata, cleanup, and consistent terminal states.
 - Language-aware ASR/TTS runtime selection and model readiness reporting.
+- Realtime session shutdown now waits for the backend final transcript before closing the websocket, with a bounded timeout fallback.
 - Auth-enabled startup now requires a strong non-placeholder session secret; production profile
   startup also requires auth, secure cookies, and debug mode off.
 - ZipVoice text processing uses the index-resolvable `phonemizer-fork` and `espeakng-loader` path,

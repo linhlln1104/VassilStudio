@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -19,7 +19,6 @@ import {
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/components/ui/use-toast'
@@ -43,6 +42,7 @@ type StudioJob = {
   cancelRequested: boolean
   failedReason: string | null
   summary: string
+  reusableText: string
   error: string | null
 }
 
@@ -69,6 +69,7 @@ export function JobsView() {
   const [filter, setFilter] = useState<JobFilter>('all')
   const [typeFilter, setTypeFilter] = useState<JobTypeFilter>('all')
   const [search, setSearch] = useState('')
+  const [visibleLimit, setVisibleLimit] = useState(30)
   const [deleteTarget, setDeleteTarget] = useState<StudioJob | null>(null)
   const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false)
   const ttsJobsQuery = useQuery({
@@ -98,6 +99,7 @@ export function JobsView() {
         cancelRequested: job.cancel_requested,
         failedReason: job.failed_reason,
         summary: job.text,
+        reusableText: job.text,
         error: job.error,
       })) ?? []
 
@@ -116,12 +118,17 @@ export function JobsView() {
         cancelRequested: job.cancel_requested,
         failedReason: job.failed_reason,
         summary: job.text || job.filename,
+        reusableText: job.text || '',
         error: job.error,
       })) ?? []
 
-    return [...ttsJobs, ...asrJobs].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
+    return [...ttsJobs, ...asrJobs].sort((a, b) => {
+      const priorityDifference = jobPriority(a.status) - jobPriority(b.status)
+      if (priorityDifference !== 0) {
+        return priorityDifference
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
   }, [asrJobsQuery.data, ttsJobsQuery.data])
 
   const activeCount = jobs.filter((job) => isActiveStatus(job.status)).length
@@ -148,9 +155,14 @@ export function JobsView() {
       .toLowerCase()
       .includes(normalizedSearch)
   })
+  const visibleJobs = filteredJobs.slice(0, visibleLimit)
   const loading = ttsJobsQuery.isLoading || asrJobsQuery.isLoading
   const refreshing = ttsJobsQuery.isFetching || asrJobsQuery.isFetching
   const hasQueryError = ttsJobsQuery.isError || asrJobsQuery.isError
+
+  useEffect(() => {
+    setVisibleLimit(30)
+  }, [filter, search, typeFilter])
 
   const deleteJobMutation = useMutation({
     mutationFn: (job: StudioJob) =>
@@ -236,7 +248,7 @@ export function JobsView() {
   }
 
   const reuseJob = (job: StudioJob) => {
-    const script = job.summary.trim()
+    const script = job.reusableText.trim()
     if (!script) {
       toast({
         title: 'Nothing to reuse',
@@ -258,115 +270,141 @@ export function JobsView() {
 
   return (
     <div className="space-y-3">
-      <Card>
-        <CardHeader className="gap-3 lg:flex-nowrap">
-          <div className="min-w-0 flex-1 lg:max-w-[360px]">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="text-sm font-semibold leading-5 text-slate-950">Recent activity</div>
-              <div className="flex flex-wrap gap-1">
-                <Metric label="Active" value={activeCount} tone="warning" />
-                <Metric label="Done" value={succeededCount} tone="success" />
-                <Metric label="Failed" value={failedCount} tone="danger" />
-                <Metric label="Cancelled" value={cancelledCount} tone="neutral" />
-              </div>
-            </div>
-            <div className="mt-1 text-xs leading-5 text-slate-600">
-              Showing {filteredJobs.length} of {jobs.length} backend jobs.
-            </div>
+      <header className="flex flex-col gap-3 px-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold leading-5 text-slate-950">Queue activity</div>
+          <div className="mt-1 text-xs leading-5 text-slate-600">
+            Active and failed jobs are prioritized for review.
           </div>
-          <div className="flex w-full min-w-0 flex-none flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:flex-1 lg:justify-end">
-            <label className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 sm:min-w-[220px] sm:flex-1 lg:max-w-[260px]">
-              <Search className="size-4 text-slate-500" />
-              <span className="sr-only">Search jobs</span>
-              <input
-                className="min-w-0 flex-1 bg-transparent text-xs font-medium text-slate-900 outline-none placeholder:text-slate-500"
-                value={search}
-                placeholder="Search jobs"
-                onChange={(event) => setSearch(event.target.value)}
-              />
-              {search ? (
-                <button
-                  className="grid size-7 place-items-center rounded-md text-slate-500 hover:bg-slate-50 hover:text-slate-950"
-                  type="button"
-                  aria-label="Clear job search"
-                  onClick={() => setSearch('')}
-                >
-                  <X className="size-4" />
-                </button>
-              ) : null}
-            </label>
-            <div className="flex min-w-0 flex-wrap gap-2">
-              <SegmentedControl
-                options={typeFilters.map((item) => ({ value: item.id, label: item.label }))}
-                value={typeFilter}
-                onChange={setTypeFilter}
-              />
-              <SegmentedControl
-                options={statusFilters.map((item) => ({ value: item.id, label: item.label }))}
-                value={filter}
-                onChange={setFilter}
-              />
-            </div>
-            <div className="flex min-w-0 flex-wrap gap-2">
-              <Button
-                variant="secondary"
-                aria-label="Clean completed jobs"
-                title="Clean completed jobs"
-                disabled={terminalJobs.length === 0 || cleanupMutation.isPending}
-                onClick={() => setCleanupConfirmOpen(true)}
-              >
-                {cleanupMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Eraser className="size-4" />}
-                Clean
-              </Button>
-              <Button variant="secondary" onClick={refetchJobs}>
-                {refreshing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-                Refresh
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {hasQueryError && jobs.length > 0 ? (
-            <ErrorBanner
-              message={errorMessage(
-                ttsJobsQuery.error ?? asrJobsQuery.error,
-                'One queue could not be refreshed. Existing cached jobs are still shown.',
-              )}
-              onRetry={refetchJobs}
-            />
-          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <Metric label="Active" value={activeCount} tone="warning" />
+          <Metric label="Done" value={succeededCount} tone="success" />
+          <Metric label="Failed" value={failedCount} tone="danger" />
+          <Metric label="Cancelled" value={cancelledCount} tone="neutral" />
+        </div>
+      </header>
 
-          {loading ? (
-            <div className="grid grid-cols-1 gap-3">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="h-20 animate-pulse rounded-md bg-slate-100" />
-              ))}
-            </div>
-          ) : hasQueryError && jobs.length === 0 ? (
-            <ErrorState
-              title="Unable to load jobs"
-              copy={errorMessage(ttsJobsQuery.error ?? asrJobsQuery.error, 'The queue could not be loaded.')}
-              onRetry={refetchJobs}
+      <div className="space-y-2 rounded-md border border-slate-200 bg-white p-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5">
+            <Search className="size-4 text-slate-500" />
+            <span className="sr-only">Search jobs</span>
+            <input
+              className="min-w-0 flex-1 bg-transparent text-xs font-medium text-slate-900 outline-none placeholder:text-slate-500"
+              value={search}
+              placeholder="Search ID, text, language, or status"
+              onChange={(event) => setSearch(event.target.value)}
             />
-          ) : filteredJobs.length > 0 ? (
-            <div className="space-y-2">
-              {filteredJobs.map((job) => (
-                <JobRow
-                  key={`${job.type}-${job.id}`}
-                  job={job}
-                  deleting={deleteJobMutation.isPending && deleteTarget?.id === job.id}
-                  cancelling={cancelJobMutation.isPending && cancelJobMutation.variables?.id === job.id}
-                  onCancel={() => cancelJobMutation.mutate(job)}
-                  onDelete={() => setDeleteTarget(job)}
-                  onReuse={() => reuseJob(job)}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyQueue hasJobs={jobs.length > 0} />
+            {search ? (
+              <button
+                className="grid size-7 place-items-center rounded-md text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+                type="button"
+                aria-label="Clear job search"
+                onClick={() => setSearch('')}
+              >
+                <X className="size-4" />
+              </button>
+            ) : null}
+          </label>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              className="w-9 px-0"
+              variant="secondary"
+              aria-label="Clean completed jobs"
+              title="Clean completed jobs"
+              disabled={terminalJobs.length === 0 || cleanupMutation.isPending}
+              onClick={() => setCleanupConfirmOpen(true)}
+            >
+              {cleanupMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Eraser className="size-4" />}
+            </Button>
+            <Button
+              className="w-9 px-0"
+              variant="secondary"
+              aria-label="Refresh jobs"
+              title="Refresh jobs"
+              onClick={refetchJobs}
+            >
+              {refreshing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 lg:flex-row">
+          <SegmentedControl
+            equalWidth
+            className="w-full lg:w-[220px]"
+            options={typeFilters.map((item) => ({ value: item.id, label: item.label }))}
+            value={typeFilter}
+            onChange={setTypeFilter}
+          />
+          <SegmentedControl
+            equalWidth
+            className="w-full lg:flex-1"
+            itemClassName="px-1 sm:px-2"
+            options={statusFilters.map((item) => ({ value: item.id, label: item.label }))}
+            value={filter}
+            onChange={setFilter}
+          />
+        </div>
+      </div>
+
+      {hasQueryError && jobs.length > 0 ? (
+        <ErrorBanner
+          message={errorMessage(
+            ttsJobsQuery.error ?? asrJobsQuery.error,
+            'One queue could not be refreshed. Existing cached jobs are still shown.',
           )}
-        </CardContent>
-      </Card>
+          onRetry={refetchJobs}
+        />
+      ) : null}
+
+      <section>
+        <div className="mb-3 flex items-start justify-between gap-3 px-1">
+          <div>
+            <div className="text-sm font-semibold text-slate-950">Jobs</div>
+            <div className="mt-1 text-xs leading-5 text-slate-600">
+              Showing {visibleJobs.length} of {filteredJobs.length} matching jobs.
+            </div>
+          </div>
+          <Badge variant="muted">{jobs.length} total</Badge>
+        </div>
+        {loading ? (
+          <div className="grid grid-cols-1 gap-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-24 animate-pulse rounded-md bg-slate-100" />
+            ))}
+          </div>
+        ) : hasQueryError && jobs.length === 0 ? (
+          <ErrorState
+            title="Unable to load jobs"
+            copy={errorMessage(ttsJobsQuery.error ?? asrJobsQuery.error, 'The queue could not be loaded.')}
+            onRetry={refetchJobs}
+          />
+        ) : visibleJobs.length > 0 ? (
+          <div className="space-y-2">
+            {visibleJobs.map((job) => (
+              <JobRow
+                key={`${job.type}-${job.id}`}
+                job={job}
+                deleting={deleteJobMutation.isPending && deleteTarget?.id === job.id}
+                cancelling={cancelJobMutation.isPending && cancelJobMutation.variables?.id === job.id}
+                onCancel={() => cancelJobMutation.mutate(job)}
+                onDelete={() => setDeleteTarget(job)}
+                onReuse={() => reuseJob(job)}
+              />
+            ))}
+            {visibleJobs.length < filteredJobs.length ? (
+              <div className="pt-1 text-center">
+                <Button variant="secondary" onClick={() => setVisibleLimit((current) => current + 30)}>
+                  Show more
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <EmptyQueue hasJobs={jobs.length > 0} />
+        )}
+      </section>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
@@ -423,7 +461,7 @@ function JobRow({
   const failed = job.status === 'failed'
   const terminal = isTerminalStatus(job.status)
   const canCancel = job.status === 'queued' || job.status === 'running'
-  const canReuse = Boolean(job.summary.trim())
+  const canReuse = Boolean(job.reusableText.trim())
 
   return (
     <article
@@ -433,7 +471,12 @@ function JobRow({
       )}
     >
       <div className="flex min-w-0 items-start gap-3">
-        <div className="grid size-9 shrink-0 place-items-center rounded-md bg-blue-600 text-white">
+        <div
+          className={cn(
+            'grid size-9 shrink-0 place-items-center rounded-md text-white',
+            job.type === 'TTS' ? 'bg-blue-600' : 'bg-slate-800',
+          )}
+        >
           {job.type === 'TTS' ? <FileAudio className="size-4" /> : <Captions className="size-4" />}
         </div>
         <div className="min-w-0 flex-1">
@@ -448,16 +491,13 @@ function JobRow({
           </div>
           <div className="mt-1 text-xs font-medium leading-5 text-slate-500">
             Created {formatDate(job.createdAt)}
-            {job.maxAttempts > 1 ? ` · Attempt ${job.attempt}/${job.maxAttempts}` : ''}
-            {job.failedReason ? ` · ${formatReason(job.failedReason)}` : ''}
+            {job.durationSeconds ? ` / ${formatDuration(job.durationSeconds)}` : ''}
+            {job.maxAttempts > 1 ? ` / Attempt ${job.attempt}/${job.maxAttempts}` : ''}
+            {job.failedReason ? ` / ${formatReason(job.failedReason)}` : ''}
           </div>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-        <QueueMeta
-          label="Duration"
-          value={job.durationSeconds ? formatDuration(job.durationSeconds) : 'Pending'}
-        />
         {job.audioUrl ? (
           <a
             className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-900 transition-colors hover:bg-slate-50"
@@ -468,42 +508,37 @@ function JobRow({
             {job.type === 'ASR' ? 'Input' : 'Audio'}
             <ArrowRight className="size-4" />
           </a>
-        ) : (
-          <span className="inline-flex h-7 items-center text-xs font-medium text-slate-500">No file</span>
-        )}
+        ) : null}
         <div className="flex flex-wrap gap-1.5">
-          <Button size="sm" variant="secondary" disabled={!canCancel || cancelling} onClick={onCancel}>
-            {cancelling ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
-            Cancel
-          </Button>
-          <Button size="sm" variant="secondary" disabled={!canReuse} onClick={onReuse}>
-            <RotateCcw className="size-4" />
-            Use
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!terminal || deleting}
-            className="w-8 border-red-200 px-0 text-red-700 hover:bg-red-50 hover:text-red-800"
-            onClick={onDelete}
-            aria-label="Delete job"
-            title="Delete job"
-          >
-            {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-            <span className="sr-only">Delete</span>
-          </Button>
+          {canCancel ? (
+            <Button size="sm" variant="secondary" disabled={cancelling} onClick={onCancel}>
+              {cancelling ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
+              Cancel
+            </Button>
+          ) : null}
+          {canReuse ? (
+            <Button size="sm" variant="secondary" onClick={onReuse}>
+              <RotateCcw className="size-4" />
+              Generate
+            </Button>
+          ) : null}
+          {terminal ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={deleting}
+              className="w-8 border-red-200 px-0 text-red-700 hover:bg-red-50 hover:text-red-800"
+              onClick={onDelete}
+              aria-label="Delete job"
+              title="Delete job"
+            >
+              {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+              <span className="sr-only">Delete</span>
+            </Button>
+          ) : null}
         </div>
       </div>
     </article>
-  )
-}
-
-function QueueMeta({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-[74px] rounded-md border border-slate-200 bg-white px-2 py-1">
-      <div className="text-[10px] font-medium leading-3 text-slate-500">{label}</div>
-      <div className="mt-0.5 text-xs font-semibold leading-4 text-slate-950">{value}</div>
-    </div>
   )
 }
 
@@ -631,6 +666,17 @@ function StatusBadge({ status }: { status: JobStatus }) {
       {status === 'queued' ? 'Queued' : 'Running'}
     </Badge>
   )
+}
+
+function jobPriority(status: JobStatus) {
+  return {
+    running: 0,
+    queued: 1,
+    cancelling: 2,
+    failed: 3,
+    succeeded: 4,
+    cancelled: 5,
+  }[status]
 }
 
 function isTerminalStatus(status: JobStatus) {
