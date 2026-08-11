@@ -29,6 +29,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert 'src="/studio/assets/' in page
     assert 'href="/studio/assets/' in page
     for screenshot_name in (
+        "vassil-voice-sculpture.jpg",
         "vassil-studio-generate.png",
         "vassil-studio-transcribe.png",
         "vassil-studio-realtime.png",
@@ -65,6 +66,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "/model-status" in script
     assert "/warmup" in script
     assert "/studio/brand/vassil-logo.png" in script
+    assert "/studio/brand/vassil-voice-sculpture.jpg" in script
     assert "/studio/brand/vassil-studio-generate.png" in script
     assert "/studio/brand/vassil-studio-transcribe.png" in script
     assert "/studio/brand/vassil-studio-realtime.png" in script
@@ -111,7 +113,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "First output checklist" in script
     assert "Production" in script
     assert "Studio workflows" in script
-    assert "Local queue and storage" in script
+    assert "Configured workspace paths" in script
     assert "Private voice production, on your machine" in script
     assert "The actual workspace, not a mockup" in script
     assert "No cloud account required" in script

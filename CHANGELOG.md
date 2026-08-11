@@ -42,6 +42,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Privacy, license, support, changelog, and operations pages with shared navigation and documentation-style sections.
 - Proof-led landing experience with a crisp product hero and interactive Generate, Transcribe, Realtime, and Voices previews.
 - Repeatable Playwright landing QA for desktop, tablet, and mobile layout, image, overflow, and browser-error checks.
+- Brand-specific acoustic sculpture hero with first-viewport product proof and documented generation provenance.
 
 ### Hardened
 

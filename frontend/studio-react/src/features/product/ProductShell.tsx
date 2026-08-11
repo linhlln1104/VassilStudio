@@ -4,7 +4,6 @@ import {
   ArrowRight,
   AudioLines,
   Captions,
-  Check,
   Cpu,
   Download,
   Gauge,
@@ -239,29 +238,34 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
         <section
           id="product"
           data-qa="landing-hero"
-          className="relative h-[calc(100svh-112px)] min-h-[600px] max-h-[780px] overflow-hidden border-b border-slate-200 bg-slate-100"
+          className="relative h-[calc(100svh-320px)] min-h-[520px] max-h-[640px] overflow-hidden border-b border-slate-200 bg-white"
         >
           <img
-            className="absolute inset-0 size-full object-cover object-[34%_top] sm:object-top"
-            src="/studio/brand/vassil-studio-generate.png"
-            alt="VassilStudio Generate workspace"
+            className="absolute inset-0 size-full object-cover object-center"
+            src="/studio/brand/vassil-voice-sculpture.jpg"
+            alt="Translucent acoustic waveform sculpture in VassilStudio brand colors"
+            fetchPriority="high"
           />
-          <div data-qa="hero-content" className="absolute inset-x-0 bottom-0 border-t border-slate-200 bg-white">
-            <div className="mx-auto max-w-[1180px] px-4 py-7 sm:px-6 sm:py-9">
-              <div className="flex items-center gap-2 text-xs font-semibold text-blue-700">
+          <div className="absolute inset-0 bg-white/20" aria-hidden="true" />
+          <div
+            data-qa="hero-content"
+            className="relative mx-auto flex h-full max-w-[1180px] justify-center px-4 pt-9 text-center sm:px-6 sm:pt-12"
+          >
+            <div className="max-w-3xl">
+              <div className="flex items-center justify-center gap-2 text-xs font-semibold text-blue-700">
                 <ShieldCheck className="size-4" />
                 Local-first voice production
               </div>
-              <h1 className="mt-3 text-4xl font-semibold tracking-normal text-slate-950 sm:text-5xl">
+              <h1 className="mt-3 text-5xl font-semibold tracking-normal text-slate-950 sm:text-6xl">
                 VassilStudio
               </h1>
-              <p className="mt-3 text-lg font-medium leading-7 text-slate-900 sm:text-xl">
+              <p className="mt-3 text-lg font-medium leading-7 text-slate-900 sm:text-2xl">
                 Private voice production, on your machine.
               </p>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
                 Create speech, transcribe recordings, and manage reusable voices with Vietnamese and English models in one focused workspace.
               </p>
-              <div className="mt-5 flex flex-wrap gap-2">
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
                 <Button asChild size="lg">
                   <a href="/studio">
                     Open Studio
@@ -275,21 +279,29 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
                   </a>
                 </Button>
               </div>
-              <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-xs font-medium text-slate-600">
-                <TrustSignal>Vietnamese + English</TrustSignal>
-                <TrustSignal>CPU-ready runtime</TrustSignal>
-                <TrustSignal>Local queue and storage</TrustSignal>
-              </div>
             </div>
           </div>
         </section>
 
-        <section className="border-b border-slate-200 bg-white" aria-label="Product foundation">
-          <div className="mx-auto grid max-w-[1180px] grid-cols-1 px-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
-            <FoundationItem icon={HardDrive} title="Local by default" copy="Configured workspace paths" />
-            <FoundationItem icon={Captions} title="ZipFormer ASR" copy="File and realtime recognition" />
-            <FoundationItem icon={AudioLines} title="ZipVoice TTS" copy="Reusable reference voices" />
-            <FoundationItem icon={LockKeyhole} title="Operator controlled" copy="Auth, diagnostics, cleanup" />
+        <section className="border-b border-slate-200 bg-slate-50" aria-label="Product foundation">
+          <div className="relative mx-auto max-w-[1180px] px-4 sm:px-6">
+            <figure
+              data-qa="product-stage"
+              className="relative z-10 -mt-16 aspect-[36/25] overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.12)]"
+            >
+              <img
+                className="size-full object-cover object-top"
+                src="/studio/brand/vassil-studio-generate.png"
+                alt="VassilStudio Generate workspace with script, voice, and output controls"
+                loading="eager"
+              />
+            </figure>
+            <div className="grid grid-cols-1 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+              <FoundationItem icon={HardDrive} title="Local by default" copy="Configured workspace paths" />
+              <FoundationItem icon={Captions} title="ZipFormer ASR" copy="File and realtime recognition" />
+              <FoundationItem icon={AudioLines} title="ZipVoice TTS" copy="Reusable reference voices" />
+              <FoundationItem icon={LockKeyhole} title="Operator controlled" copy="Auth, diagnostics, cleanup" />
+            </div>
           </div>
         </section>
 
@@ -402,17 +414,8 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
   )
 }
 
-function TrustSignal({ children }: { children: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <Check className="size-3.5 text-emerald-700" />
-      {children}
-    </span>
-  )
-}
-
 function ProductShowcase() {
-  const [activeId, setActiveId] = useState<ShowcaseItem['id']>('generate')
+  const [activeId, setActiveId] = useState<ShowcaseItem['id']>('voices')
   const activeItem = showcaseItems.find((item) => item.id === activeId) ?? showcaseItems[0]
 
   return (

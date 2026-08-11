@@ -70,7 +70,7 @@ try {
         }
       })
     }
-    await page.getByRole('tab', { name: 'Generate', exact: true }).click()
+    await page.getByRole('tab', { name: 'Voices', exact: true }).click()
     await page.evaluate(() => window.scrollTo(0, 0))
     await page.waitForTimeout(100)
 
@@ -93,6 +93,7 @@ try {
         }))
       const hero = document.querySelector('[data-qa="landing-hero"]')?.getBoundingClientRect()
       const heroContent = document.querySelector('[data-qa="hero-content"]')?.getBoundingClientRect()
+      const productStage = document.querySelector('[data-qa="product-stage"]')?.getBoundingClientRect()
 
       return {
         documentWidth: document.documentElement.scrollWidth,
@@ -106,6 +107,9 @@ try {
           heroContent.top >= hero.top - 1 &&
           heroContent.bottom <= hero.bottom + 1,
         ),
+        productProofVisibleInFirstViewport: Boolean(
+          productStage && productStage.top < window.innerHeight && productStage.bottom > 0,
+        ),
       }
     })
 
@@ -117,6 +121,9 @@ try {
     }
     if (!metrics.heroContentInsideHero) {
       throw new Error(`${viewport.name}: hero content leaves its fixed visual boundary`)
+    }
+    if (!metrics.productProofVisibleInFirstViewport) {
+      throw new Error(`${viewport.name}: actual product proof is not visible in the first viewport`)
     }
     if (browserErrors.length > 0) {
       throw new Error(`${viewport.name}: browser errors: ${browserErrors.join(' | ')}`)
