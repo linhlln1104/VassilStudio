@@ -20,6 +20,8 @@ and account/session data stay in the local workspace unless an operator copies t
 Run these commands from the repository root:
 
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[runtime]"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_storage.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_api.ps1
@@ -163,8 +165,9 @@ syntax checks, pytest, auth/product smoke, and Docker Compose config validation.
 The `Quality` GitHub Actions workflow runs on pushes to `main`, pull requests, and manual dispatch.
 It uses the same script with `-CI`, a clean npm install, a high-severity npm dependency audit, pinned
 action revisions, read-only repository permissions, and generated OpenAPI drift detection. CI skips
-doctor/model binaries and Compose because those require the release workspace; the default local
-gate and optional checks cover them.
+doctor/model binaries and Compose because those require the release workspace. Its `.[test]` Python
+extra also excludes Torch, ONNX Runtime, Torchaudio, and sherpa-onnx; Docker and native installs use
+`.[runtime]`, while contributors can use `.[dev]` for both runtime and quality tooling.
 
 Optional release checks:
 

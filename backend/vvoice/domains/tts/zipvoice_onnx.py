@@ -271,7 +271,7 @@ class ZipVoiceOnnxRuntime:
         except Exception as exc:  # pragma: no cover - exercised by deployment smoke tests
             raise ModelConfigurationError(
                 "Vietnamese ZipVoice ONNX requires onnxruntime, torch, and torchaudio. "
-                "Run `python -m pip install -e .` to refresh runtime dependencies."
+                "Run `python -m pip install -e \".[runtime]\"` to install model runtime dependencies."
             ) from exc
 
 

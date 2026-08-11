@@ -37,7 +37,7 @@ COPY scripts ./scripts
 COPY --from=studio-build /app/frontend/studio-react/dist ./frontend/studio-react/dist
 
 RUN python -m pip install --upgrade pip \
-    && python -m pip install .
+    && python -m pip install ".[runtime]"
 
 EXPOSE 8000
 

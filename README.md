@@ -71,12 +71,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\download_vocoder.p
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e .
+python -m pip install -e ".[runtime]"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_storage.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\download_vocoder.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_api.ps1
 ```
+
+Contributors can install runtime and quality tooling together with
+`python -m pip install -e ".[dev]"`. The lighter `.[test]` extra intentionally excludes model
+engines and is reserved for hermetic unit CI.
 
 The API starts on `http://127.0.0.1:8000`.
 
