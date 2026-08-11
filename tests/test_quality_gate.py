@@ -30,6 +30,8 @@ def test_ci_check_mode_is_reproducible_and_model_independent() -> None:
     assert "$SkipCompose = $true" in script
     assert 'Invoke-Step "generated contract drift"' in script
     assert "$CI -or -not (Test-Path" in script
+    assert 'Invoke-Step "studio-react dependency audit"' in script
+    assert "audit --audit-level=high" in script
 
 
 def test_toolchain_versions_match_container_baseline() -> None:

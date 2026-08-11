@@ -161,9 +161,10 @@ Default check includes storage setup, doctor, OpenAPI export, ruff, React lint/b
 syntax checks, pytest, auth/product smoke, and Docker Compose config validation.
 
 The `Quality` GitHub Actions workflow runs on pushes to `main`, pull requests, and manual dispatch.
-It uses the same script with `-CI`, a clean npm install, pinned action revisions, read-only repository
-permissions, and generated OpenAPI drift detection. CI skips doctor/model binaries and Compose
-because those require the release workspace; the default local gate and optional checks cover them.
+It uses the same script with `-CI`, a clean npm install, a high-severity npm dependency audit, pinned
+action revisions, read-only repository permissions, and generated OpenAPI drift detection. CI skips
+doctor/model binaries and Compose because those require the release workspace; the default local
+gate and optional checks cover them.
 
 Optional release checks:
 

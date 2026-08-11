@@ -24,6 +24,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Explicit `httpx2` test-client coverage so clean CI and local test environments use the same Starlette path.
 - Exact pytest and Ruff versions for deterministic local and GitHub quality-gate behavior.
 - Hermetic config and ZipVoice frontend tests that do not inherit host settings or require local model files.
+- Patched frontend transitive advisories and a blocking high-severity npm audit in CI mode.
 
 ### Hardened
 

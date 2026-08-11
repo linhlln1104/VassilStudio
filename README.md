@@ -165,8 +165,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1
 The default check runs storage setup, doctor, OpenAPI export, ruff, pytest, React Studio
 lint/build, legacy frontend JavaScript syntax checks, and Docker Compose config validation.
 GitHub Actions runs the Windows CI equivalent with `scripts/check.ps1 -CI`; that mode performs a
-clean npm install and rejects generated OpenAPI drift while leaving model-binary and Docker-daemon
-validation to the release hardware gates below.
+clean npm install, rejects high-severity npm advisories and generated OpenAPI drift, and leaves
+model-binary and Docker-daemon validation to the release hardware gates below.
 Optional runtime checks:
 
 ```powershell

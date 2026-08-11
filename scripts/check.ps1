@@ -113,6 +113,17 @@ if (-not $SkipNode) {
     }
   }
 
+  if ($CI) {
+    Invoke-Step "studio-react dependency audit" {
+      Push-Location $StudioReact
+      try {
+        & $Npm audit --audit-level=high
+      } finally {
+        Pop-Location
+      }
+    }
+  }
+
   Invoke-Step "studio-react lint" {
     Push-Location $StudioReact
     try {
