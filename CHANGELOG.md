@@ -21,6 +21,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Native `run_api.ps1` loads `.env`, and `.env.example` points to an existing default config.
 - Explicit local/development/production/docker runtime profiles and effective log-level diagnostics.
 - A pinned, read-only Windows GitHub Actions quality gate with clean npm installs and OpenAPI drift checks.
+- Explicit `httpx2` test-client coverage so clean CI and local test environments use the same Starlette path.
 
 ### Hardened
 

@@ -46,4 +46,5 @@ def test_runtime_dependencies_are_resolvable_from_supported_package_indexes() ->
 
     assert '"phonemizer-fork==3.3.2"' in project
     assert '"espeakng-loader==0.2.4"' in project
+    assert '"httpx2==2.5.0"' in project
     assert "piper_phonemize" not in project
