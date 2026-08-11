@@ -22,6 +22,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Explicit local/development/production/docker runtime profiles and effective log-level diagnostics.
 - A pinned, read-only Windows GitHub Actions quality gate with clean npm installs and OpenAPI drift checks.
 - Explicit `httpx2` test-client coverage so clean CI and local test environments use the same Starlette path.
+- Exact pytest and Ruff versions for deterministic local and GitHub quality-gate behavior.
 
 ### Hardened
 
