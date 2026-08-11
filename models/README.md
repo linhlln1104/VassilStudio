@@ -42,3 +42,11 @@ profiles because the flow decoder emits 100-bin mel features. Older `vocoder.onn
 80-bin mel features are retained only for traceability and should not be selected in runtime config.
 
 Docker mounts `./models` into `/app/models` as read-only.
+
+## Model License Evidence
+
+Models are operator-supplied assets and are not covered by the VassilStudio application license.
+Before a model is used in a release environment, record its upstream URL, model card, license and
+dataset terms, version or revision, file SHA256 checksums, and the date the terms were reviewed.
+Do not copy model weights, tokenizer files, vocoders, datasets, or voice samples into a source or
+binary release artifact.

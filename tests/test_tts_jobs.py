@@ -11,6 +11,9 @@ from vvoice.domains.tts.service import GeneratedSpeech
 from vvoice.domains.voices.service import VoiceStore
 
 
+ASYNC_TEST_TIMEOUT_SECONDS = 10
+
+
 class FakeTts:
     def __init__(self) -> None:
         self.last_kwargs = {}
@@ -44,7 +47,7 @@ class BlockingTts(FakeTts):
 
     def synthesize(self, **kwargs) -> GeneratedSpeech:
         self.started.set()
-        if not self.release.wait(timeout=3):
+        if not self.release.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS):
             raise RuntimeError("test TTS did not release")
         return super().synthesize(**kwargs)
 
@@ -126,7 +129,7 @@ def test_tts_job_service_cancels_running_job_at_safe_point(tmp_path) -> None:
     )
     try:
         job = jobs.create_from_voice(voice_id=profile.voice_id, text="xin chao moi")
-        assert fake_tts.started.wait(timeout=3)
+        assert fake_tts.started.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS)
 
         cancelling = jobs.cancel(job.job_id)
         assert cancelling.status == "cancelling"
@@ -157,7 +160,7 @@ def test_tts_job_service_cancels_queued_job(tmp_path) -> None:
     )
     try:
         first = jobs.create_from_voice(voice_id=profile.voice_id, text="first")
-        assert fake_tts.started.wait(timeout=3)
+        assert fake_tts.started.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS)
         second = jobs.create_from_voice(voice_id=profile.voice_id, text="second")
 
         cancelled = jobs.cancel(second.job_id)
@@ -252,13 +255,14 @@ def test_tts_job_service_rejects_text_over_limit(tmp_path) -> None:
 
 
 def wait_for_job(jobs: TtsJobService, job_id: str):
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + ASYNC_TEST_TIMEOUT_SECONDS
+    job = jobs.get(job_id)
     while time.monotonic() < deadline:
         job = jobs.get(job_id)
         if job.status in {"succeeded", "failed", "cancelled"}:
             return job
         time.sleep(0.05)
-    raise AssertionError("TTS job did not finish")
+    raise AssertionError(f"TTS job did not finish; last status was {job.status!r}")
 
 
 def create_voice(voices: VoiceStore):

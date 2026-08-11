@@ -72,7 +72,8 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Storage and retention" in script
     assert "Version" in script
     assert "Operations guide" in script
-    assert "No repository LICENSE file is declared yet" in script
+    assert "GPL-3.0-or-later" in script
+    assert "Models and datasets are installed separately" in script
     assert "External telemetry is off" in script
     assert "belong here" not in script
     assert "Change password" in script

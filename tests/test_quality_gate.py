@@ -42,12 +42,32 @@ def test_toolchain_versions_match_container_baseline() -> None:
     assert ROOT.joinpath(".node-version").read_text(encoding="utf-8").strip() == "24"
 
     dockerfile = ROOT.joinpath("docker", "Dockerfile").read_text(encoding="utf-8")
-    assert "FROM python:3.12-slim" in dockerfile
-    assert "FROM node:24-alpine" in dockerfile
+    assert "FROM python:3.12-slim@sha256:" in dockerfile
+    assert "FROM node:24-alpine@sha256:" in dockerfile
     assert "https://download.pytorch.org/whl/cpu" in dockerfile
     assert '"torch==${TORCH_VERSION}" "torchaudio==${TORCH_VERSION}"' in dockerfile
-    assert 'python -m pip install ".[runtime]"' in dockerfile
+    assert "--constraint docker/runtime-linux-cpu.constraints.txt" in dockerfile
+    assert '".[runtime]"' in dockerfile
+    assert 'org.opencontainers.image.licenses="GPL-3.0-or-later"' in dockerfile
     assert "COPY frontend ./frontend" not in dockerfile
+
+    constraints = ROOT.joinpath("docker", "runtime-linux-cpu.constraints.txt").read_text(
+        encoding="utf-8"
+    )
+    requirements = {
+        line.strip()
+        for line in constraints.splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    assert len(requirements) >= 60
+    assert all("==" in requirement for requirement in requirements)
+    assert {
+        "fastapi==0.141.1",
+        "onnxruntime==1.27.0",
+        "torch==2.11.0",
+        "torchaudio==2.11.0",
+        "sherpa-onnx==1.13.3",
+    } <= requirements
 
 
 def test_runtime_dependencies_are_resolvable_from_supported_package_indexes() -> None:
@@ -70,3 +90,16 @@ def test_runtime_dependencies_are_resolvable_from_supported_package_indexes() ->
     assert test_tools == extras["test"]
     assert extras["runtime"] | extras["test"] <= extras["dev"]
     assert "piper_phonemize" not in project_text
+
+
+def test_release_license_and_packaging_contract_are_declared() -> None:
+    metadata = tomllib.loads(ROOT.joinpath("pyproject.toml").read_text(encoding="utf-8"))
+    project = metadata["project"]
+
+    assert metadata["build-system"]["requires"] == ["setuptools==81.0.0"]
+    assert project["license"] == "GPL-3.0-or-later"
+    assert set(project["license-files"]) == {"LICENSE", "THIRD_PARTY_NOTICES.md"}
+    assert ROOT.joinpath("LICENSE").is_file()
+    assert ROOT.joinpath("THIRD_PARTY_NOTICES.md").is_file()
+    assert ROOT.joinpath("scripts", "build_release.py").is_file()
+    assert ROOT.joinpath("docs", "releasing.md").is_file()

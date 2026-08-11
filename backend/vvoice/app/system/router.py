@@ -159,8 +159,8 @@ def _diagnostics_payload(container, settings) -> dict:
         },
         "storage": _diagnostic_storage_items(settings),
         "license": {
-            "status": "local",
-            "plan": "Local workspace",
+            "status": "open-source",
+            "plan": "GPL-3.0-or-later",
             "billing_enabled": False,
         },
     }

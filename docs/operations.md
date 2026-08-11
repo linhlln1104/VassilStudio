@@ -88,6 +88,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor.ps1
 Invoke-WebRequest http://127.0.0.1:8000/model-status
 ```
 
+Doctor also verifies the exact model-engine versions declared for the RC. A Torch, TorchAudio,
+ONNX Runtime, sherpa-onnx, phonemizer, or eSpeak loader mismatch is a failed readiness check; repair
+the environment before running native E2E or benchmarks.
+
 Use Studio Settings -> Warm models or call:
 
 ```powershell
@@ -208,6 +212,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark_realtime
 
 Use these numbers as local baselines, not universal SLA promises. CPU, model size, threads, warmup,
 and audio length materially affect latency.
+
+Follow `docs/benchmarks/README.md` when recording a comparison. The accepted RC workstation
+baseline, runtime versions, and model fingerprints are in
+`docs/benchmarks/rc-0.1.0-windows-cpu.md`.
+
+## Release Operations
+
+The supported 0.1.x distribution is a source archive, not a prebuilt container or native installer.
+Run the full candidate gate and build the manifest/checksum set from a clean commit by following
+`docs/releasing.md`. Never add models, voice samples, local databases, logs, `.env` files, or secrets
+to a release artifact.
 
 ## Docker Operations
 

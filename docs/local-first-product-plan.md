@@ -169,7 +169,7 @@ Mục tiêu: sản phẩm có public shell, first-run account, protected Studio,
 | Local auth | First-run setup, login, logout, protected `/studio` | Fresh install tạo owner account; existing automation vẫn dùng API key | pytest auth, browser smoke |
 | Onboarding | Checklist: model readiness, import voice, generate first output | Empty workspace có đường đi rõ tới output đầu tiên | frontend tests/manual QA |
 | Studio UX | Generate/Voices/Jobs/Transcribe/Realtime/Settings đầy đủ states | No voice/model cold/job failed/no output đều có UI rõ | frontend build/manual screenshots |
-| Settings | Account/session/API key/model/storage/diagnostics/license placeholder | User quản trị local workspace tại một nơi | pytest settings if API added |
+| Settings | Account/session/API key/model/storage/diagnostics/license metadata | User quản trị local workspace tại một nơi | pytest settings if API added |
 | Copywriting | Chuẩn hóa terminology | Không còn demo/sample wording trong core UI | review pass |
 
 Deliverable commits đề xuất:
@@ -261,7 +261,7 @@ Landing page cần gọn và product-first:
 | CTA | Open Studio, Read setup docs |
 | Trust strip | Local data, API key/session auth, Docker-ready |
 
-Không cần pricing page trong MVP nếu chưa bán. Thêm `License` placeholder trong Settings và docs để không khóa kiến trúc về sau.
+Không cần pricing page trong MVP nếu chưa bán. Hiển thị license ứng dụng và ranh giới license model trong Settings và docs.
 
 ## Studio UX Acceptance
 
@@ -332,7 +332,7 @@ Một phase chỉ xem là xong khi:
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | Auth làm hỏng local automation | Smoke/scripts fail, mất developer ergonomics | Giữ API key path độc lập với browser session |
-| Quá sớm xây SaaS | Tốn scope, lệch local-first | MVP chỉ local owner account/license placeholder |
+| Quá sớm xây SaaS | Tốn scope, lệch local-first | MVP chỉ local owner account/license metadata |
 | Model missing errors mơ hồ | Người dùng bỏ cuộc trước khi có output | Readiness theo file/language, docs model layout |
 | UI giống demo | Sản phẩm thiếu tin cậy | Product shell, onboarding, state/copy chuẩn |
 | Secret leak trong logs/UI | Rủi ro bảo mật | Redaction middleware/tests, no query logging |
@@ -360,7 +360,7 @@ Các bước tiếp theo nên là hardening ngoài phạm vi MVP nhỏ:
 | Date | Slice | Status | Evidence |
 | --- | --- | --- | --- |
 | 2026-07-08 | Product Shell + Local Auth Foundation | Done | `.env.example`, `/api/v1/auth/*`, local SQLite account/session store, `/` product shell, `/setup`, `/login`, protected `/studio`, auth/API key compatibility tests, `scripts/check.ps1` pass |
-| 2026-07-08 | Settings Account, License, Diagnostics | Done | `/diagnostics` redacted metadata endpoint, Settings account/session surface, local license placeholder, `scripts/check.ps1` pass |
+| 2026-07-08 | Settings Account, License, Diagnostics | Done | `/diagnostics` redacted metadata endpoint, Settings account/session surface, open-source license metadata, `scripts/check.ps1` pass |
 | 2026-07-08 | First Output Onboarding | Done | Generate first-run checklist for runtime readiness, voice profile, script, queued render, playable output, and `scripts/check.ps1` pass |
 | 2026-07-08 | Redacted Diagnostics Bundle | Done | `/diagnostics/bundle` zip endpoint, Settings download action, redaction tests, and `scripts/check.ps1` pass |
 | 2026-07-08 | Storage Usage And Retention | Done | `/diagnostics` storage byte/file counts, Settings terminal job retention cleanup controls, and `scripts/check.ps1` pass |

@@ -1,11 +1,14 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools==81.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "vassil-studio"
 version = "0.1.0"
 description = "VassilStudio local voice platform using ZipFormer ASR and ZipVoice TTS"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115",
@@ -45,6 +48,11 @@ dev = [
   "pytest==9.1.1",
   "ruff==0.15.20",
 ]
+
+[project.urls]
+Homepage = "https://github.com/linhlln1104/VassilStudio"
+Repository = "https://github.com/linhlln1104/VassilStudio"
+Issues = "https://github.com/linhlln1104/VassilStudio/issues"
 
 [tool.setuptools.packages.find]
 where = ["backend"]

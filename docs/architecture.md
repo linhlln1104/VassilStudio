@@ -136,7 +136,7 @@ not written by the app middleware.
 
 `GET /diagnostics` returns redacted operations metadata for the Studio Settings surface and support
 workflows: runtime configuration, auth mode, storage paths with file counts/byte sizes, and local
-license placeholder state.
+open-source license metadata.
 `GET /diagnostics/bundle` packages the same metadata with readiness and environment JSON into a zip
 for support. These diagnostics do not return API keys, session secrets, cookies, transcripts, or
 audio content.

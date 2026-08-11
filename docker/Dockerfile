@@ -1,4 +1,4 @@
-FROM node:24-alpine AS studio-build
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS studio-build
 
 WORKDIR /app/frontend/studio-react
 
@@ -8,9 +8,17 @@ RUN npm ci
 COPY frontend/studio-react ./
 RUN npm run build
 
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
 
 ARG TORCH_VERSION=2.11.0
+ARG PIP_VERSION=26.2.1
+ARG VASSIL_VERSION=0.1.0
+
+LABEL org.opencontainers.image.title="VassilStudio" \
+      org.opencontainers.image.description="Local-first ZipFormer ASR and ZipVoice TTS studio" \
+      org.opencontainers.image.version="${VASSIL_VERSION}" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later" \
+      org.opencontainers.image.source="https://github.com/linhlln1104/VassilStudio"
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -26,22 +34,25 @@ ENV VVOICE_STUDIO_DIR=/app/frontend/studio-react/dist
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libsndfile1 \
-    && rm -rf /var/lib/apt/lists/*
+COPY docker/runtime-linux-cpu.constraints.txt ./docker/runtime-linux-cpu.constraints.txt
 
-COPY pyproject.toml README.md ./
+RUN python -m pip install --upgrade "pip==${PIP_VERSION}" \
+    && python -m pip install \
+      --constraint docker/runtime-linux-cpu.constraints.txt \
+      --index-url https://download.pytorch.org/whl/cpu \
+      "torch==${TORCH_VERSION}" "torchaudio==${TORCH_VERSION}"
+
+COPY pyproject.toml README.md LICENSE THIRD_PARTY_NOTICES.md ./
 COPY backend ./backend
+
+RUN python -m pip install \
+      --constraint docker/runtime-linux-cpu.constraints.txt \
+      ".[runtime]"
+
 COPY config ./config
 COPY docs ./docs
 COPY scripts ./scripts
 COPY --from=studio-build /app/frontend/studio-react/dist ./frontend/studio-react/dist
-
-RUN python -m pip install --upgrade pip \
-    && python -m pip install \
-      --index-url https://download.pytorch.org/whl/cpu \
-      "torch==${TORCH_VERSION}" "torchaudio==${TORCH_VERSION}" \
-    && python -m pip install ".[runtime]"
 
 EXPOSE 8000
 

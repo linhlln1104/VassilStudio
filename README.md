@@ -8,6 +8,7 @@ The upstream runtime foundation is cloned locally at `foundation/sherpa-onnx` fo
 
 See `CHANGELOG.md` for productionization milestones.
 See `docs/operations.md` for install, model layout, auth, smoke, Docker, backup, and troubleshooting.
+See `docs/releasing.md` for the release gate and source artifact contract.
 
 ## Current Shape
 
@@ -188,6 +189,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark_asr_late
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark_realtime_chunking.ps1 --chunks 5 --signal tone
 ```
 
+The benchmark protocol and accepted RC CPU baseline are in `docs/benchmarks/README.md` and
+`docs/benchmarks/rc-0.1.0-windows-cpu.md`.
+
 ## Docker
 
 Docker builds the React Studio assets and the VassilStudio app, then mounts local models at runtime:
@@ -208,6 +212,21 @@ The compose service mounts:
 - `./config` -> `/app/config` read-only
 - `./data` -> `/app/data` writable
 - `./logs` -> `/app/logs` writable
+
+## Release And License
+
+VassilStudio 0.1.x is distributed source-first under `GPL-3.0-or-later`. The supported release
+artifact is an audited source ZIP with a manifest and SHA256 checksums; model assets and local
+workspace data are always excluded. Build an untagged candidate from a clean working tree with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 --version 0.1.0 --allow-untagged
+```
+
+Read `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `docs/releasing.md` before redistribution. ASR/TTS
+weights, tokenizers, vocoders, datasets, and voice samples retain their own terms. Prebuilt Docker
+images and native installers are deferred until the binary compliance, SBOM, signing, and clean-host
+smoke requirements in the release guide are complete.
 
 ## Studio Local Auth And API Keys
 

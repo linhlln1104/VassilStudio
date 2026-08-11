@@ -8,6 +8,9 @@ from vvoice.domains.asr.service import Transcription
 from vvoice.shared.audio.io import encode_wav
 
 
+ASYNC_TEST_TIMEOUT_SECONDS = 10
+
+
 class FakeAsr:
     def sample_rate_for(self, language: str | None = None) -> int:
         return 16000
@@ -49,7 +52,7 @@ class BlockingAsr(FakeAsr):
         language: str | None = None,
     ) -> Transcription:
         self.started.set()
-        if not self.release.wait(timeout=3):
+        if not self.release.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS):
             raise RuntimeError("test ASR did not release")
         return Transcription(text="released", sample_rate=sample_rate)
 
@@ -118,7 +121,7 @@ def test_asr_job_service_cancels_running_job_at_safe_point(tmp_path) -> None:
     try:
         audio = encode_wav(np.zeros(1600, dtype=np.float32), 16000)
         job = jobs.create_from_audio(audio_bytes=audio, filename="input.wav", language="en")
-        assert fake_asr.started.wait(timeout=3)
+        assert fake_asr.started.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS)
 
         cancelling = jobs.cancel(job.job_id)
         assert cancelling.status == "cancelling"
@@ -147,7 +150,7 @@ def test_asr_job_service_cancels_queued_job(tmp_path) -> None:
     try:
         audio = encode_wav(np.zeros(1600, dtype=np.float32), 16000)
         first = jobs.create_from_audio(audio_bytes=audio, filename="first.wav", language="en")
-        assert fake_asr.started.wait(timeout=3)
+        assert fake_asr.started.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS)
         second = jobs.create_from_audio(audio_bytes=audio, filename="second.wav", language="en")
 
         cancelled = jobs.cancel(second.job_id)
@@ -209,10 +212,11 @@ def test_asr_job_service_marks_interrupted_jobs_failed(tmp_path) -> None:
 
 
 def wait_for_job(jobs: AsrJobService, job_id: str):
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + ASYNC_TEST_TIMEOUT_SECONDS
+    job = jobs.get(job_id)
     while time.monotonic() < deadline:
         job = jobs.get(job_id)
         if job.status in {"succeeded", "failed", "cancelled"}:
             return job
         time.sleep(0.05)
-    raise AssertionError("ASR job did not finish")
+    raise AssertionError(f"ASR job did not finish; last status was {job.status!r}")

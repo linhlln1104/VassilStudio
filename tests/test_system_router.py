@@ -67,8 +67,8 @@ def test_diagnostics_reports_redacted_operations_metadata(tmp_path) -> None:
     payload = response.json()
     assert payload["version"] == __version__
     assert payload["license"] == {
-        "status": "local",
-        "plan": "Local workspace",
+        "status": "open-source",
+        "plan": "GPL-3.0-or-later",
         "billing_enabled": False,
     }
     assert payload["security"]["auth_required"] is False

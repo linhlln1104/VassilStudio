@@ -40,19 +40,19 @@ const infoPages: Record<InfoPageId, InfoPageContent> = {
   },
   license: {
     title: 'License',
-    summary: 'Distribution depends on app, dependency, and model terms being reviewed together.',
+    summary: 'VassilStudio is distributed source-first under GPL-3.0-or-later.',
     rows: [
       {
         label: 'Application',
-        value: 'No repository LICENSE file is declared yet. Add one before external redistribution.',
+        value: 'Application source is GPL-3.0-or-later. The repository LICENSE contains the full terms.',
       },
       {
         label: 'Models',
-        value: 'Keep ZipFormer, ZipVoice, tokenizer, vocoder, and dataset license notes with downloaded assets.',
+        value: 'Models and datasets are installed separately and remain subject to their own terms.',
       },
       {
         label: 'Dependencies',
-        value: 'Python and npm packages retain their upstream licenses and notices.',
+        value: 'Runtime and frontend dependencies retain their upstream licenses and notices.',
       },
     ],
     primaryAction: { label: 'Operations guide', href: '/operations' },

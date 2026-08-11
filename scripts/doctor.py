@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+from importlib.metadata import PackageNotFoundError, version as package_version
 import json
 import platform
 import re
@@ -19,6 +20,21 @@ bootstrap_backend_path()
 
 from vvoice.core.config import load_settings  # noqa: E402
 from vvoice.domains.tts.text_frontend import ZipVoiceTextFrontend  # noqa: E402
+
+
+EXPECTED_RUNTIME_VERSIONS = {
+    "espeakng_loader": "0.2.4",
+    "onnxruntime": "1.27.0",
+    "phonemizer": "3.3.2",
+    "sherpa_onnx": "1.13.3",
+    "torch": "2.11.0",
+    "torchaudio": "2.11.0",
+}
+MODULE_DISTRIBUTIONS = {
+    "espeakng_loader": "espeakng-loader",
+    "phonemizer": "phonemizer-fork",
+    "sherpa_onnx": "sherpa-onnx",
+}
 
 
 @dataclass(frozen=True)
@@ -51,9 +67,32 @@ def dependency_checks() -> list[Check]:
             checks.append(Check(f"dependency:{module_name}", False, str(exc)))
             continue
 
-        version = getattr(module, "__version__", "installed")
-        checks.append(Check(f"dependency:{module_name}", True, str(version)))
+        installed_version = _installed_version(module_name, module)
+        expected_version = EXPECTED_RUNTIME_VERSIONS.get(module_name)
+        version_ok = expected_version is None or _version_matches(
+            installed_version, expected_version
+        )
+        detail = installed_version
+        if not version_ok:
+            detail = f"{installed_version}; expected {expected_version}"
+        checks.append(Check(f"dependency:{module_name}", version_ok, detail))
     return checks
+
+
+def _installed_version(module_name: str, module: Any) -> str:
+    module_version = getattr(module, "__version__", None)
+    if module_version:
+        return str(module_version)
+
+    distribution = MODULE_DISTRIBUTIONS.get(module_name, module_name)
+    try:
+        return package_version(distribution)
+    except PackageNotFoundError:
+        return "installed"
+
+
+def _version_matches(installed: str, expected: str) -> bool:
+    return installed.split("+", 1)[0] == expected
 
 
 def model_checks(config_path: str | None) -> list[Check]:

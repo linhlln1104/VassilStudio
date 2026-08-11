@@ -48,3 +48,12 @@ Compose uses the `docker` runtime profile by default. For an HTTPS deployment, s
 invariants before startup.
 
 The local account/session database is stored under the writable `../data` volume.
+
+The Dockerfile is the supported production-like local build recipe for VassilStudio 0.1.x. A
+prebuilt image is not an official release artifact yet. Models remain external read-only assets,
+and binary redistribution must satisfy the notice, corresponding-source, SBOM, signing, and
+clean-host smoke requirements in `../docs/releasing.md`.
+
+The image uses digest-pinned base image indexes and
+`runtime-linux-cpu.constraints.txt` for its Python 3.12 CPU package set. Treat an update to either
+as a runtime release change that requires Docker E2E and a new accepted benchmark baseline.

@@ -529,18 +529,18 @@ function LicenseCard({
       <CardHeader>
         <div>
           <div className="text-sm font-semibold text-slate-950">License</div>
-          <div className="mt-1 text-xs text-slate-600">Prepared for local license keys.</div>
+          <div className="mt-1 text-xs text-slate-600">Open-source distribution terms.</div>
         </div>
         <BadgeCheck className="size-5 text-slate-500" />
       </CardHeader>
       <CardContent>
         <div className="grid gap-2">
           <SettingsMetric label="Status" value={status} />
-          <SettingsMetric label="Plan" value={plan} />
-          <SettingsMetric label="Billing" value={billingEnabled ? 'Enabled' : 'Not connected'} />
+          <SettingsMetric label="License" value={plan} />
+          <SettingsMetric label="Billing" value={billingEnabled ? 'Enabled' : 'Not applicable'} />
         </div>
         <div className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-600">
-          License enforcement is not enabled for this local build.
+          Application code is GPL-3.0-or-later. Installed models keep their own terms.
         </div>
         {generatedAt ? (
           <div className="mt-2 text-xs font-medium text-slate-500">
