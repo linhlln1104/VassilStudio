@@ -1,10 +1,12 @@
 const SELECTED_VOICE_STORAGE_KEY = 'vassil.selectedVoiceId'
 const SELECTED_LANGUAGE_STORAGE_KEY = 'vassil.selectedLanguage'
 const PENDING_SCRIPT_STORAGE_KEY = 'vassil.pendingScript'
+const GENERATE_DRAFT_STORAGE_KEY = 'vassil.generateDraft'
 
 const LEGACY_SELECTED_VOICE_STORAGE_KEY = 'vvoice.selectedVoiceId'
 const LEGACY_SELECTED_LANGUAGE_STORAGE_KEY = 'vvoice.selectedLanguage'
 const LEGACY_PENDING_SCRIPT_STORAGE_KEY = 'vvoice.pendingScript'
+const LEGACY_GENERATE_DRAFT_STORAGE_KEY = 'vvoice.generateDraft'
 
 function readStoredPreference(key: string, legacyKey: string): string {
   if (typeof window === 'undefined') {
@@ -71,4 +73,22 @@ export function consumePendingScript(): string {
 
 export function setPendingScript(script: string): void {
   writeStoredPreference(PENDING_SCRIPT_STORAGE_KEY, LEGACY_PENDING_SCRIPT_STORAGE_KEY, script)
+}
+
+export function getGenerateDraft(): string {
+  return readStoredPreference(GENERATE_DRAFT_STORAGE_KEY, LEGACY_GENERATE_DRAFT_STORAGE_KEY)
+}
+
+export function setGenerateDraft(script: string): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (script) {
+    window.localStorage.setItem(GENERATE_DRAFT_STORAGE_KEY, script)
+    window.localStorage.removeItem(LEGACY_GENERATE_DRAFT_STORAGE_KEY)
+  } else {
+    window.localStorage.removeItem(GENERATE_DRAFT_STORAGE_KEY)
+    window.localStorage.removeItem(LEGACY_GENERATE_DRAFT_STORAGE_KEY)
+  }
 }

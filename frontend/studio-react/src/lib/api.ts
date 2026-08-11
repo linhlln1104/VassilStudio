@@ -396,6 +396,24 @@ export const api = {
       body: form,
     })
   },
+  createVoice: (
+    file: File,
+    payload: { name: string; language: string; referenceText?: string; autoTranscribe?: boolean },
+  ) => {
+    const form = new FormData()
+    form.set('reference_audio', file)
+    form.set('name', payload.name)
+    form.set('language', payload.language)
+    form.set('auto_transcribe', String(payload.autoTranscribe ?? false))
+    if (payload.referenceText) {
+      form.set('reference_text', payload.referenceText)
+    }
+
+    return fetchJson<Voice>('/api/v1/voices', {
+      method: 'POST',
+      body: form,
+    })
+  },
   importVoiceCandidate: (
     filename: string,
     payload: { name?: string; language?: string; referenceText?: string; autoTranscribe?: boolean } = {},

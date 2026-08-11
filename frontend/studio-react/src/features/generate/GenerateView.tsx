@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowRight,
+  ArrowUpRight,
   CheckCircle2,
   Circle,
   Download,
-  FileAudio,
+  Eraser,
   Languages,
   Loader2,
   SendHorizontal,
@@ -19,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { QueryErrorState } from '@/components/ui/query-error'
 import { SegmentedControl } from '@/components/ui/segmented-control'
+import { useToast } from '@/components/ui/use-toast'
 import { api, type TtsJob, type Voice } from '@/lib/api'
 import { BRAND_NAME } from '@/lib/brand'
 import { compactId, formatDuration } from '@/lib/format'
@@ -33,8 +35,10 @@ import {
 import { queryErrorMessage } from '@/lib/query-error'
 import {
   consumePendingScript,
+  getGenerateDraft,
   getPreferredLanguage,
   getPreferredVoiceId,
+  setGenerateDraft,
   setPreferredLanguage,
   setPreferredVoiceId,
 } from '@/lib/studio-preferences'
@@ -68,7 +72,7 @@ const renderProfiles: Record<RenderMode, { label: string; numSteps: number; help
 }
 
 export function GenerateView() {
-  const [script, setScript] = useState('')
+  const [script, setScript] = useState(() => getGenerateDraft())
   const [selectedVoiceId, setSelectedVoiceId] = useState(() => getPreferredVoiceId())
   const [selectedLanguage, setSelectedLanguage] = useState<VoiceLanguage>(() =>
     normalizeVoiceLanguage(getPreferredLanguage()),
@@ -77,6 +81,7 @@ export function GenerateView() {
   const [speedPercent, setSpeedPercent] = useState(100)
   const importInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
+  const { toast } = useToast()
 
   const voicesQuery = useQuery({ queryKey: ['voices'], queryFn: api.voices })
   const ttsJobsQuery = useQuery({
@@ -117,6 +122,8 @@ export function GenerateView() {
       void queryClient.invalidateQueries({ queryKey: ['tts-jobs'] })
     },
   })
+  const latestJob = generateMutationJob(ttsJobs, generateMutation.data)
+  const latestJobVoice = voices.find((voice) => voice.voice_id === latestJob?.voice_id)
   const firstRunRenderQueued = activeTtsCount > 0 || Boolean(latestOutput) || generateMutation.isSuccess
 
   const generateErrorMessage =
@@ -148,6 +155,10 @@ export function GenerateView() {
       setScript(pendingScript)
     }
   }, [])
+
+  useEffect(() => {
+    setGenerateDraft(script)
+  }, [script])
 
   useEffect(() => {
     const firstVoice = voicesQuery.data?.[0]
@@ -193,8 +204,27 @@ export function GenerateView() {
     if (!file) {
       return
     }
-    setScript(await file.text())
-    event.target.value = ''
+
+    try {
+      const importedScript = await file.text()
+      if (!importedScript.trim()) {
+        throw new Error('The selected text file is empty.')
+      }
+      setScript(importedScript)
+      toast({
+        title: 'Script imported',
+        description: `${file.name} loaded with ${importedScript.length.toLocaleString()} characters.`,
+        variant: 'success',
+      })
+    } catch (error) {
+      toast({
+        title: 'Import failed',
+        description: error instanceof Error ? error.message : 'Unable to read the selected text file.',
+        variant: 'danger',
+      })
+    } finally {
+      event.target.value = ''
+    }
   }
 
   const handleGenerate = () => {
@@ -263,16 +293,17 @@ export function GenerateView() {
           script={script}
           language={selectedLanguage}
           onScriptChange={setScript}
+          onClear={() => setScript('')}
           onImportText={() => importInputRef.current?.click()}
+          canGenerate={canGenerate}
+          onGenerate={handleGenerate}
         />
-        <VoicePanel {...sharedProps} actionPlacement="inline" />
-        <MobileGenerateFeedback
-          generateSuccess={generateMutation.isSuccess}
-          generateError={generateMutation.isError ? generateErrorMessage : null}
-        />
+        <VoicePanel {...sharedProps} />
         <OutputPanel
           latestOutput={latestOutput}
           latestOutputVoice={latestOutputVoice}
+          latestJob={latestJob}
+          latestJobVoice={latestJobVoice}
           activeCount={activeTtsCount}
           latestFailedJob={latestFailedTtsJob}
           jobsError={jobsError}
@@ -288,14 +319,16 @@ export function GenerateView() {
             script={script}
             language={selectedLanguage}
             onScriptChange={setScript}
+            onClear={() => setScript('')}
             onImportText={() => importInputRef.current?.click()}
+            canGenerate={canGenerate}
+            onGenerate={handleGenerate}
           />
-        </section>
-        <aside className="min-w-0 space-y-3">
-          <VoicePanel {...sharedProps} actionPlacement="inline" />
           <OutputPanel
             latestOutput={latestOutput}
             latestOutputVoice={latestOutputVoice}
+            latestJob={latestJob}
+            latestJobVoice={latestJobVoice}
             activeCount={activeTtsCount}
             latestFailedJob={latestFailedTtsJob}
             jobsError={jobsError}
@@ -303,6 +336,9 @@ export function GenerateView() {
               void ttsJobsQuery.refetch()
             }}
           />
+        </section>
+        <aside className="min-w-0 space-y-3">
+          <VoicePanel {...sharedProps} />
         </aside>
       </div>
     </>
@@ -414,30 +450,6 @@ function FirstRunChecklist({
   )
 }
 
-function MobileGenerateFeedback({
-  generateSuccess,
-  generateError,
-}: {
-  generateSuccess: boolean
-  generateError: string | null
-}) {
-  if (!generateError && !generateSuccess) {
-    return null
-  }
-
-  return (
-    <div
-      className={
-        generateError
-          ? 'rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700'
-          : 'rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700'
-      }
-    >
-      {generateError ?? 'Job queued. Output refreshes automatically.'}
-    </div>
-  )
-}
-
 type VoicePanelProps = {
   voices: Voice[]
   selectedVoice: Voice | undefined
@@ -461,7 +473,6 @@ type VoicePanelProps = {
   voicesError: string | null
   onRetryVoices: () => void
   onGenerate: () => void
-  actionPlacement: 'inline' | 'external'
 }
 
 function VoicePanel({
@@ -487,7 +498,6 @@ function VoicePanel({
   voicesError,
   onRetryVoices,
   onGenerate,
-  actionPlacement,
 }: VoicePanelProps) {
   return (
     <Card>
@@ -535,11 +545,7 @@ function VoicePanel({
               </select>
             </label>
 
-            <VoicePreview
-              name={selectedVoice?.name ?? 'No voice selected'}
-              source={selectedVoice?.reference_text_source ?? 'library'}
-              language={selectedVoice?.language}
-            />
+            <VoicePreview voice={selectedVoice} />
 
             <LanguageControl
               value={selectedLanguage}
@@ -571,21 +577,17 @@ function VoicePanel({
               onChange={setSpeedPercent}
             />
             <RenderModeControl value={renderMode} onChange={setRenderMode} />
-            <ModelParameter label="Stability" value="Voice default" />
-            <ModelParameter label="Similarity" value="Reference matched" />
 
-            {actionPlacement === 'inline' ? (
-              <GenerateActionContent
-                selectedVoice={selectedVoice}
-                scriptReady={scriptReady}
-                canGenerate={canGenerate}
-                generatePending={generatePending}
-                generateSuccess={generateSuccess}
-                generateError={generateError}
-                blockedReason={runtimeLanguageWarning}
-                onGenerate={onGenerate}
-              />
-            ) : null}
+            <GenerateActionContent
+              selectedVoice={selectedVoice}
+              scriptReady={scriptReady}
+              canGenerate={canGenerate}
+              generatePending={generatePending}
+              generateSuccess={generateSuccess}
+              generateError={generateError}
+              blockedReason={runtimeLanguageWarning}
+              onGenerate={onGenerate}
+            />
           </>
         )}
       </CardContent>
@@ -651,14 +653,21 @@ function ScriptEditor({
   script,
   language,
   onScriptChange,
+  onClear,
   onImportText,
+  canGenerate,
+  onGenerate,
 }: {
   script: string
   language: VoiceLanguage
   onScriptChange: (value: string) => void
+  onClear: () => void
   onImportText: () => void
+  canGenerate: boolean
+  onGenerate: () => void
 }) {
   const suggestions = promptSuggestions[language]
+  const wordCount = script.trim() ? script.trim().split(/\s+/).length : 0
   return (
     <Card className="min-w-0 overflow-hidden">
       <CardHeader className="flex-wrap border-b border-slate-200 bg-white">
@@ -666,15 +675,33 @@ function ScriptEditor({
           <div className="text-sm font-semibold text-slate-950">Script editor</div>
           <div className="mt-1 text-xs text-slate-600">One paragraph per take keeps review clean.</div>
         </div>
-        <Button className="w-full shrink-0 sm:w-auto" size="sm" variant="secondary" onClick={onImportText}>
-          <Upload className="size-4" />
-          Import text
-        </Button>
+        <div className="flex w-full shrink-0 gap-2 sm:w-auto">
+          <Button
+            className="flex-1 sm:flex-none"
+            size="sm"
+            variant="ghost"
+            disabled={!script}
+            onClick={onClear}
+          >
+            <Eraser className="size-4" />
+            Clear
+          </Button>
+          <Button className="flex-1 sm:flex-none" size="sm" variant="secondary" onClick={onImportText}>
+            <Upload className="size-4" />
+            Import text
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="p-0">
         <textarea
           value={script}
           onChange={(event) => onScriptChange(event.target.value)}
+          onKeyDown={(event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && canGenerate) {
+              event.preventDefault()
+              onGenerate()
+            }
+          }}
           placeholder={
             language === 'vi'
               ? 'Start typing here or paste any Vietnamese script...'
@@ -682,6 +709,11 @@ function ScriptEditor({
           }
           className="min-h-[180px] w-full resize-y border-0 bg-white p-3 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-500 sm:min-h-[260px] lg:min-h-[300px] xl:min-h-[320px]"
         />
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
+          <span>{script.length.toLocaleString()} characters</span>
+          <span>{wordCount.toLocaleString()} words</span>
+          <Badge variant="muted">{voiceLanguageShortLabel(language)}</Badge>
+        </div>
         <div className="border-t border-slate-200 bg-white px-2.5 py-2">
           <div className="flex min-w-0 flex-wrap gap-2">
             {suggestions.map((prompt) => (
@@ -705,6 +737,8 @@ function ScriptEditor({
 function OutputPanel({
   latestOutput,
   latestOutputVoice,
+  latestJob,
+  latestJobVoice,
   activeCount,
   latestFailedJob,
   jobsError,
@@ -712,6 +746,8 @@ function OutputPanel({
 }: {
   latestOutput: TtsJob | null
   latestOutputVoice: Voice | undefined
+  latestJob: TtsJob | null
+  latestJobVoice: Voice | undefined
   activeCount: number
   latestFailedJob: TtsJob | null
   jobsError: string | null
@@ -721,12 +757,35 @@ function OutputPanel({
     <Card className="overflow-hidden">
       <CardHeader>
         <div>
-          <div className="text-sm font-semibold text-slate-950">Latest output</div>
-          <div className="mt-1 text-xs text-slate-600">Newest rendered clip from the queue.</div>
+          <div className="text-sm font-semibold text-slate-950">Output and queue</div>
+          <div className="mt-1 text-xs text-slate-600">Latest local render and job state.</div>
         </div>
-        <FileAudio className="size-5 text-slate-500" />
+        <Button
+          aria-label="Open jobs"
+          title="Open jobs"
+          size="icon"
+          variant="ghost"
+          onClick={() => { window.location.hash = '/jobs' }}
+        >
+          <ArrowUpRight className="size-4" />
+        </Button>
       </CardHeader>
       <CardContent>
+        {latestJob ? (
+          <div className="mb-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2.5">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-xs font-semibold text-neutral-900">
+                  {latestJobVoice?.name ?? 'Voice render'}
+                </div>
+                <div className="mt-1 truncate text-xs text-neutral-500">
+                  {compactId(latestJob.job_id)} / {formatDateTime(latestJob.created_at)}
+                </div>
+              </div>
+              <Badge variant={jobBadgeVariant(latestJob.status)}>{formatJobStatus(latestJob.status)}</Badge>
+            </div>
+          </div>
+        ) : null}
         {activeCount > 0 || latestFailedJob ? (
           <div className="mb-3 grid grid-cols-1 gap-2">
             {activeCount > 0 ? (
@@ -767,7 +826,17 @@ function OutputPanel({
                 {latestOutput.status}
               </Badge>
             </div>
-            <WaveformPreview />
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <OutputMeta
+                label="Duration"
+                value={latestOutput.duration_seconds ? formatDuration(latestOutput.duration_seconds) : 'Pending'}
+              />
+              <OutputMeta
+                label="Sample rate"
+                value={latestOutput.sample_rate ? formatSampleRate(latestOutput.sample_rate) : 'Pending'}
+              />
+              <OutputMeta label="Language" value={voiceLanguageShortLabel(latestOutput.language)} />
+            </div>
             {latestOutput.audio_url ? (
               <audio className="mt-3 w-full" controls src={latestOutput.audio_url} />
             ) : null}
@@ -801,15 +870,8 @@ function OutputPanel({
   )
 }
 
-function VoicePreview({
-  name,
-  source,
-  language,
-}: {
-  name: string
-  source: string
-  language: string | undefined
-}) {
+function VoicePreview({ voice }: { voice: Voice | undefined }) {
+  const name = voice?.name ?? 'No voice selected'
   return (
     <div className="rounded-md border border-slate-200 bg-white p-2.5">
       <div className="flex items-center gap-3">
@@ -820,12 +882,17 @@ function VoicePreview({
           <div className="truncate text-sm font-semibold text-slate-950">{name}</div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
             <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
-              {voiceLanguageShortLabel(language)}
+              {voiceLanguageShortLabel(voice?.language)}
             </span>
-            <span className="truncate text-xs font-medium text-slate-600">{source}</span>
+            <span className="truncate text-xs font-medium text-slate-600">
+              {formatReferenceSource(voice?.reference_text_source)}
+            </span>
           </div>
         </div>
       </div>
+      {voice?.reference_audio_url ? (
+        <audio className="mt-2 h-8 w-full" controls preload="metadata" src={voice.reference_audio_url} />
+      ) : null}
     </div>
   )
 }
@@ -932,27 +999,41 @@ function ControlSlider({
   )
 }
 
-function ModelParameter({ label, value }: { label: string; value: string }) {
+function OutputMeta({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2">
-      <span className="text-xs font-semibold text-slate-700">{label}</span>
-      <span className="text-xs font-semibold text-slate-900">{value}</span>
+    <div className="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1.5">
+      <div className="truncate text-xs font-semibold text-neutral-900">{value}</div>
+      <div className="mt-0.5 truncate text-[11px] text-neutral-500">{label}</div>
     </div>
   )
 }
 
-function WaveformPreview() {
-  return (
-    <div className="mt-3 flex h-10 items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2">
-      {Array.from({ length: 32 }).map((_, index) => (
-        <span
-          key={index}
-          className="flex-1 rounded-full bg-blue-600"
-          style={{ height: `${8 + ((index * 17) % 24)}px` }}
-        />
-      ))}
-    </div>
-  )
+function generateMutationJob(jobs: TtsJob[], mutationJob: TtsJob | undefined): TtsJob | null {
+  if (!mutationJob) {
+    return jobs[0] ?? null
+  }
+  return jobs.find((job) => job.job_id === mutationJob.job_id) ?? mutationJob
+}
+
+function jobBadgeVariant(status: TtsJob['status']): 'success' | 'warning' | 'danger' | 'muted' {
+  if (status === 'succeeded') return 'success'
+  if (status === 'failed') return 'danger'
+  if (status === 'cancelled') return 'muted'
+  return 'warning'
+}
+
+function formatJobStatus(status: TtsJob['status']) {
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
+function formatReferenceSource(source: string | undefined) {
+  if (source === 'asr') return 'Auto transcript'
+  if (source === 'user') return 'Manual transcript'
+  return 'Reference profile'
+}
+
+function formatSampleRate(sampleRate: number) {
+  return sampleRate >= 1000 ? `${(sampleRate / 1000).toFixed(sampleRate % 1000 === 0 ? 0 : 1)} kHz` : `${sampleRate} Hz`
 }
 
 function speedFromPercent(value: number) {

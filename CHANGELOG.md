@@ -31,6 +31,8 @@ All notable VassilStudio productionization changes are tracked here.
 - Audited source release builder with version/tag checks, private-file rejection, manifest, and SHA256 sums.
 - GPL-3.0-or-later application license, principal third-party notices, and explicit model-license boundary.
 - Reproducible benchmark protocol, RC Windows CPU baseline, and model fingerprints.
+- Generate workspace with persistent drafts, script metadata, reference-audio preview, and real queue/output state.
+- Voice library with direct audio upload, local candidate mode, language filters, selected-profile state, and inline validation.
 
 ### Hardened
 

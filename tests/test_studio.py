@@ -62,9 +62,16 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "vvoice.apiKey" in script
     assert "vassil.selectedVoiceId" in script
     assert "vvoice.selectedVoiceId" in script
+    assert "vassil.generateDraft" in script
+    assert "vvoice.generateDraft" in script
     assert "Script editor" in script
     assert "Voice and render" in script
+    assert "Output and queue" in script
     assert "Search voices or files" in script
+    assert "Add voice profile" in script
+    assert "Upload audio" in script
+    assert "Create voice profile" in script
+    assert "reference_audio" in script
     assert "Delete voice profile?" in script
     assert "Voice selected" in script
     assert "Run diagnostics" in script
