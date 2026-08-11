@@ -182,6 +182,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1 -RunLang
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1 -RunDocker
 ```
 
+Landing-page visual QA requires a running local API and Chrome:
+
+```powershell
+cd frontend\studio-react
+npm.cmd run qa:landing
+```
+
+The Playwright check captures desktop, tablet, and mobile screenshots under
+`artifacts/ui-qa/landing/`. It fails on horizontal page overflow, broken images, browser console
+errors, or hero content leaving its visual boundary. Use `VASSIL_QA_BASE_URL` for another server
+URL, or `PLAYWRIGHT_CHANNEL` / `PLAYWRIGHT_EXECUTABLE_PATH` for another Chromium installation.
+
 ## Smoke Scripts
 
 | Script | Requires live API | What it validates |

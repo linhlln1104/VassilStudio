@@ -40,6 +40,8 @@ All notable VassilStudio productionization changes are tracked here.
 - First-run and login flows with password confirmation, visibility controls, API retry, and guarded submission.
 - Public product shell with an actual Studio workspace image, complete workflow overview, and local-runtime trust signals.
 - Privacy, license, support, changelog, and operations pages with shared navigation and documentation-style sections.
+- Proof-led landing experience with a crisp product hero and interactive Generate, Transcribe, Realtime, and Voices previews.
+- Repeatable Playwright landing QA for desktop, tablet, and mobile layout, image, overflow, and browser-error checks.
 
 ### Hardened
 

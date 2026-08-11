@@ -28,7 +28,13 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert 'href="/studio/brand/vassil-mark.png"' in page
     assert 'src="/studio/assets/' in page
     assert 'href="/studio/assets/' in page
-    assert STATIC_DIR.joinpath("brand", "vassil-studio-realtime.png").is_file()
+    for screenshot_name in (
+        "vassil-studio-generate.png",
+        "vassil-studio-transcribe.png",
+        "vassil-studio-realtime.png",
+        "vassil-studio-voices.png",
+    ):
+        assert STATIC_DIR.joinpath("brand", screenshot_name).is_file()
 
     asset_refs = sorted(set(re.findall(r'["\']\/studio\/assets\/([^"\']+)["\']', page)))
     assert asset_refs
@@ -59,7 +65,10 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "/model-status" in script
     assert "/warmup" in script
     assert "/studio/brand/vassil-logo.png" in script
+    assert "/studio/brand/vassil-studio-generate.png" in script
+    assert "/studio/brand/vassil-studio-transcribe.png" in script
     assert "/studio/brand/vassil-studio-realtime.png" in script
+    assert "/studio/brand/vassil-studio-voices.png" in script
     assert "vassil.apiKey" in script
     assert "vvoice.apiKey" in script
     assert "vassil.selectedVoiceId" in script
@@ -103,6 +112,9 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Production" in script
     assert "Studio workflows" in script
     assert "Local queue and storage" in script
+    assert "Private voice production, on your machine" in script
+    assert "The actual workspace, not a mockup" in script
+    assert "No cloud account required" in script
     assert "2 voice profiles" not in script
     assert "Workspace readiness" not in script
     assert "color-scheme:light" in style

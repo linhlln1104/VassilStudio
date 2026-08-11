@@ -1,16 +1,21 @@
+import { useState } from 'react'
 import {
+  ArrowDown,
   ArrowRight,
   AudioLines,
   Captions,
+  Check,
   Cpu,
-  Database,
+  Download,
+  Gauge,
   HardDrive,
-  History,
   LockKeyhole,
   Mic,
-  Settings,
+  PenLine,
   ShieldCheck,
+  Upload,
   UsersRound,
+  type LucideIcon,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -30,6 +35,16 @@ type InfoPageContent = {
   secondaryAction?: { label: string; href: string }
 }
 
+type ShowcaseItem = {
+  id: 'generate' | 'transcribe' | 'realtime' | 'voices'
+  label: string
+  title: string
+  copy: string
+  image: string
+  alt: string
+  icon: LucideIcon
+}
+
 const publicLinks: Array<{ label: string; href: string; page: InfoPageId }> = [
   { label: 'Operations', href: '/operations', page: 'operations' },
   { label: 'Changelog', href: '/changelog', page: 'changelog' },
@@ -38,36 +53,76 @@ const publicLinks: Array<{ label: string; href: string; page: InfoPageId }> = [
   { label: 'License', href: '/license', page: 'license' },
 ]
 
-const workflowItems = [
+const productLinks = [
+  { label: 'Product', href: '/#product' },
+  { label: 'Workflow', href: '/#workflow' },
+  { label: 'Local runtime', href: '/#local-runtime' },
+  { label: 'Operations', href: '/operations' },
+]
+
+const workflowSteps: Array<{ step: string; title: string; copy: string; icon: LucideIcon }> = [
   {
+    step: '01',
+    title: 'Save a voice',
+    copy: 'Import clean reference audio as a reusable local profile.',
+    icon: Upload,
+  },
+  {
+    step: '02',
+    title: 'Add your source',
+    copy: 'Write a script, upload a recording, or start the microphone.',
+    icon: PenLine,
+  },
+  {
+    step: '03',
+    title: 'Run locally',
+    copy: 'Choose Vietnamese or English and keep model state visible.',
+    icon: Cpu,
+  },
+  {
+    step: '04',
+    title: 'Review the output',
+    copy: 'Listen, copy, download, retry, or trace the completed job.',
+    icon: Download,
+  },
+]
+
+const showcaseItems: ShowcaseItem[] = [
+  {
+    id: 'generate',
+    label: 'Generate',
+    title: 'Turn a script into a controlled voice render',
+    copy: 'Select a saved profile, set language and render mode, then review every output in the same queue.',
+    image: '/studio/brand/vassil-studio-generate.png',
+    alt: 'VassilStudio Generate workspace with script editor, voice controls, and output queue',
     icon: AudioLines,
-    title: 'Generate',
-    copy: 'Render Vietnamese or English speech from a saved voice profile.',
   },
   {
+    id: 'transcribe',
+    label: 'Transcribe',
+    title: 'Move from local recording to reusable transcript',
+    copy: 'Validate an audio file before queueing ZipFormer ASR, then send the finished transcript directly into Generate.',
+    image: '/studio/brand/vassil-studio-transcribe.png',
+    alt: 'VassilStudio Transcribe workspace with audio upload and transcript preview',
     icon: Captions,
-    title: 'Transcribe',
-    copy: 'Queue local audio for ZipFormer recognition and reuse the result.',
   },
   {
+    id: 'realtime',
+    label: 'Realtime',
+    title: 'Follow microphone speech as one live session',
+    copy: 'Keep websocket, microphone, model, and segment state visible while the final transcript is assembled locally.',
+    image: '/studio/brand/vassil-studio-realtime.png',
+    alt: 'VassilStudio Realtime workspace with session status and live transcript',
     icon: Mic,
-    title: 'Realtime',
-    copy: 'Stream microphone audio into a live local transcript session.',
   },
   {
+    id: 'voices',
+    label: 'Voices',
+    title: 'Keep reference voices ready for repeat work',
+    copy: 'Store language, transcript, duration, sample rate, and source audio together in a reusable voice profile.',
+    image: '/studio/brand/vassil-studio-voices.png',
+    alt: 'VassilStudio Voices workspace with saved profile and reference audio import',
     icon: UsersRound,
-    title: 'Voices',
-    copy: 'Create and maintain reusable reference voice profiles.',
-  },
-  {
-    icon: History,
-    title: 'Jobs',
-    copy: 'Review queue state, outputs, failures, retries, and cleanup.',
-  },
-  {
-    icon: Settings,
-    title: 'Settings',
-    copy: 'Inspect models, storage, authentication, and diagnostics.',
   },
 ]
 
@@ -181,90 +236,235 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
     <div className="min-h-screen bg-white text-slate-950">
       <PublicHeader />
       <main>
-        <section className="relative h-[calc(100svh-112px)] min-h-[480px] max-h-[760px] overflow-hidden border-b border-slate-200">
+        <section
+          id="product"
+          data-qa="landing-hero"
+          className="relative h-[calc(100svh-112px)] min-h-[600px] max-h-[780px] overflow-hidden border-b border-slate-200 bg-slate-100"
+        >
           <img
-            className="absolute inset-0 size-full object-cover object-top"
-            src="/studio/brand/vassil-studio-realtime.png"
-            alt="VassilStudio realtime transcription workspace"
+            className="absolute inset-0 size-full object-cover object-[34%_top] sm:object-top"
+            src="/studio/brand/vassil-studio-generate.png"
+            alt="VassilStudio Generate workspace"
           />
-          <div className="absolute inset-0 bg-white/70" aria-hidden="true" />
-          <div className="relative mx-auto flex h-full max-w-[1180px] items-end px-4 pb-10 sm:px-6 sm:pb-14">
-            <div className="max-w-2xl">
+          <div data-qa="hero-content" className="absolute inset-x-0 bottom-0 border-t border-slate-200 bg-white">
+            <div className="mx-auto max-w-[1180px] px-4 py-7 sm:px-6 sm:py-9">
               <div className="flex items-center gap-2 text-xs font-semibold text-blue-700">
                 <ShieldCheck className="size-4" />
-                Local-first voice studio
+                Local-first voice production
               </div>
-              <h1 className="mt-4 text-5xl font-semibold tracking-normal text-slate-950 sm:text-6xl">
+              <h1 className="mt-3 text-4xl font-semibold tracking-normal text-slate-950 sm:text-5xl">
                 VassilStudio
               </h1>
-              <p className="mt-4 max-w-xl text-base leading-7 text-slate-700">
-                ZipFormer transcription, ZipVoice rendering, reusable voice profiles, and runtime diagnostics in one local workspace.
+              <p className="mt-3 text-lg font-medium leading-7 text-slate-900 sm:text-xl">
+                Private voice production, on your machine.
               </p>
-              <div className="mt-6 flex flex-wrap gap-2">
-                <Button asChild>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                Create speech, transcribe recordings, and manage reusable voices with Vietnamese and English models in one focused workspace.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Button asChild size="lg">
                   <a href="/studio">
                     Open Studio
                     <ArrowRight className="size-4" />
                   </a>
                 </Button>
-                <Button asChild variant="secondary">
-                  <a href="/operations">Operations guide</a>
+                <Button asChild size="lg" variant="secondary">
+                  <a href="#workflow">
+                    See the workflow
+                    <ArrowDown className="size-4" />
+                  </a>
                 </Button>
               </div>
-              <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs font-medium text-slate-700">
-                <span>Vietnamese + English</span>
-                <span>CPU runtime</span>
-                <span>Local queue and storage</span>
+              <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-xs font-medium text-slate-600">
+                <TrustSignal>Vietnamese + English</TrustSignal>
+                <TrustSignal>CPU-ready runtime</TrustSignal>
+                <TrustSignal>Local queue and storage</TrustSignal>
               </div>
             </div>
           </div>
         </section>
 
         <section className="border-b border-slate-200 bg-white" aria-label="Product foundation">
-          <div className="mx-auto grid min-h-24 max-w-[1180px] grid-cols-1 px-4 sm:grid-cols-3 sm:px-6">
-            <FoundationItem icon={HardDrive} title="Local data" copy="Audio and outputs stay in configured workspace paths." />
-            <FoundationItem icon={Cpu} title="Model aware" copy="Readiness, cold starts, and languages stay visible." />
-            <FoundationItem icon={LockKeyhole} title="Operator controlled" copy="Local auth, API keys, diagnostics, and cleanup are explicit." />
+          <div className="mx-auto grid max-w-[1180px] grid-cols-1 px-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
+            <FoundationItem icon={HardDrive} title="Local by default" copy="Configured workspace paths" />
+            <FoundationItem icon={Captions} title="ZipFormer ASR" copy="File and realtime recognition" />
+            <FoundationItem icon={AudioLines} title="ZipVoice TTS" copy="Reusable reference voices" />
+            <FoundationItem icon={LockKeyhole} title="Operator controlled" copy="Auth, diagnostics, cleanup" />
           </div>
         </section>
 
-        <section className="mx-auto max-w-[1180px] px-4 py-14 sm:px-6 sm:py-16">
-          <div className="max-w-2xl">
-            <div className="text-xs font-semibold text-blue-700">Studio workflows</div>
-            <h2 className="mt-2 text-2xl font-semibold tracking-normal text-slate-950">From reference audio to finished output</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Each workspace view handles one clear job and shares the same local runtime, queue, and language state.
-            </p>
-          </div>
-          <div className="mt-8 grid grid-cols-1 border-t border-slate-200 sm:grid-cols-2 lg:grid-cols-3">
-            {workflowItems.map((item) => (
-              <article className="border-b border-slate-200 py-5 sm:px-4 sm:odd:border-r lg:border-r lg:odd:border-r lg:[&:nth-child(3n)]:border-r-0" key={item.title}>
-                <item.icon className="size-5 text-blue-700" />
-                <h3 className="mt-3 text-sm font-semibold text-slate-950">{item.title}</h3>
-                <p className="mt-1 max-w-sm text-xs leading-5 text-slate-600">{item.copy}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="border-y border-slate-200 bg-slate-50">
-          <div className="mx-auto flex max-w-[1180px] flex-col gap-4 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <div>
-              <div className="text-sm font-semibold text-slate-950">Ready to work locally</div>
-              <div className="mt-1 text-xs leading-5 text-slate-600">Open the studio or review model layout and runtime operations first.</div>
+        <section id="workflow" className="scroll-mt-16 border-b border-slate-200 bg-white">
+          <div className="mx-auto max-w-[1180px] px-4 py-14 sm:px-6 sm:py-18">
+            <div className="max-w-2xl">
+              <div className="text-xs font-semibold text-blue-700">Studio workflows</div>
+              <h2 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950">
+                One local loop from source to output
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                The work stays legible from the first reference clip through model readiness, queue state, and final output.
+              </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild>
-                <a href="/studio">Open Studio</a>
+
+            <div className="mt-8 grid grid-cols-1 border-y border-slate-200 sm:grid-cols-2 lg:grid-cols-4">
+              {workflowSteps.map((item) => (
+                <article
+                  className="border-b border-slate-200 py-5 last:border-b-0 sm:px-4 sm:[&:nth-child(n+3)]:border-b-0 sm:[&:nth-child(odd)]:border-r lg:border-b-0 lg:border-r lg:first:pl-0 lg:last:border-r-0 lg:last:pr-0"
+                  key={item.step}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <item.icon className="size-5 text-blue-700" />
+                    <span className="font-mono text-xs text-slate-400">{item.step}</span>
+                  </div>
+                  <h3 className="mt-5 text-sm font-semibold text-slate-950">{item.title}</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">{item.copy}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-slate-200 bg-slate-50">
+          <div className="mx-auto max-w-[1180px] px-4 py-14 sm:px-6 sm:py-18">
+            <div className="max-w-2xl">
+              <div className="text-xs font-semibold text-blue-700">Inside the Studio</div>
+              <h2 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950">
+                The actual workspace, not a mockup
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                Every view uses the same language state, runtime readiness, job history, and local storage boundaries.
+              </p>
+            </div>
+            <ProductShowcase />
+          </div>
+        </section>
+
+        <section id="local-runtime" className="scroll-mt-16 border-b border-slate-200 bg-white">
+          <div className="mx-auto grid max-w-[1180px] gap-10 px-4 py-14 sm:px-6 sm:py-18 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)] lg:gap-18">
+            <div className="max-w-lg">
+              <div className="text-xs font-semibold text-emerald-700">Local runtime</div>
+              <h2 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950">
+                Your audio stays where you put it
+              </h2>
+              <p className="mt-4 text-sm leading-6 text-slate-600">
+                VassilStudio keeps model execution, voice profiles, source audio, transcripts, and outputs under operator-configured local paths.
+              </p>
+              <Button asChild className="mt-6" variant="secondary">
+                <a href="/privacy">
+                  Review privacy details
+                  <ArrowRight className="size-4" />
+                </a>
               </Button>
-              <Button asChild variant="secondary">
-                <a href="/operations">Review operations</a>
+            </div>
+            <div className="border-t border-slate-200">
+              <LocalControlRow
+                icon={HardDrive}
+                title="Explicit storage"
+                copy="Voices, uploads, jobs, outputs, logs, and authentication data have visible local boundaries."
+              />
+              <LocalControlRow
+                icon={Gauge}
+                title="Readiness before work"
+                copy="Cold models, missing language assets, queue state, and runtime diagnostics stay visible in context."
+              />
+              <LocalControlRow
+                icon={LockKeyhole}
+                title="No cloud account required"
+                copy="Local owner authentication and optional API keys protect the workspace without external identity services."
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-studio-sapphire text-white">
+          <div className="mx-auto flex max-w-[1180px] flex-col gap-6 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+              <h2 className="text-xl font-semibold tracking-normal">Start with the workspace you already own</h2>
+              <p className="mt-2 text-sm leading-6 text-blue-100">
+                Open Studio to create a voice profile, generate audio, or transcribe a recording.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button asChild className="bg-white text-blue-800 hover:bg-blue-50" size="lg">
+                <a href="/studio">
+                  Open Studio
+                  <ArrowRight className="size-4" />
+                </a>
+              </Button>
+              <Button asChild className="border-blue-300 bg-transparent text-white hover:border-white hover:bg-blue-800" size="lg" variant="secondary">
+                <a href="/operations">Operations guide</a>
               </Button>
             </div>
           </div>
         </section>
       </main>
       <PublicFooter />
+    </div>
+  )
+}
+
+function TrustSignal({ children }: { children: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Check className="size-3.5 text-emerald-700" />
+      {children}
+    </span>
+  )
+}
+
+function ProductShowcase() {
+  const [activeId, setActiveId] = useState<ShowcaseItem['id']>('generate')
+  const activeItem = showcaseItems.find((item) => item.id === activeId) ?? showcaseItems[0]
+
+  return (
+    <div className="mt-8">
+      <div className="grid grid-cols-2 border-b border-slate-200 sm:flex" role="tablist" aria-label="Studio workspace preview">
+        {showcaseItems.map((item) => (
+          <button
+            className={
+              item.id === activeId
+                ? 'inline-flex h-11 shrink-0 items-center gap-2 border-b-2 border-blue-700 px-3 text-xs font-semibold text-blue-800'
+                : 'inline-flex h-11 shrink-0 items-center gap-2 border-b-2 border-transparent px-3 text-xs font-medium text-slate-500 hover:text-slate-950'
+            }
+            type="button"
+            role="tab"
+            aria-controls="studio-showcase-panel"
+            aria-selected={item.id === activeId}
+            onClick={() => setActiveId(item.id)}
+            key={item.id}
+          >
+            <item.icon className="size-4" />
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div
+        id="studio-showcase-panel"
+        className="pt-5"
+        role="tabpanel"
+        aria-label={`${activeItem.label} workspace`}
+      >
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-2xl">
+            <h3 className="text-lg font-semibold text-slate-950">{activeItem.title}</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{activeItem.copy}</p>
+          </div>
+          <Button asChild className="shrink-0 self-start" variant="secondary">
+            <a href={`/studio#/${activeItem.id}`}>
+              Open {activeItem.label}
+              <ArrowRight className="size-4" />
+            </a>
+          </Button>
+        </div>
+        <figure className="mt-5 aspect-[36/25] overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.08)]">
+          <img
+            className="size-full object-cover object-top"
+            src={activeItem.image}
+            alt={activeItem.alt}
+            loading="lazy"
+          />
+        </figure>
+      </div>
     </div>
   )
 }
@@ -277,8 +477,8 @@ function PublicHeader() {
           <img className="h-8 w-auto max-w-[150px]" src={BRAND_LOGO_SRC} alt={BRAND_NAME} />
         </a>
         <nav className="hidden items-center gap-5 text-xs font-medium text-slate-500 lg:flex" aria-label="Product navigation">
-          {publicLinks.map((link) => (
-            <a className="hover:text-slate-950" href={link.href} key={link.page}>{link.label}</a>
+          {productLinks.map((link) => (
+            <a className="hover:text-slate-950" href={link.href} key={link.href}>{link.label}</a>
           ))}
         </nav>
         <Button asChild size="sm">
@@ -297,17 +497,35 @@ function FoundationItem({
   title,
   copy,
 }: {
-  icon: typeof Database
+  icon: LucideIcon
   title: string
   copy: string
 }) {
   return (
-    <div className="flex items-start gap-3 border-b border-slate-200 py-4 last:border-b-0 sm:border-b-0 sm:border-r sm:px-5 sm:first:pl-0 sm:last:border-r-0 sm:last:pr-0">
-      <Icon className="mt-0.5 size-4 shrink-0 text-emerald-700" />
-      <div>
+    <div className="flex min-h-20 items-center gap-3 border-b border-slate-200 py-4 last:border-b-0 sm:border-r sm:px-5 sm:[&:nth-child(even)]:border-r-0 sm:[&:nth-child(n+3)]:border-b-0 lg:border-b-0 lg:[&:nth-child(even)]:border-r lg:first:pl-0 lg:last:border-r-0 lg:last:pr-0">
+      <Icon className="size-4 shrink-0 text-emerald-700" />
+      <div className="min-w-0">
         <div className="text-xs font-semibold text-slate-950">{title}</div>
         <p className="mt-1 text-xs leading-5 text-slate-600">{copy}</p>
       </div>
+    </div>
+  )
+}
+
+function LocalControlRow({
+  icon: Icon,
+  title,
+  copy,
+}: {
+  icon: LucideIcon
+  title: string
+  copy: string
+}) {
+  return (
+    <div className="grid gap-3 border-b border-slate-200 py-5 sm:grid-cols-[28px_160px_minmax(0,1fr)] sm:items-start">
+      <Icon className="size-5 text-emerald-700" />
+      <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
+      <p className="text-xs leading-5 text-slate-600">{copy}</p>
     </div>
   )
 }
@@ -371,8 +589,10 @@ function InfoPage({ page }: { page: InfoPageId }) {
 function PublicFooter() {
   return (
     <footer className="border-t border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-[1180px] flex-col gap-3 px-4 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <span>VassilStudio local-first voice workspace</span>
+      <div className="mx-auto flex max-w-[1180px] flex-col gap-4 px-4 py-7 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <a className="inline-flex items-center" href="/" aria-label="VassilStudio home">
+          <img className="h-7 w-auto" src={BRAND_LOGO_SRC} alt={BRAND_NAME} />
+        </a>
         <nav className="flex flex-wrap gap-x-4 gap-y-2" aria-label="Footer navigation">
           {publicLinks.map((link) => (
             <a className="hover:text-slate-950" href={link.href} key={link.page}>{link.label}</a>
