@@ -10,7 +10,6 @@ import time
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import numpy as np
-import websockets
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +25,8 @@ async def benchmark(
     signal: str,
     output: Path,
 ) -> None:
+    import websockets
+
     async with websockets.connect(with_api_key(url), max_size=8 * 1024 * 1024) as websocket:
         ready = json.loads(await websocket.recv())
         sample_rate = int(ready["sample_rate"])
