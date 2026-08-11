@@ -44,7 +44,10 @@ def test_toolchain_versions_match_container_baseline() -> None:
     dockerfile = ROOT.joinpath("docker", "Dockerfile").read_text(encoding="utf-8")
     assert "FROM python:3.12-slim" in dockerfile
     assert "FROM node:24-alpine" in dockerfile
+    assert "https://download.pytorch.org/whl/cpu" in dockerfile
+    assert '"torch==${TORCH_VERSION}" "torchaudio==${TORCH_VERSION}"' in dockerfile
     assert 'python -m pip install ".[runtime]"' in dockerfile
+    assert "COPY frontend ./frontend" not in dockerfile
 
 
 def test_runtime_dependencies_are_resolvable_from_supported_package_indexes() -> None:
@@ -54,9 +57,9 @@ def test_runtime_dependencies_are_resolvable_from_supported_package_indexes() ->
     extras = {name: set(values) for name, values in project["optional-dependencies"].items()}
 
     model_runtime = {
-        "onnxruntime>=1.23",
-        "torch>=2.3",
-        "torchaudio>=2.3",
+        "onnxruntime==1.27.0",
+        "torch==2.11.0",
+        "torchaudio==2.11.0",
         "sherpa-onnx==1.13.3",
     }
     test_tools = {"httpx2==2.5.0", "pytest==9.1.1", "ruff==0.15.20"}

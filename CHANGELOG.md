@@ -26,6 +26,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Hermetic config and ZipVoice frontend tests that do not inherit host settings or require local model files.
 - Patched frontend transitive advisories and a blocking high-severity npm audit in CI mode.
 - Split lightweight unit-test dependencies from model runtime engines for faster clean CI installs.
+- Pinned a matching Torch/Torchaudio pair and forced CPU-only wheels in the Docker runtime image.
 
 ### Hardened
 

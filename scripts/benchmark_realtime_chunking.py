@@ -18,7 +18,14 @@ DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 OUT_DIR = ROOT / "tmp" / "benchmarks"
 
 
-async def benchmark(url: str, *, chunks: int, chunk_seconds: float, output: Path) -> None:
+async def benchmark(
+    url: str,
+    *,
+    chunks: int,
+    chunk_seconds: float,
+    signal: str,
+    output: Path,
+) -> None:
     async with websockets.connect(with_api_key(url), max_size=8 * 1024 * 1024) as websocket:
         ready = json.loads(await websocket.recv())
         sample_rate = int(ready["sample_rate"])
@@ -39,7 +46,7 @@ async def benchmark(url: str, *, chunks: int, chunk_seconds: float, output: Path
             raise RuntimeError(f"Unexpected websocket setup: ready={ready}, configured={configured}")
 
         runs = []
-        samples = np.zeros(int(sample_rate * chunk_seconds), dtype=np.float32)
+        samples = probe_samples(sample_rate, chunk_seconds, signal)
         for index in range(chunks):
             started = time.perf_counter()
             await websocket.send(samples.tobytes())
@@ -69,6 +76,7 @@ async def benchmark(url: str, *, chunks: int, chunk_seconds: float, output: Path
         "url": url_without_query(url),
         "chunks": chunks,
         "chunk_seconds": chunk_seconds,
+        "signal": signal,
         "sample_rate": sample_rate,
         "summary": summarize([run["roundtrip_ms"] for run in runs]),
         "runs": runs,
@@ -82,6 +90,12 @@ def main() -> None:
     parser.add_argument("--url", default=default_realtime_url())
     parser.add_argument("--chunks", type=int, default=5)
     parser.add_argument("--chunk-seconds", type=float, default=0.5)
+    parser.add_argument(
+        "--signal",
+        choices=("tone", "silence"),
+        default="tone",
+        help="Tone exercises ASR inference; silence measures the skip/transport path.",
+    )
     parser.add_argument("--output", type=Path, default=OUT_DIR / "realtime_chunking.json")
     args = parser.parse_args()
 
@@ -91,7 +105,24 @@ def main() -> None:
         raise ValueError("--chunk-seconds must be greater than zero")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    asyncio.run(benchmark(args.url, chunks=args.chunks, chunk_seconds=args.chunk_seconds, output=args.output))
+    asyncio.run(
+        benchmark(
+            args.url,
+            chunks=args.chunks,
+            chunk_seconds=args.chunk_seconds,
+            signal=args.signal,
+            output=args.output,
+        )
+    )
+
+
+def probe_samples(sample_rate: int, chunk_seconds: float, signal: str) -> np.ndarray:
+    frames = max(1, int(sample_rate * chunk_seconds))
+    if signal == "silence":
+        return np.zeros(frames, dtype=np.float32)
+
+    timeline = np.arange(frames, dtype=np.float32) / sample_rate
+    return (0.02 * np.sin(2 * np.pi * 220 * timeline)).astype(np.float32)
 
 
 def default_realtime_url() -> str:

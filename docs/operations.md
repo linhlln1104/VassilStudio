@@ -21,6 +21,7 @@ Run these commands from the repository root:
 
 ```powershell
 python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install torch==2.11.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cpu
 .\.venv\Scripts\python.exe -m pip install -e ".[runtime]"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_storage.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1
@@ -202,7 +203,7 @@ Latency benchmarks require a live API and write JSON summaries under `tmp/benchm
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark_tts_latency.ps1 --iterations 1 --num-steps 8
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark_asr_latency.ps1 --iterations 3
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark_realtime_chunking.ps1 --chunks 5
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark_realtime_chunking.ps1 --chunks 5 --signal tone
 ```
 
 Use these numbers as local baselines, not universal SLA promises. CPU, model size, threads, warmup,
