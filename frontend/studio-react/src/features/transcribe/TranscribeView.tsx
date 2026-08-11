@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowRight,
@@ -40,6 +40,9 @@ export function TranscribeView() {
   const [dragging, setDragging] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState('')
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState('')
+  const [audioPreviewError, setAudioPreviewError] = useState('')
+  const [audioDuration, setAudioDuration] = useState<number | null>(null)
   const [selectedLanguage, setSelectedLanguage] = useState<VoiceLanguage>(() =>
     normalizeVoiceLanguage(getPreferredLanguage()),
   )
@@ -56,6 +59,19 @@ export function TranscribeView() {
     staleTime: 30000,
     refetchInterval: 30000,
   })
+
+  useEffect(() => {
+    setAudioDuration(null)
+    setAudioPreviewError('')
+    if (!selectedFile) {
+      setAudioPreviewUrl('')
+      return
+    }
+
+    const previewUrl = URL.createObjectURL(selectedFile)
+    setAudioPreviewUrl(previewUrl)
+    return () => URL.revokeObjectURL(previewUrl)
+  }, [selectedFile])
   const uploadMutation = useMutation({
     mutationFn: ({ file, language }: { file: File; language: VoiceLanguage }) =>
       api.createAsrJob(file, { language }),
@@ -211,26 +227,54 @@ export function TranscribeView() {
               onDrop={handleDrop}
             >
               {selectedFile ? (
-                <div className="flex min-w-0 items-center gap-3 text-left">
-                  <div className="grid size-10 shrink-0 place-items-center rounded-md bg-sky-50 text-blue-700">
-                    <FileAudio className="size-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-slate-950">{selectedFile.name}</div>
-                    <div className="mt-1 text-xs font-medium text-slate-600">
-                      {formatBytes(selectedFile.size)} / {voiceLanguageShortLabel(selectedLanguage)}
+                <div className="space-y-3 text-left">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="grid size-10 shrink-0 place-items-center rounded-md bg-sky-50 text-blue-700">
+                      <FileAudio className="size-5" />
                     </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-slate-950">{selectedFile.name}</div>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        <Badge variant="muted">{formatBytes(selectedFile.size)}</Badge>
+                        <Badge variant="muted">
+                          {selectedFile.name.split('.').pop()?.toUpperCase() || 'AUDIO'}
+                        </Badge>
+                        <Badge variant="muted">{voiceLanguageShortLabel(selectedLanguage)}</Badge>
+                        {audioDuration !== null ? (
+                          <Badge variant="success">{formatDuration(audioDuration)}</Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                    <Button
+                      className="w-8 shrink-0 px-0"
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Remove selected audio"
+                      title="Remove selected audio"
+                      onClick={() => stageAudioFile(undefined)}
+                    >
+                      <X className="size-4" />
+                    </Button>
                   </div>
-                  <Button
-                    className="w-8 shrink-0 px-0"
-                    size="sm"
-                    variant="ghost"
-                    aria-label="Remove selected audio"
-                    title="Remove selected audio"
-                    onClick={() => stageAudioFile(undefined)}
-                  >
-                    <X className="size-4" />
-                  </Button>
+                  {audioPreviewUrl ? (
+                    <audio
+                      className="h-10 w-full"
+                      controls
+                      preload="metadata"
+                      src={audioPreviewUrl}
+                      aria-label={`Preview ${selectedFile.name}`}
+                      onLoadedMetadata={(event) => {
+                        const duration = event.currentTarget.duration
+                        setAudioDuration(Number.isFinite(duration) && duration > 0 ? duration : null)
+                      }}
+                      onError={() => setAudioPreviewError('Preview unavailable in this browser. The server will validate the file when queued.')}
+                    />
+                  ) : null}
+                  {audioPreviewError ? (
+                    <div className="text-xs font-medium leading-5 text-amber-800" role="status">
+                      {audioPreviewError}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="py-2 text-center">

@@ -70,6 +70,8 @@ export function RealtimeView() {
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([])
   const [transcriptText, setTranscriptText] = useState('')
   const [copied, setCopied] = useState(false)
+  const [inputRms, setInputRms] = useState(0)
+  const [sessionElapsedSeconds, setSessionElapsedSeconds] = useState(0)
   const [selectedLanguage, setSelectedLanguage] = useState<VoiceLanguage>(() =>
     normalizeVoiceLanguage(getPreferredLanguage()),
   )
@@ -80,6 +82,7 @@ export function RealtimeView() {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const gainRef = useRef<GainNode | null>(null)
   const stopTimeoutRef = useRef<number | null>(null)
+  const sessionStartedAtRef = useRef<number | null>(null)
 
   const healthQuery = useQuery({
     queryKey: ['health'],
@@ -115,6 +118,39 @@ export function RealtimeView() {
       normalizeVoiceLanguage(language),
     ),
   ).has(selectedLanguage)
+  const sessionModelActive = sessionState === 'listening' || sessionState === 'stopping'
+  const selectedModelReady = selectedModelLoaded || sessionModelActive
+  const selectedModelDetail = sessionModelActive
+    ? 'Active for this session'
+    : modelStatusQuery.isError
+      ? 'Status unavailable'
+      : selectedModelLoaded
+        ? 'Loaded in memory'
+        : runtimeLanguageWarning
+          ? 'Not configured'
+          : 'Cold start expected'
+  const inputDb = Math.max(-60, Math.min(0, 20 * Math.log10(Math.max(inputRms, 0.001))))
+  const inputLevel = Math.max(0, Math.min(1, (inputDb + 60) / 60))
+
+  useEffect(() => {
+    if (sessionState !== 'listening') return
+
+    const updateElapsedTime = () => {
+      if (sessionStartedAtRef.current !== null) {
+        setSessionElapsedSeconds((Date.now() - sessionStartedAtRef.current) / 1000)
+      }
+    }
+    updateElapsedTime()
+    const interval = window.setInterval(updateElapsedTime, 250)
+    return () => window.clearInterval(interval)
+  }, [sessionState])
+
+  const finalizeSessionTimer = () => {
+    if (sessionStartedAtRef.current !== null) {
+      setSessionElapsedSeconds((Date.now() - sessionStartedAtRef.current) / 1000)
+      sessionStartedAtRef.current = null
+    }
+  }
 
   const cleanupMediaResources = () => {
     processorRef.current?.disconnect()
@@ -159,6 +195,9 @@ export function RealtimeView() {
     cleanupRealtimeResources()
     setError('')
     setProtocol(null)
+    setInputRms(0)
+    setSessionElapsedSeconds(0)
+    sessionStartedAtRef.current = null
     setSessionState('connecting')
 
     let websocket: WebSocket
@@ -192,6 +231,8 @@ export function RealtimeView() {
       }
       setError('Realtime websocket failed to connect.')
       setSessionState('error')
+      setInputRms(0)
+      finalizeSessionTimer()
       cleanupRealtimeResources()
     }
 
@@ -202,6 +243,8 @@ export function RealtimeView() {
       clearStopTimeout()
       websocketRef.current = null
       cleanupMediaResources()
+      setInputRms(0)
+      finalizeSessionTimer()
       setSessionState((current) => (current === 'error' ? current : 'idle'))
     }
   }
@@ -244,6 +287,8 @@ export function RealtimeView() {
     }
 
     if (message.type === 'closed') {
+      setInputRms(0)
+      finalizeSessionTimer()
       setSessionState('idle')
       return
     }
@@ -251,6 +296,8 @@ export function RealtimeView() {
     if (message.type === 'error') {
       setError(message.message ?? 'Realtime session failed.')
       setSessionState('error')
+      setInputRms(0)
+      finalizeSessionTimer()
       cleanupRealtimeResources()
     }
   }
@@ -287,6 +334,11 @@ export function RealtimeView() {
           return
         }
         const input = event.inputBuffer.getChannelData(0)
+        let energy = 0
+        for (let index = 0; index < input.length; index += 1) {
+          energy += input[index] * input[index]
+        }
+        setInputRms(Math.sqrt(energy / input.length))
         const samples = downsampleFloat32(input, audioContext.sampleRate, targetSampleRate)
         if (samples.length > 0) {
           websocket.send(samples.buffer)
@@ -302,6 +354,8 @@ export function RealtimeView() {
       sourceRef.current = source
       processorRef.current = processor
       gainRef.current = gain
+      sessionStartedAtRef.current = Date.now()
+      setSessionElapsedSeconds(0)
       setSessionState('listening')
     } catch (microphoneError) {
       setError(
@@ -310,6 +364,8 @@ export function RealtimeView() {
           : 'Microphone permission was denied or unavailable.',
       )
       setSessionState('error')
+      setInputRms(0)
+      finalizeSessionTimer()
       websocket.close()
       cleanupRealtimeResources()
     }
@@ -317,6 +373,8 @@ export function RealtimeView() {
 
   const stopSession = () => {
     setSessionState('stopping')
+    setInputRms(0)
+    finalizeSessionTimer()
     const websocket = websocketRef.current
     cleanupMediaResources()
     if (websocket?.readyState === WebSocket.OPEN) {
@@ -433,11 +491,17 @@ export function RealtimeView() {
               configuredLanguages={modelStatusQuery.data?.runtime.asr_configured_languages}
               onChange={handleLanguageSelect}
             />
+            <MicrophoneInputMonitor
+              state={sessionState}
+              inputDb={inputDb}
+              inputLevel={inputLevel}
+              elapsedSeconds={sessionElapsedSeconds}
+            />
             {runtimeLanguageWarning ? (
               <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
                 {runtimeLanguageWarning}
               </div>
-            ) : modelReadinessMessage ? (
+            ) : modelReadinessMessage && sessionState !== 'listening' && sessionState !== 'stopping' ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800">
                 {modelReadinessMessage}
               </div>
@@ -595,7 +659,7 @@ export function RealtimeView() {
             <div className="grid grid-cols-3 divide-x divide-slate-200 border-y border-slate-200 py-3">
               <SessionMetric label="Chunks" value={transcripts.length.toString()} />
               <SessionMetric label="Speech" value={spokenChunks.toString()} />
-              <SessionMetric label="Audio" value={`${capturedDuration.toFixed(1)}s`} />
+              <SessionMetric label="Session" value={formatSessionTime(sessionElapsedSeconds)} />
             </div>
             <div className="divide-y divide-slate-200 pt-1">
               <ReadinessRow
@@ -613,8 +677,8 @@ export function RealtimeView() {
               <ReadinessRow
                 icon={CheckCircle2}
                 label={`${voiceLanguageShortLabel(selectedLanguage)} ASR model`}
-                detail={modelStatusQuery.isError ? 'Status unavailable' : selectedModelLoaded ? 'Loaded in memory' : runtimeLanguageWarning ? 'Not configured' : 'Cold start expected'}
-                ready={selectedModelLoaded}
+                detail={selectedModelDetail}
+                ready={selectedModelReady}
               />
               <ReadinessRow
                 icon={RotateCcw}
@@ -634,6 +698,51 @@ export function RealtimeView() {
   )
 }
 
+function MicrophoneInputMonitor({
+  state,
+  inputDb,
+  inputLevel,
+  elapsedSeconds,
+}: {
+  state: SessionState
+  inputDb: number
+  inputLevel: number
+  elapsedSeconds: number
+}) {
+  if (state === 'idle' || state === 'error') return null
+
+  const levelPercent = Math.round(inputLevel * 100)
+  const levelColor = inputLevel > 0.9 ? 'bg-red-500' : inputLevel > 0.25 ? 'bg-emerald-500' : 'bg-blue-500'
+  const stateLabel = state === 'connecting' ? 'Opening microphone' : state === 'stopping' ? 'Finalizing session' : 'Microphone input'
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+      <div className="flex items-center justify-between gap-3 text-xs font-semibold">
+        <span className="text-slate-700">{stateLabel}</span>
+        <span className="flex shrink-0 items-center gap-3 font-mono tabular-nums text-slate-600">
+          <span>{state === 'listening' ? `${Math.round(inputDb)} dB` : '-- dB'}</span>
+          <span data-qa="session-time">{formatSessionTime(elapsedSeconds)}</span>
+        </span>
+      </div>
+      <div
+        data-qa="input-level-meter"
+        className="mt-2 h-2 overflow-hidden rounded-sm bg-slate-200"
+        role="meter"
+        aria-label="Microphone input level"
+        aria-valuemin={-60}
+        aria-valuemax={0}
+        aria-valuenow={Math.round(inputDb)}
+        aria-valuetext={`${Math.round(inputDb)} decibels`}
+      >
+        <div
+          className={cn('h-full transition-[width] duration-100', levelColor)}
+          style={{ width: `${levelPercent}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 function SessionMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 px-2 text-center">
@@ -641,6 +750,13 @@ function SessionMetric({ label, value }: { label: string; value: string }) {
       <div className="mt-1 text-[10px] font-medium uppercase text-slate-500">{label}</div>
     </div>
   )
+}
+
+function formatSessionTime(value: number) {
+  const totalSeconds = Math.max(0, Math.floor(value))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = String(totalSeconds % 60).padStart(2, '0')
+  return `${minutes}:${seconds}`
 }
 
 function SessionStatusBadge({ state }: { state: SessionState }) {
