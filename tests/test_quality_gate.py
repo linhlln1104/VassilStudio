@@ -49,7 +49,12 @@ def test_toolchain_versions_match_container_baseline() -> None:
     assert "--constraint docker/runtime-linux-cpu.constraints.txt" in dockerfile
     assert '".[runtime]"' in dockerfile
     assert 'org.opencontainers.image.licenses="GPL-3.0-or-later"' in dockerfile
+    assert "ENV VASSIL_BIND_ADDRESS=0.0.0.0" in dockerfile
     assert "COPY frontend ./frontend" not in dockerfile
+
+    docker_smoke = ROOT.joinpath("scripts", "smoke_docker.ps1").read_text(encoding="utf-8")
+    assert "Assert-DirectImageFailsClosed" in docker_smoke
+    assert "anonymous non-loopback startup rejected" in docker_smoke
 
     constraints = ROOT.joinpath("docker", "runtime-linux-cpu.constraints.txt").read_text(
         encoding="utf-8"

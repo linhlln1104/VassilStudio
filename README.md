@@ -204,6 +204,10 @@ Docker builds the React Studio assets and the VassilStudio app, then mounts loca
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_docker.ps1
 ```
 
+Compose publishes the API on `127.0.0.1` by default. Do not change
+`VASSIL_BIND_ADDRESS` to a LAN address until owner setup has been completed on loopback and either
+owner auth or API-key auth is configured. Anonymous non-loopback startup is rejected.
+
 Run a disposable Docker smoke check without taking over port 8000:
 
 ```powershell
@@ -243,9 +247,18 @@ $env:VASSIL_SESSION_SECRET = python -c "import secrets; print(secrets.token_urls
 ```
 
 Startup rejects auth-enabled configurations with missing, short, or documented placeholder session
-secrets. Use `VASSIL_ENV=production` only behind HTTPS; that profile also requires auth, secure
-cookies, and debug mode off. Native loopback installs normally use `local`, while Compose defaults
-to `docker`.
+secrets. Native and Docker launchers also reject an anonymous non-loopback bind. To enable trusted
+LAN access, first create the owner while bound to `127.0.0.1`, stop the app, then set:
+
+```powershell
+VASSIL_BIND_ADDRESS=0.0.0.0
+VASSIL_AUTH_REQUIRED=true
+VASSIL_SESSION_SECRET=<existing random value with at least 32 characters>
+```
+
+Use HTTPS and `VASSIL_SECURE_COOKIES=true` whenever credentials cross an untrusted network.
+Use `VASSIL_ENV=production` only behind HTTPS; that profile also requires auth, secure cookies, and
+debug mode off. Native loopback installs normally use `local`, while Compose defaults to `docker`.
 
 `scripts/run_api.ps1` loads `.env` automatically for native local runs while preserving any
 environment variables already set in the shell.

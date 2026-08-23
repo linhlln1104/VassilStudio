@@ -15,7 +15,12 @@ from vvoice.domains.voices.schemas import (
 )
 from vvoice.shared.audio.io import duration_seconds, encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
-from vvoice.shared.validation import ensure_file_size, read_upload_file, validate_text_field
+from vvoice.shared.validation import (
+    ensure_file_size,
+    read_audio_upload,
+    validate_audio_bytes,
+    validate_text_field,
+)
 
 
 router = APIRouter()
@@ -71,9 +76,16 @@ async def import_voice(
         max_bytes=container.settings.limits.max_upload_bytes,
         field_name="reference_audio",
     )
+    raw_audio = audio_path.read_bytes()
+    validate_audio_bytes(
+        raw_audio,
+        filename=audio_path.name,
+        content_type=_audio_media_type(audio_path),
+        field_name="reference_audio",
+    )
     profile = await _create_voice_from_audio(
         request,
-        raw_audio=audio_path.read_bytes(),
+        raw_audio=raw_audio,
         name=(name or audio_path.stem).strip(),
         language=language,
         reference_text=reference_text,
@@ -110,7 +122,7 @@ async def create_voice(
     reference_audio: UploadFile = File(...),
 ):
     container = request.app.state.container
-    raw_audio = await read_upload_file(
+    raw_audio = await read_audio_upload(
         reference_audio,
         max_bytes=container.settings.limits.max_upload_bytes,
         field_name="reference_audio",
@@ -183,7 +195,6 @@ def _voice_response(profile):
         "language": profile.language,
         "reference_text": profile.reference_text,
         "reference_text_source": profile.reference_text_source,
-        "audio_path": str(profile.audio_path),
         "audio_size_bytes": profile.audio_size_bytes,
         "sample_rate": profile.sample_rate,
         "duration_seconds": profile.duration_seconds,

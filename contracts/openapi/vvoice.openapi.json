@@ -1364,10 +1364,6 @@
       },
       "VoiceResponse": {
         "properties": {
-          "audio_path": {
-            "title": "Audio Path",
-            "type": "string"
-          },
           "audio_size_bytes": {
             "title": "Audio Size Bytes",
             "type": "integer"
@@ -1426,7 +1422,6 @@
           "language",
           "reference_text",
           "reference_text_source",
-          "audio_path",
           "audio_size_bytes",
           "sample_rate",
           "duration_seconds",

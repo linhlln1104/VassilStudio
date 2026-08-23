@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
+from vvoice.app.auth.service import LocalAuthService
 from vvoice.core.config import load_settings, parse_settings
+from vvoice.core.container import AppContainer
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,6 +56,7 @@ def test_run_api_loads_local_env_file() -> None:
 
     assert "Import-LocalEnvFile" in script
     assert 'Join-Path $root ".env"' in script
+    assert "--host $BindAddress" in script
 
 
 def test_parse_settings_resolves_paths() -> None:
@@ -115,6 +118,7 @@ def test_parse_settings_resolves_paths() -> None:
     assert settings.runtime.effective_asr_num_threads == 2
     assert settings.runtime.effective_tts_num_threads == 2
     assert settings.runtime.environment == "local"
+    assert settings.runtime.bind_address == "127.0.0.1"
     assert settings.runtime.log_level == "INFO"
     assert settings.runtime.warmup_on_startup is False
     assert settings.paths.models_root == root / "models"
@@ -364,6 +368,82 @@ def test_parse_settings_rejects_unsafe_production_profile(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="auth_required must be true"):
         parse_settings(raw, tmp_path)
+
+
+@pytest.mark.parametrize("bind_address", ["0.0.0.0", "::", "192.168.1.20", "studio.local"])
+def test_parse_settings_rejects_anonymous_non_loopback_bind(tmp_path, bind_address) -> None:
+    raw = _minimal_settings_raw()
+    raw["runtime"]["bind_address"] = bind_address
+
+    with pytest.raises(ValueError, match="non-loopback.*requires owner authentication"):
+        parse_settings(raw, tmp_path)
+
+
+@pytest.mark.parametrize("bind_address", ["127.0.0.1", "127.10.20.30", "::1", "localhost"])
+def test_parse_settings_allows_anonymous_loopback_bind(tmp_path, bind_address) -> None:
+    raw = _minimal_settings_raw()
+    raw["runtime"]["bind_address"] = bind_address
+
+    settings = parse_settings(raw, tmp_path)
+
+    assert settings.runtime.bind_address == bind_address
+
+
+def test_parse_settings_allows_api_key_protected_non_loopback_bind(tmp_path) -> None:
+    raw = _minimal_settings_raw()
+    raw["runtime"]["bind_address"] = "0.0.0.0"
+    raw["security"] = {"api_keys": ["automation-secret"]}
+
+    settings = parse_settings(raw, tmp_path)
+
+    assert settings.runtime.bind_address == "0.0.0.0"
+    assert settings.security.api_keys == ("automation-secret",)
+
+
+def test_parse_settings_allows_owner_auth_protected_non_loopback_bind(tmp_path) -> None:
+    raw = _minimal_settings_raw()
+    raw["runtime"]["bind_address"] = "0.0.0.0"
+    raw["security"] = {
+        "auth_required": True,
+        "session_secret": "lan-session-secret-with-at-least-32-chars",
+    }
+
+    settings = parse_settings(raw, tmp_path)
+
+    assert settings.runtime.bind_address == "0.0.0.0"
+    assert settings.security.auth_required is True
+
+
+def test_app_container_rejects_remote_first_owner_setup(tmp_path) -> None:
+    raw = _minimal_settings_raw()
+    raw["runtime"]["bind_address"] = "0.0.0.0"
+    raw["security"] = {
+        "auth_required": True,
+        "auth_db_path": "data/auth.sqlite3",
+        "session_secret": "lan-session-secret-with-at-least-32-chars",
+    }
+    settings = parse_settings(raw, tmp_path)
+
+    with pytest.raises(ValueError, match="Complete owner setup on a loopback bind"):
+        AppContainer(settings)
+
+
+def test_app_container_allows_non_loopback_after_owner_setup(tmp_path) -> None:
+    raw = _minimal_settings_raw()
+    raw["runtime"]["bind_address"] = "0.0.0.0"
+    raw["security"] = {
+        "auth_required": True,
+        "auth_db_path": "data/auth.sqlite3",
+        "session_secret": "lan-session-secret-with-at-least-32-chars",
+    }
+    settings = parse_settings(raw, tmp_path)
+    LocalAuthService(settings.security).create_owner("owner", "correct horse battery")
+
+    container = AppContainer(settings)
+    try:
+        assert container.auth.setup_required is False
+    finally:
+        container.shutdown()
 
 
 @pytest.mark.parametrize(

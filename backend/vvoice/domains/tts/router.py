@@ -4,6 +4,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Upload
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 
+from vvoice.core.errors import public_job_error
 from vvoice.domains.tts.jobs import TtsJob
 from vvoice.domains.tts.schemas import (
     TtsJobCleanupResponse,
@@ -14,7 +15,7 @@ from vvoice.domains.tts.parameters import validate_tts_parameters
 from vvoice.domains.tts.service import GeneratedSpeech
 from vvoice.shared.audio.io import encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
-from vvoice.shared.validation import read_upload_file, validate_text_field
+from vvoice.shared.validation import read_audio_upload, validate_text_field
 
 
 router = APIRouter()
@@ -43,7 +44,7 @@ async def synthesize(
         max_chars=container.settings.limits.max_reference_text_chars,
     )
     normalized_language = normalize_language(language)
-    data = await read_upload_file(
+    data = await read_audio_upload(
         reference_audio,
         max_bytes=container.settings.limits.max_upload_bytes,
         field_name="reference_audio",
@@ -197,7 +198,7 @@ def _job_response(job: TtsJob) -> dict:
         "created_at": job.created_at,
         "started_at": job.started_at,
         "completed_at": job.completed_at,
-        "error": job.error,
+        "error": public_job_error(job.error, job.failed_reason),
         "attempt": job.attempt,
         "max_attempts": job.max_attempts,
         "cancel_requested": job.cancel_requested,

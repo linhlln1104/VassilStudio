@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from scripts.build_release import (
@@ -8,6 +10,9 @@ from scripts.build_release import (
     load_declared_versions,
     normalize_version,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_version_normalization() -> None:
@@ -20,6 +25,13 @@ def test_release_version_normalization() -> None:
 
 def test_release_versions_are_synchronized() -> None:
     assert set(load_declared_versions().values()) == {"0.1.0"}
+
+
+def test_compose_publishes_to_loopback_by_default() -> None:
+    compose = ROOT.joinpath("docker", "docker-compose.yml").read_text(encoding="utf-8")
+
+    assert '${VASSIL_BIND_ADDRESS:-127.0.0.1}:${VASSIL_PORT:-${VVOICE_PORT:-8000}}:8000' in compose
+    assert "VASSIL_BIND_ADDRESS: ${VASSIL_BIND_ADDRESS:-127.0.0.1}" in compose
 
 
 def test_source_archive_contract_allows_only_storage_skeletons() -> None:

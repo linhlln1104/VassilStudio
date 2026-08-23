@@ -18,6 +18,10 @@ class AppContainer:
     def __post_init__(self) -> None:
         self._ensure_storage_dirs()
         self.auth = LocalAuthService(self.settings.security)
+        if not self.settings.runtime.binds_loopback_only and self.auth.setup_required:
+            raise ValueError(
+                "Complete owner setup on a loopback bind before enabling non-loopback access."
+            )
         self.asr = AsrService(self.settings.asr, self.settings.runtime)
         self.tts = ZipVoiceService(self.settings.tts, self.settings.runtime)
         self.voices = VoiceStore(self.settings.storage.voices_dir)

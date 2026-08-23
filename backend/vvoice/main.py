@@ -16,8 +16,10 @@ from vvoice.core.errors import (
     AsrJobNotFoundError,
     ModelConfigurationError,
     TtsJobNotFoundError,
+    UnsupportedAudioFormatError,
     VVoiceError,
     VoiceNotFoundError,
+    public_error_message,
 )
 from vvoice.core.observability import (
     REQUEST_ID_HEADER,
@@ -113,35 +115,52 @@ def register_request_middleware(app: FastAPI) -> None:
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    logger = logging.getLogger("vvoice.errors")
+
+    @app.exception_handler(UnsupportedAudioFormatError)
+    async def unsupported_audio_handler(
+        _: Request,
+        exc: UnsupportedAudioFormatError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=415,
+            content=_error_content("unsupported_audio_format", public_error_message(exc)),
+        )
+
     @app.exception_handler(AudioError)
     async def audio_error_handler(_: Request, exc: AudioError) -> JSONResponse:
-        return JSONResponse(status_code=400, content=_error_content("audio_error", exc))
+        _log_private_exception(logger, "audio_request_failed", exc)
+        return JSONResponse(
+            status_code=400,
+            content=_error_content("audio_error", public_error_message(exc)),
+        )
 
     @app.exception_handler(VoiceNotFoundError)
     async def voice_not_found_handler(_: Request, exc: VoiceNotFoundError) -> JSONResponse:
-        return JSONResponse(status_code=404, content=_error_content("voice_not_found", exc))
+        return JSONResponse(status_code=404, content=_error_content("voice_not_found", str(exc)))
 
     @app.exception_handler(TtsJobNotFoundError)
     async def tts_job_not_found_handler(_: Request, exc: TtsJobNotFoundError) -> JSONResponse:
-        return JSONResponse(status_code=404, content=_error_content("tts_job_not_found", exc))
+        return JSONResponse(status_code=404, content=_error_content("tts_job_not_found", str(exc)))
 
     @app.exception_handler(AsrJobNotFoundError)
     async def asr_job_not_found_handler(_: Request, exc: AsrJobNotFoundError) -> JSONResponse:
-        return JSONResponse(status_code=404, content=_error_content("asr_job_not_found", exc))
+        return JSONResponse(status_code=404, content=_error_content("asr_job_not_found", str(exc)))
 
     @app.exception_handler(ModelConfigurationError)
     async def model_config_error_handler(
         _: Request,
         exc: ModelConfigurationError,
     ) -> JSONResponse:
+        _log_private_exception(logger, "model_request_failed", exc)
         return JSONResponse(
             status_code=503,
-            content=_error_content("model_configuration_error", exc),
+            content=_error_content("model_configuration_error", public_error_message(exc)),
         )
 
     @app.exception_handler(VVoiceError)
     async def vvoice_error_handler(_: Request, exc: VVoiceError) -> JSONResponse:
-        return JSONResponse(status_code=400, content=_error_content("vvoice_error", exc))
+        return JSONResponse(status_code=400, content=_error_content("vvoice_error", str(exc)))
 
 
 def _request_id_from_header(value: str | None) -> str:
@@ -151,9 +170,17 @@ def _request_id_from_header(value: str | None) -> str:
     return uuid.uuid4().hex
 
 
-def _error_content(error: str, exc: Exception) -> dict[str, str]:
-    content = {"error": error, "message": str(exc)}
+def _error_content(error: str, message: str) -> dict[str, str]:
+    content = {"error": error, "message": message}
     request_id = get_request_id()
     if request_id:
         content["request_id"] = request_id
     return content
+
+
+def _log_private_exception(logger: logging.Logger, event: str, exc: Exception) -> None:
+    logger.warning(
+        event,
+        extra={"exception_type": type(exc).__name__},
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )

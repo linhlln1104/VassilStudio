@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from vvoice.core.errors import TtsJobNotFoundError, VVoiceError
+from vvoice.core.errors import TtsJobNotFoundError, VVoiceError, public_error_message
 from vvoice.domains.tts.parameters import validate_tts_parameters
 from vvoice.shared.audio.io import encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
@@ -408,7 +408,7 @@ class TtsJobService:
             job,
             status="queued",
             completed_at=None,
-            error=str(exc),
+            error=public_error_message(exc),
             failed_reason="retry_pending",
         )
         self._save(retrying)
@@ -435,7 +435,7 @@ class TtsJobService:
                 job,
                 status="failed",
                 completed_at=_now(),
-                error=str(exc),
+                error=public_error_message(exc),
                 failed_reason=_failed_reason_for(exc),
             )
         )

@@ -126,7 +126,6 @@ export type Voice = {
   language: string
   reference_text: string
   reference_text_source: string
-  audio_path: string
   audio_size_bytes: number
   sample_rate: number
   duration_seconds: number

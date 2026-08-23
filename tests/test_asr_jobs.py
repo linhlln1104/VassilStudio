@@ -1,10 +1,13 @@
 import logging
 import threading
 import time
+from dataclasses import replace
 
 import numpy as np
 
+from vvoice.core.errors import PUBLIC_JOB_ERROR_MESSAGE
 from vvoice.domains.asr.jobs import AsrJobService
+from vvoice.domains.asr.router import _job_response
 from vvoice.domains.asr.service import Transcription
 from vvoice.shared.audio.io import encode_wav
 
@@ -56,6 +59,16 @@ class BlockingAsr(FakeAsr):
         if not self.release.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS):
             raise RuntimeError("test ASR did not release")
         return Transcription(text="released", sample_rate=sample_rate)
+
+
+class FailingAsr(FakeAsr):
+    def transcribe(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        language: str | None = None,
+    ) -> Transcription:
+        raise RuntimeError(r"decoder failed at C:\Users\private\models\encoder.onnx")
 
 
 def test_asr_job_service_runs_job_from_audio(tmp_path, caplog) -> None:
@@ -111,6 +124,28 @@ def test_asr_job_service_retries_transient_failures(tmp_path) -> None:
         assert completed.max_attempts == 2
         assert completed.text == "retry-ok"
         assert fake_asr.calls == 2
+    finally:
+        jobs.shutdown()
+
+
+def test_asr_job_service_redacts_unexpected_failure_details(tmp_path) -> None:
+    jobs = AsrJobService(
+        tmp_path / "asr-jobs",
+        FailingAsr(),
+        target_sample_rate=16000,
+    )
+    try:
+        audio = encode_wav(np.zeros(1600, dtype=np.float32), 16000)
+        job = jobs.create_from_audio(audio_bytes=audio, filename="input.wav", language="en")
+        completed = wait_for_job(jobs, job.job_id)
+
+        assert completed.status == "failed"
+        assert completed.error == PUBLIC_JOB_ERROR_MESSAGE
+        assert "C:\\Users" not in completed.error
+        legacy_payload = _job_response(
+            replace(completed, error=r"legacy failure at C:\Users\private\models\encoder.onnx")
+        )
+        assert legacy_payload["error"] == PUBLIC_JOB_ERROR_MESSAGE
     finally:
         jobs.shutdown()
 

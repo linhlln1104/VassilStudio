@@ -46,6 +46,12 @@ All notable VassilStudio productionization changes are tracked here.
 
 ### Hardened
 
+- Docker Compose and native launchers bind to loopback by default; direct images fail closed, and
+  anonymous non-loopback startup plus remote first-owner setup are rejected.
+- Audio uploads now require a supported extension, declared media type, and matching container
+  signature before decoding.
+- Public HTTP, queued-job, realtime, and Voice contracts redact decoder commands, model paths,
+  legacy raw job failures, and local voice storage paths.
 - Split ASR/TTS CPU thread tuning, measured 4/8-step render profiles, and active queue polling reduce local render wait without weakening the quality smoke gate.
 - Request IDs, structured HTTP/job logs, liveness/readiness split, request upload limits, and path-safe Studio static serving.
 - Local auth login and password change attempts are rate-limited with `429` and `Retry-After`.
@@ -62,6 +68,8 @@ All notable VassilStudio productionization changes are tracked here.
 
 ### Verified
 
+- Security Boundary P0 passed `142` backend tests, frontend lint/build, OpenAPI/auth/Compose gates,
+  live disclosure probes, and a clean Docker build/runtime smoke on loopback.
 - `scripts/check.ps1` passes with ruff, pytest, React lint/build, OpenAPI export, auth/product smoke, and Docker Compose config validation.
 - Native sample-voice E2E, VI/EN language matrix, Docker infrastructure smoke, and Docker sample-voice E2E pass on the RC workstation.
 - The CPU-only Docker image is about 83 percent smaller than the accidental CUDA-bearing image it replaces.

@@ -4,6 +4,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Upload
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
+from vvoice.core.errors import public_job_error
 from vvoice.domains.asr.jobs import AsrJob
 from vvoice.domains.asr.schemas import (
     AsrJobCleanupResponse,
@@ -13,7 +14,7 @@ from vvoice.domains.asr.schemas import (
 )
 from vvoice.shared.audio.io import duration_seconds, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
-from vvoice.shared.validation import read_upload_file, safe_display_filename
+from vvoice.shared.validation import read_audio_upload, safe_display_filename
 
 
 router = APIRouter()
@@ -27,7 +28,7 @@ async def transcribe_audio(
 ):
     container = request.app.state.container
     normalized_language = normalize_language(language)
-    data = await read_upload_file(
+    data = await read_audio_upload(
         audio,
         max_bytes=container.settings.limits.max_upload_bytes,
         field_name="audio",
@@ -56,7 +57,7 @@ async def create_asr_job(
     language: str = Form(default=DEFAULT_LANGUAGE),
 ):
     container = request.app.state.container
-    data = await read_upload_file(
+    data = await read_audio_upload(
         audio,
         max_bytes=container.settings.limits.max_upload_bytes,
         field_name="audio",
@@ -127,7 +128,7 @@ def _job_response(job: AsrJob) -> dict:
         "created_at": job.created_at,
         "started_at": job.started_at,
         "completed_at": job.completed_at,
-        "error": job.error,
+        "error": public_job_error(job.error, job.failed_reason),
         "attempt": job.attempt,
         "max_attempts": job.max_attempts,
         "cancel_requested": job.cancel_requested,

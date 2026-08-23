@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from vvoice.core.errors import AsrJobNotFoundError, VVoiceError
+from vvoice.core.errors import AsrJobNotFoundError, VVoiceError, public_error_message
 from vvoice.domains.asr.service import AsrService
 from vvoice.shared.audio.io import duration_seconds, encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
@@ -378,7 +378,7 @@ class AsrJobService:
             job,
             status="queued",
             completed_at=None,
-            error=str(exc),
+            error=public_error_message(exc),
             failed_reason="retry_pending",
         )
         self._save(retrying)
@@ -404,7 +404,7 @@ class AsrJobService:
                 job,
                 status="failed",
                 completed_at=_now(),
-                error=str(exc),
+                error=public_error_message(exc),
                 failed_reason=_failed_reason_for(exc),
             )
         )

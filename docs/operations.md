@@ -110,6 +110,7 @@ Important environment variables:
 | `VASSIL_ROOT` | Repository/workspace root |
 | `VASSIL_CONFIG` | JSON config path |
 | `VASSIL_ENV` | Runtime profile: `local`, `development`, `production`, or `docker` |
+| `VASSIL_BIND_ADDRESS` | Native listener and Docker published host address; defaults to `127.0.0.1` |
 | `VASSIL_DEBUG` | Override runtime debug mode |
 | `VASSIL_WARMUP_ON_STARTUP` | Warm all configured ASR/TTS models during startup |
 | `VASSIL_AUTH_REQUIRED` | Require browser login for Studio and protected APIs |
@@ -122,6 +123,23 @@ Important environment variables:
 
 Never paste real API keys, session secrets, cookies, transcripts, or private audio into issue
 reports. Use the diagnostics bundle instead.
+
+## Network Boundary
+
+Native and Docker launchers bind to `127.0.0.1` by default. VassilStudio refuses to start on a
+non-loopback address unless owner auth or at least one API key is configured. If owner auth is
+enabled but no owner exists yet, non-loopback startup is also refused to prevent a first-user setup
+race.
+
+To enable trusted-LAN access:
+
+1. Start on `127.0.0.1` with `VASSIL_AUTH_REQUIRED=true` and a random session secret.
+2. Complete owner setup locally and stop VassilStudio.
+3. Set `VASSIL_BIND_ADDRESS=0.0.0.0` or a specific LAN interface and restart.
+4. Use HTTPS with `VASSIL_SECURE_COOKIES=true` outside a trusted private network.
+
+API-key-only automation is also accepted for a non-loopback bind. Treat the key as a password and
+do not place it in URLs, logs, screenshots, or committed files.
 
 ## Auth Operations
 
@@ -305,6 +323,7 @@ To restore, copy the same paths into a fresh checkout, run `scripts/setup_storag
 | Upload rejected | file size/type | Check `limits.max_upload_bytes` and use supported audio formats |
 | Realtime disconnects | WebSocket URL and API key | Include API key when auth is required and verify `/model-status` first |
 | Startup rejects session configuration | `VASSIL_AUTH_REQUIRED`, `VASSIL_SESSION_SECRET`, runtime profile | Generate a random 32+ character secret; for `production`, also enable secure cookies and HTTPS |
+| Startup rejects a non-loopback bind | `VASSIL_BIND_ADDRESS`, owner setup, API keys | Return to `127.0.0.1`, complete owner setup, then enable LAN access with auth or an API key |
 | Docker smoke cannot start | Docker daemon | Start Docker Desktop/service, then rerun `scripts/smoke_docker.ps1` |
 | Diagnostics bundle is needed | `/diagnostics/bundle` | Attach the zip to support; it is redacted by default |
 

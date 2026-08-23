@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ class PathSettings:
 @dataclass(frozen=True)
 class RuntimeSettings:
     environment: str
+    bind_address: str
     log_level: str
     provider: str
     num_threads: int
@@ -55,6 +57,10 @@ class RuntimeSettings:
     @property
     def effective_tts_num_threads(self) -> int:
         return self.tts_num_threads or self.num_threads
+
+    @property
+    def binds_loopback_only(self) -> bool:
+        return _is_loopback_address(self.bind_address)
 
 
 @dataclass(frozen=True)
@@ -383,8 +389,15 @@ def _parse_runtime_settings(raw: dict[str, Any]) -> RuntimeSettings:
         uppercase=True,
     )
     num_threads = _positive_int(raw.get("num_threads", 1), "runtime.num_threads")
+    bind_address = str(
+        first_env("VASSIL_BIND_ADDRESS", "VVOICE_BIND_ADDRESS")
+        or raw.get("bind_address", "127.0.0.1")
+    ).strip()
+    if not bind_address:
+        raise ValueError("runtime.bind_address must not be empty.")
     return RuntimeSettings(
         environment=environment,
+        bind_address=bind_address,
         log_level=log_level,
         provider=str(raw.get("provider", "cpu")),
         num_threads=num_threads,
@@ -460,6 +473,14 @@ def _validate_runtime_security(
                 "random secret."
             )
 
+    if not runtime.binds_loopback_only and not (
+        security.auth_required or security.api_keys
+    ):
+        raise ValueError(
+            "A non-loopback runtime.bind_address requires owner authentication or at least "
+            "one API key."
+        )
+
     if runtime.environment == "production":
         if runtime.debug:
             raise ValueError("runtime.debug must be false in the production environment.")
@@ -467,6 +488,16 @@ def _validate_runtime_security(
             raise ValueError("security.auth_required must be true in the production environment.")
         if not security.secure_cookies:
             raise ValueError("security.secure_cookies must be true in the production environment.")
+
+
+def _is_loopback_address(value: str) -> bool:
+    normalized = value.strip().lower().strip("[]")
+    if normalized.rstrip(".") == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
 
 
 def _resolve(root: Path, value: str | os.PathLike[str]) -> Path:

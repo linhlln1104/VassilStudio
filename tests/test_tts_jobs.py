@@ -1,12 +1,14 @@
 import time
 import threading
+from dataclasses import replace
 
 import numpy as np
 import pytest
 
-from vvoice.core.errors import VVoiceError
+from vvoice.core.errors import PUBLIC_JOB_ERROR_MESSAGE, VVoiceError
 from vvoice.shared.audio.io import encode_wav
 from vvoice.domains.tts.jobs import TtsJobService
+from vvoice.domains.tts.router import _job_response
 from vvoice.domains.tts.service import GeneratedSpeech
 from vvoice.domains.voices.service import VoiceStore
 
@@ -50,6 +52,11 @@ class BlockingTts(FakeTts):
         if not self.release.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS):
             raise RuntimeError("test TTS did not release")
         return super().synthesize(**kwargs)
+
+
+class FailingTts(FakeTts):
+    def synthesize(self, **kwargs) -> GeneratedSpeech:
+        raise RuntimeError(r"vocoder failed at C:\Users\private\models\vocoder.onnx")
 
 
 def test_tts_job_service_runs_job_from_voice(tmp_path) -> None:
@@ -114,6 +121,25 @@ def test_tts_job_service_retries_transient_failures(tmp_path) -> None:
         assert completed.attempt == 2
         assert completed.max_attempts == 2
         assert fake_tts.calls == 2
+    finally:
+        jobs.shutdown()
+
+
+def test_tts_job_service_redacts_unexpected_failure_details(tmp_path) -> None:
+    voices = VoiceStore(tmp_path / "voices")
+    profile = create_voice(voices)
+    jobs = TtsJobService(tmp_path / "tts-jobs", FailingTts(), voices)
+    try:
+        job = jobs.create_from_voice(voice_id=profile.voice_id, text="xin chao moi")
+        completed = wait_for_job(jobs, job.job_id)
+
+        assert completed.status == "failed"
+        assert completed.error == PUBLIC_JOB_ERROR_MESSAGE
+        assert "C:\\Users" not in completed.error
+        legacy_payload = _job_response(
+            replace(completed, error=r"legacy failure at C:\Users\private\models\vocoder.onnx")
+        )
+        assert legacy_payload["error"] == PUBLIC_JOB_ERROR_MESSAGE
     finally:
         jobs.shutdown()
 

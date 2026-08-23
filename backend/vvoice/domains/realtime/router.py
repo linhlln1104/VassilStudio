@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 
-from vvoice.core.errors import VVoiceError
+from vvoice.core.errors import VVoiceError, public_error_message
 from vvoice.domains.realtime.service import (
     RealtimeAsrSession,
     RealtimeAudioChunk,
@@ -85,7 +85,7 @@ async def realtime_asr(websocket: WebSocket):
         await _close_with_error(websocket, str(exc), code=1003)
         return
     except VVoiceError as exc:
-        await _close_with_error(websocket, str(exc), code=1011)
+        await _close_with_error(websocket, public_error_message(exc), code=1011)
         return
 
 

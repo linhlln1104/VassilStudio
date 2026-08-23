@@ -4,6 +4,7 @@ import numpy as np
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from vvoice.core.errors import ModelConfigurationError, PUBLIC_MODEL_ERROR_MESSAGE
 from vvoice.domains.realtime.router import router
 
 
@@ -17,6 +18,11 @@ class FakeAsr:
     def transcribe(self, samples: np.ndarray, sample_rate: int, language: str | None = None):
         self.calls.append((len(samples), sample_rate, language))
         return SimpleNamespace(text=f"{language}:{len(samples)}")
+
+
+class FailingAsr(FakeAsr):
+    def transcribe(self, samples: np.ndarray, sample_rate: int, language: str | None = None):
+        raise ModelConfigurationError(r"Missing C:\Users\private\models\encoder.onnx")
 
 
 def test_realtime_websocket_uses_requested_language() -> None:
@@ -53,3 +59,31 @@ def test_realtime_websocket_uses_requested_language() -> None:
     assert transcript["language"] == "en"
     assert transcript["text"] == "en:1600"
     assert fake_asr.calls == [(1600, 16000, "en")]
+
+
+def test_realtime_websocket_redacts_model_failure_details() -> None:
+    app = FastAPI()
+    app.state.container = SimpleNamespace(
+        asr=FailingAsr(),
+        settings=SimpleNamespace(
+            realtime=SimpleNamespace(
+                encoding="pcm_f32le",
+                chunk_seconds=0.1,
+                min_chunk_seconds=0.1,
+                max_buffer_seconds=1.0,
+                silence_rms=0.0,
+            ),
+            limits=SimpleNamespace(max_realtime_frame_bytes=2 * 1024 * 1024),
+            security=SimpleNamespace(api_keys=()),
+        ),
+    )
+    app.include_router(router, prefix="/api/v1/realtime")
+
+    samples = np.full(1600, 0.1, dtype=np.float32)
+    with TestClient(app).websocket_connect("/api/v1/realtime/asr?language=en") as websocket:
+        websocket.receive_json()
+        websocket.send_bytes(samples.tobytes())
+        error = websocket.receive_json()
+
+    assert error == {"type": "error", "message": PUBLIC_MODEL_ERROR_MESSAGE}
+    assert "C:\\Users" not in error["message"]

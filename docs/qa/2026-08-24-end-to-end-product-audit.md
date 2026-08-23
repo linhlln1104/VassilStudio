@@ -4,7 +4,25 @@
 - Audited commit: `894ccb2`
 - Environment: Windows 11, Python 3.12.10, Node 24.18.1, CPU inference
 - Surfaces: public product pages, first-run setup, authentication, Studio workflows, REST/WebSocket APIs, responsive layouts, and quality gates
-- Release decision: **NO-GO for Docker or any non-loopback exposure; usable for controlled localhost development**
+- Audit-time release decision: **NO-GO for Docker or any non-loopback exposure; usable for controlled localhost development**
+- P0 remediation status: **RESOLVED AND VERIFIED on 2026-08-24**
+
+## P0 remediation update
+
+- Docker Compose and the native launcher now default to `127.0.0.1`; Compose records the same
+  effective bind address inside the container, while a direct image run fails closed.
+- Startup rejects anonymous non-loopback binds. Owner-auth deployments must complete first-owner
+  setup on loopback before they can move to a LAN address.
+- Audio uploads are rejected before decoding unless extension, declared MIME type, and container
+  signature agree with the supported format allowlist.
+- HTTP, queued-job, realtime, and Voice response boundaries no longer expose raw decoder commands,
+  model paths, legacy job errors, or voice storage paths.
+- Verification passed with `scripts/check.ps1` (`142 passed`, Ruff, React lint/build, OpenAPI,
+  auth smoke, Compose validation), a clean Docker image/runtime smoke on `127.0.0.1:8024`, and a
+  live invalid-upload probe returning stable HTTP `415` with no workspace or FFmpeg detail.
+
+The remaining P1/P2 findings still require follow-up before a broader production release. This
+update closes only the Security Boundary P0 gate.
 
 ## Executive summary
 
@@ -26,6 +44,8 @@ The largest product gaps are not cosmetic. Running TTS cancellation is delayed u
 
 ### VS-QA-001 - P0 - Docker is remotely reachable with authentication disabled by default
 
+**Remediation status: RESOLVED**
+
 **Evidence**
 
 - `docker/Dockerfile:59` binds Uvicorn to `0.0.0.0`.
@@ -43,6 +63,8 @@ On Docker Desktop or a LAN host, another machine may be able to list/download vo
 Bind the published port to `127.0.0.1` by default. Add a separate, explicit LAN profile that requires auth and a strong session secret. Fail startup whenever a non-loopback deployment has neither owner auth nor API-key auth.
 
 ### VS-QA-002 - P0 - API responses disclose absolute host paths and subprocess details
+
+**Remediation status: RESOLVED**
 
 **Evidence**
 

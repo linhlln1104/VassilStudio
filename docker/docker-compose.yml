@@ -7,12 +7,13 @@ services:
       dockerfile: docker/Dockerfile
     image: vassil-studio:local
     ports:
-      - "${VASSIL_PORT:-${VVOICE_PORT:-8000}}:8000"
+      - "${VASSIL_BIND_ADDRESS:-127.0.0.1}:${VASSIL_PORT:-${VVOICE_PORT:-8000}}:8000"
     environment:
       VASSIL_ROOT: /app
       VASSIL_CONFIG: /app/config/vassil.example.json
       VASSIL_STUDIO_DIR: /app/frontend/studio-react/dist
       VASSIL_ENV: ${VASSIL_ENV:-docker}
+      VASSIL_BIND_ADDRESS: ${VASSIL_BIND_ADDRESS:-127.0.0.1}
       VASSIL_LOG_LEVEL: ${VASSIL_LOG_LEVEL:-INFO}
       VASSIL_WARMUP_ON_STARTUP: ${VASSIL_WARMUP_ON_STARTUP:-false}
       VASSIL_API_KEYS: ${VASSIL_API_KEYS:-${VVOICE_API_KEYS:-}}

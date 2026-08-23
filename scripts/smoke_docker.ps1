@@ -72,6 +72,36 @@ function Wait-ForHealth {
   throw "Docker smoke server did not become healthy within $Timeout seconds"
 }
 
+function Assert-DirectImageFailsClosed {
+  $Stdout = New-TemporaryFile
+  $Stderr = New-TemporaryFile
+  try {
+    $Process = Start-Process `
+      -FilePath "docker" `
+      -ArgumentList @("run", "--rm", "vassil-studio:local") `
+      -Wait `
+      -PassThru `
+      -WindowStyle Hidden `
+      -RedirectStandardOutput $Stdout `
+      -RedirectStandardError $Stderr
+    $Output = @(
+      (Get-Content -LiteralPath $Stdout -Raw -ErrorAction SilentlyContinue),
+      (Get-Content -LiteralPath $Stderr -Raw -ErrorAction SilentlyContinue)
+    ) -join "`n"
+
+    if ($Process.ExitCode -eq 0) {
+      throw "Direct Docker image unexpectedly started without credentials"
+    }
+    if ($Output -notmatch "non-loopback.*requires owner authentication") {
+      throw "Direct Docker image failed for an unexpected reason: $($Output.Trim())"
+    }
+
+    Write-Host "direct image: anonymous non-loopback startup rejected"
+  } finally {
+    Remove-Item -LiteralPath $Stdout, $Stderr -Force -ErrorAction SilentlyContinue
+  }
+}
+
 try {
   Assert-DockerDaemon
   & (Join-Path $PSScriptRoot "setup_storage.ps1") | Out-Host
@@ -119,6 +149,8 @@ try {
       throw "Studio asset $AssetPath returned HTTP $($Asset.StatusCode)"
     }
   }
+
+  Assert-DirectImageFailsClosed
 
   Write-Host "Docker smoke check passed: $BaseUrl"
 } finally {

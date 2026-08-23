@@ -36,12 +36,23 @@ The compose service mounts:
 
 Copy `.env.example` to `.env` if you want local defaults for compose variables.
 
+Compose publishes port 8000 to `127.0.0.1` by default even though Uvicorn listens on the container
+interface. This keeps the host boundary local. `VASSIL_BIND_ADDRESS` controls the published host
+address and is validated by the application. The image itself defaults this assertion to
+`0.0.0.0`, so a direct `docker run` fails closed without credentials; Compose explicitly overrides
+it with the loopback publication address.
+
 To require browser login in Docker, set these values in `.env` before starting compose:
 
 ```powershell
 VASSIL_AUTH_REQUIRED=true
 VASSIL_SESSION_SECRET=<random value with at least 32 characters>
 ```
+
+Complete first-owner setup on the default loopback bind. For explicit trusted-LAN access, stop the
+container and then add `VASSIL_BIND_ADDRESS=0.0.0.0` while keeping owner auth enabled. A
+non-loopback container refuses to start without owner auth or an API key, and it also refuses a
+remote first-owner setup.
 
 Compose uses the `docker` runtime profile by default. For an HTTPS deployment, set
 `VASSIL_ENV=production` and `VASSIL_SECURE_COOKIES=true`; the app validates these production

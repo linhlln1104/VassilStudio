@@ -40,6 +40,7 @@ def test_voice_response_includes_reference_audio_url() -> None:
     assert payload["language"] == "vi"
     assert payload["audio_size_bytes"] == 1234
     assert "updated_at" in payload
+    assert "audio_path" not in payload
 
 
 def test_import_candidate_response_includes_audio_url(tmp_path) -> None:

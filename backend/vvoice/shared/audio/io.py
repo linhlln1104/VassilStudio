@@ -8,7 +8,7 @@ import librosa
 import numpy as np
 import soundfile as sf
 
-from vvoice.core.errors import AudioError
+from vvoice.core.errors import AudioError, PUBLIC_AUDIO_ERROR_MESSAGE
 
 
 def load_audio_bytes(data: bytes, target_sample_rate: int | None = None) -> tuple[np.ndarray, int]:
@@ -53,10 +53,7 @@ def _load_audio_bytes_with_ffmpeg(
 ) -> tuple[np.ndarray, int]:
     ffmpeg = _find_ffmpeg()
     if not ffmpeg:
-        raise AudioError(
-            "Cannot decode audio with libsndfile and ffmpeg is unavailable. "
-            "Install imageio-ffmpeg or convert the file to WAV/FLAC."
-        ) from soundfile_exc
+        raise AudioError(PUBLIC_AUDIO_ERROR_MESSAGE) from soundfile_exc
 
     command = [
         ffmpeg,
@@ -86,7 +83,7 @@ def _load_audio_bytes_with_ffmpeg(
             always_2d=False,
         )
     except Exception as exc:  # pragma: no cover - depends on ffmpeg codecs
-        raise AudioError(f"Cannot decode audio with ffmpeg: {exc}") from exc
+        raise AudioError(PUBLIC_AUDIO_ERROR_MESSAGE) from exc
 
     return np.asarray(samples, dtype=np.float32), int(sample_rate)
 

@@ -27,6 +27,7 @@ ENV VASSIL_ROOT=/app
 ENV VASSIL_CONFIG=/app/config/vassil.example.json
 ENV VASSIL_STUDIO_DIR=/app/frontend/studio-react/dist
 ENV VASSIL_ENV=docker
+ENV VASSIL_BIND_ADDRESS=0.0.0.0
 ENV VASSIL_LOG_LEVEL=INFO
 ENV VVOICE_ROOT=/app
 ENV VVOICE_CONFIG=/app/config/vvoice.example.json

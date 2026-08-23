@@ -9,7 +9,6 @@ class VoiceResponse(BaseModel):
     language: str
     reference_text: str
     reference_text_source: str
-    audio_path: str
     audio_size_bytes: int
     sample_rate: int
     duration_seconds: float
