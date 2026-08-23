@@ -311,7 +311,8 @@ class TtsJobService:
             tmp_path.replace(metadata_path)
 
     def _load(self, metadata_path: Path) -> TtsJob:
-        raw = json.loads(metadata_path.read_text(encoding="utf-8"))
+        with self._lock:
+            raw = json.loads(metadata_path.read_text(encoding="utf-8"))
         output_path = raw.get("output_path")
         max_attempts = int(raw.get("max_attempts") or self._max_attempts)
         return TtsJob(

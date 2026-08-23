@@ -57,4 +57,4 @@ COPY --from=studio-build /app/frontend/studio-react/dist ./frontend/studio-react
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "vvoice.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "vvoice.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

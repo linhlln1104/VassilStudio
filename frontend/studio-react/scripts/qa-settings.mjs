@@ -105,7 +105,7 @@ function settingsFixture() {
       runtime,
       security: {
         auth_required: false,
-        api_key_auth_enabled: false,
+        api_key_auth_enabled: true,
         session_cookie_name: 'vassil_session',
         session_ttl_seconds: 604800,
         secure_cookies: false,
@@ -113,7 +113,22 @@ function settingsFixture() {
       storage,
       license: { status: 'open-source', plan: 'GPL-3.0-or-later', billing_enabled: false },
     },
-    calls: { ready: 0, diagnostics: 0, warmup: [], cleanup: [], bundles: [] },
+    auth: {
+      auth_required: false,
+      setup_required: false,
+      authenticated: true,
+      api_key_auth_enabled: true,
+      user: null,
+    },
+    calls: {
+      ready: 0,
+      diagnostics: 0,
+      warmup: [],
+      cleanup: [],
+      bundles: [],
+      protectedRequests: [],
+      logouts: 0,
+    },
   }
 }
 
@@ -144,13 +159,13 @@ async function installApiFixture(page, fixture) {
     })
 
     if (url.pathname === '/api/v1/auth/status') {
-      return json({
-        auth_required: false,
-        setup_required: false,
-        authenticated: true,
-        api_key_auth_enabled: false,
-        user: null,
-      })
+      return json(fixture.auth)
+    }
+    if (url.pathname === '/api/v1/auth/logout' && method === 'POST') {
+      fixture.calls.logouts += 1
+      fixture.auth.authenticated = false
+      fixture.auth.user = null
+      return json({ logged_out: true })
     }
     if (url.pathname === '/health') {
       return json(fixture.health)
@@ -163,6 +178,10 @@ async function installApiFixture(page, fixture) {
       return json(fixture.readiness, fixture.readiness.status === 'ready' ? 200 : 503)
     }
     if (url.pathname === '/model-status') {
+      fixture.calls.protectedRequests.push({
+        path: url.pathname,
+        apiKey: request.headers()['x-vassil-api-key'] ?? null,
+      })
       return json(fixture.model)
     }
     if (url.pathname === '/diagnostics' && method === 'GET') {
@@ -268,6 +287,10 @@ try {
     })
     const fixture = settingsFixture()
     const browserErrors = captureBrowserErrors(page)
+    await page.addInitScript(() => {
+      window.localStorage.setItem('vassil.apiKey', 'retired-current-key')
+      window.localStorage.setItem('vvoice.apiKey', 'retired-legacy-key')
+    })
     await installApiFixture(page, fixture)
     await assertStudioResponse(page)
 
@@ -361,6 +384,110 @@ try {
     if (storageLayout.horizontalOverflow > 1) {
       throw new Error(`${viewport.name}: Storage settings overflowed by ${storageLayout.horizontalOverflow}px`)
     }
+
+    await page.getByRole('button', { name: 'Security', exact: true }).click()
+    await page.getByText('Browser access', { exact: true }).waitFor({ state: 'visible' })
+    const retiredKeys = await page.evaluate(() => ({
+      current: window.localStorage.getItem('vassil.apiKey'),
+      legacy: window.localStorage.getItem('vvoice.apiKey'),
+    }))
+    if (retiredKeys.current !== null || retiredKeys.legacy !== null) {
+      throw new Error(`${viewport.name}: retired localStorage API keys were not scrubbed`)
+    }
+
+    const apiKeyInput = page.locator('input[placeholder="Paste API key for protected endpoints"]')
+    const sessionPersistence = page.getByRole('checkbox', { name: 'Keep through reloads in this tab' })
+    const memorySecret = 'qa-memory-only-key'
+    const memoryRequest = page.waitForResponse((response) => new URL(response.url()).pathname === '/model-status')
+    await apiKeyInput.fill(memorySecret)
+    await page.getByRole('button', { name: 'Use key', exact: true }).click()
+    await memoryRequest
+    const memoryCredential = fixture.calls.protectedRequests.at(-1)?.apiKey
+    if (memoryCredential !== memorySecret) {
+      throw new Error(`${viewport.name}: memory-only API key was not used for the protected request`)
+    }
+    if (await apiKeyInput.inputValue()) {
+      throw new Error(`${viewport.name}: API key remained visible in the input after activation`)
+    }
+    if (await page.getByRole('button', { name: /Copy API key/i }).count()) {
+      throw new Error(`${viewport.name}: API key copy control is still exposed`)
+    }
+    const memoryStorage = await page.evaluate(() => ({
+      localCurrent: window.localStorage.getItem('vassil.apiKey'),
+      localLegacy: window.localStorage.getItem('vvoice.apiKey'),
+      session: window.sessionStorage.getItem('vassil.sessionApiKey'),
+      bodyContainsSecret: document.body.textContent?.includes('qa-memory-only-key') ?? false,
+    }))
+    if (
+      memoryStorage.localCurrent !== null
+      || memoryStorage.localLegacy !== null
+      || memoryStorage.session !== null
+      || memoryStorage.bodyContainsSecret
+    ) {
+      throw new Error(`${viewport.name}: memory-only API key escaped into browser storage or DOM`)
+    }
+
+    const securityLayout = await layoutMetrics(page)
+    if (securityLayout.horizontalOverflow > 1) {
+      throw new Error(`${viewport.name}: Security settings overflowed by ${securityLayout.horizontalOverflow}px`)
+    }
+    const securityScreenshot = path.join(outputDir, `settings-security-${viewport.name}.png`)
+    await page.screenshot({ path: securityScreenshot, fullPage: true })
+
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: 'Security', exact: true }).click()
+    await page.getByText('Not set', { exact: true }).waitFor({ state: 'visible' })
+
+    const sessionSecret = 'qa-tab-session-key'
+    await sessionPersistence.check()
+    await apiKeyInput.fill(sessionSecret)
+    const sessionRequest = page.waitForResponse((response) => new URL(response.url()).pathname === '/model-status')
+    await page.getByRole('button', { name: 'Use key', exact: true }).click()
+    await sessionRequest
+    const sessionStorageValue = await page.evaluate(() => window.sessionStorage.getItem('vassil.sessionApiKey'))
+    if (sessionStorageValue !== sessionSecret) {
+      throw new Error(`${viewport.name}: session-only API key did not persist in this tab`)
+    }
+
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: 'Security', exact: true }).click()
+    await page.getByText('Active', { exact: true }).waitFor({ state: 'visible' })
+    if (!(await sessionPersistence.isChecked())) {
+      throw new Error(`${viewport.name}: session-only key was not restored after reload`)
+    }
+
+    const ownerRequestsStart = fixture.calls.protectedRequests.length
+    fixture.auth.auth_required = true
+    fixture.auth.authenticated = true
+    fixture.auth.user = { account_id: 'qa-owner', username: 'owner', role: 'owner' }
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: 'Security', exact: true }).click()
+    await page.getByText('Standby', { exact: true }).waitFor({ state: 'visible' })
+    await page.getByText('Owner session active; the temporary key is not sent.', { exact: true })
+      .waitFor({ state: 'visible' })
+    const ownerRequests = fixture.calls.protectedRequests.slice(ownerRequestsStart)
+    if (!ownerRequests.length || ownerRequests.some((request) => request.apiKey !== null)) {
+      throw new Error(`${viewport.name}: owner session did not suppress the browser API key header`)
+    }
+    if (await page.evaluate(() => window.sessionStorage.getItem('vassil.sessionApiKey')) !== sessionSecret) {
+      throw new Error(`${viewport.name}: owner-session preference unexpectedly destroyed the temporary key`)
+    }
+
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+    await page.waitForURL('**/login')
+    const signedOutStorage = await page.evaluate(() => ({
+      session: window.sessionStorage.getItem('vassil.sessionApiKey'),
+      current: window.localStorage.getItem('vassil.apiKey'),
+      legacy: window.localStorage.getItem('vvoice.apiKey'),
+    }))
+    if (
+      fixture.calls.logouts !== 1
+      || signedOutStorage.session !== null
+      || signedOutStorage.current !== null
+      || signedOutStorage.legacy !== null
+    ) {
+      throw new Error(`${viewport.name}: sign-out did not clear temporary browser credentials`)
+    }
     if (browserErrors.length) {
       throw new Error(`${viewport.name}: browser errors: ${browserErrors.join(' | ')}`)
     }
@@ -375,9 +502,11 @@ try {
       runtimeLayout,
       accountLayout,
       storageLayout,
+      securityLayout,
       runtimeScreenshot,
       accountScreenshot,
       storageScreenshot,
+      securityScreenshot,
     })
     await page.close()
   }

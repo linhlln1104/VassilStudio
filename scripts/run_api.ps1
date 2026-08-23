@@ -71,4 +71,4 @@ $backendDir = Join-Path $root "backend"
 $frontendDir = Join-Path $root "frontend"
 $env:PYTHONPATH = if ($env:PYTHONPATH) { "$backendDir;$env:PYTHONPATH" } else { $backendDir }
 
-& $Python -m uvicorn vvoice.main:create_app --factory --host $BindAddress --port $Port --reload --reload-dir $backendDir --reload-dir $frontendDir
+& $Python -m uvicorn vvoice.main:create_app --factory --host $BindAddress --port $Port --no-access-log --reload --reload-dir $backendDir --reload-dir $frontendDir

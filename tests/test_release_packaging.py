@@ -29,9 +29,11 @@ def test_release_versions_are_synchronized() -> None:
 
 def test_compose_publishes_to_loopback_by_default() -> None:
     compose = ROOT.joinpath("docker", "docker-compose.yml").read_text(encoding="utf-8")
+    dockerfile = ROOT.joinpath("docker", "Dockerfile").read_text(encoding="utf-8")
 
     assert '${VASSIL_BIND_ADDRESS:-127.0.0.1}:${VASSIL_PORT:-${VVOICE_PORT:-8000}}:8000' in compose
     assert "VASSIL_BIND_ADDRESS: ${VASSIL_BIND_ADDRESS:-127.0.0.1}" in compose
+    assert '"--no-access-log"' in dockerfile
 
 
 def test_source_archive_contract_allows_only_storage_skeletons() -> None:

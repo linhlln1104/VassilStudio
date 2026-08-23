@@ -50,6 +50,8 @@ def reset_request_id(token) -> None:
 
 
 def configure_logging(*, debug: bool = False, log_level: str | None = None) -> None:
+    # Uvicorn includes query strings in its access line; Vassil's structured HTTP log is query-free.
+    logging.getLogger("uvicorn.access").disabled = True
     logger = logging.getLogger("vvoice")
     selected_level = (log_level or ("DEBUG" if debug else "INFO")).upper()
     numeric_level = getattr(logging, selected_level, None)

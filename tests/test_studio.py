@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import re
 from types import SimpleNamespace
 
@@ -9,6 +10,10 @@ from fastapi.testclient import TestClient
 from vvoice.app.auth.service import LocalAuthService
 from vvoice.app.studio.router import STATIC_DIR, _resolve_studio_dir, _safe_static_path, router
 from vvoice.core.config import SecuritySettings
+from vvoice.main import register_request_middleware
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_studio_route_and_react_assets_are_registered() -> None:
@@ -78,6 +83,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "/studio/brand/vassil-studio-voices.png" in script
     assert "vassil.apiKey" in script
     assert "vvoice.apiKey" in script
+    assert "vassil.sessionApiKey" in script
     assert "vassil.selectedVoiceId" in script
     assert "vvoice.selectedVoiceId" in script
     assert "vassil.generateDraft" in script
@@ -115,6 +121,10 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Disk free" in script
     assert "Storage needs attention" in script
     assert "Workspace settings" in script
+    assert "Owner sign-in is preferred" in script
+    assert "Keep through reloads in this tab" in script
+    assert "Copy API key" not in script
+    assert "VASSIL_API_KEYS" not in script
     assert "Confirm password" in script
     assert "Passwords do not match" in script
     assert "Checking workspace" in script
@@ -139,6 +149,35 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "2 voice profiles" not in script
     assert "color-scheme:light" in style
     assert "vvoice-soft-grid" not in style
+
+
+def test_browser_api_key_source_avoids_persistent_storage() -> None:
+    react_api = REPOSITORY_ROOT.joinpath(
+        "frontend", "studio-react", "src", "lib", "api.ts"
+    ).read_text(encoding="utf-8")
+    settings_view = REPOSITORY_ROOT.joinpath(
+        "frontend", "studio-react", "src", "features", "settings", "SettingsView.tsx"
+    ).read_text(encoding="utf-8")
+    legacy_app = REPOSITORY_ROOT.joinpath("frontend", "studio", "app.js").read_text(
+        encoding="utf-8"
+    )
+    legacy_page = REPOSITORY_ROOT.joinpath("frontend", "studio", "index.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "localStorage.setItem" not in react_api
+    assert "localStorage.setItem" not in legacy_app
+    assert "sessionStorage.setItem" in react_api
+    assert "sessionStorage.setItem" in legacy_app
+    assert "localStorage.removeItem" in react_api
+    assert "localStorage.removeItem" in legacy_app
+    assert "Copy API key" not in settings_view
+    assert "VASSIL_API_KEYS" not in settings_view
+    assert "unpkg.com" not in legacy_page
+    assert 'src="/studio/assets/lucide.min.js"' in legacy_page
+    legacy_icons = REPOSITORY_ROOT.joinpath("frontend", "studio", "lucide.min.js")
+    assert legacy_icons.is_file()
+    assert "@license lucide v1.23.0 - ISC" in legacy_icons.read_text(encoding="utf-8")[:200]
 
 
 def test_studio_dir_prefers_vassil_env(tmp_path, monkeypatch) -> None:
@@ -168,6 +207,7 @@ def test_studio_redirects_to_setup_until_local_session_exists(tmp_path) -> None:
     auth = LocalAuthService(settings)
     app = FastAPI()
     app.state.container = SimpleNamespace(settings=SimpleNamespace(security=settings), auth=auth)
+    register_request_middleware(app)
     app.include_router(router)
     client = TestClient(app)
 
@@ -182,3 +222,15 @@ def test_studio_redirects_to_setup_until_local_session_exists(tmp_path) -> None:
     authorized_response = client.get("/studio")
     assert authorized_response.status_code == 200
     assert "VassilStudio" in authorized_response.text
+    nonce_match = re.search(
+        r'<meta name="csp-style-nonce" content="([^"]+)"', authorized_response.text
+    )
+    assert nonce_match is not None
+    nonce = nonce_match.group(1)
+    content_security_policy = authorized_response.headers["content-security-policy"]
+    assert f"style-src-elem 'self' 'nonce-{nonce}'" in content_security_policy
+    assert "style-src-elem 'self' 'unsafe-inline'" not in content_security_policy
+    assert authorized_response.headers["cache-control"] == "no-store"
+
+    refreshed_response = client.get("/studio")
+    assert f'content="{nonce}"' not in refreshed_response.text

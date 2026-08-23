@@ -32,6 +32,7 @@ from vvoice.app.auth.router import router as auth_router
 from vvoice.domains.asr.router import router as asr_router
 from vvoice.domains.realtime.router import router as realtime_router
 from vvoice.shared.security.auth import require_api_key
+from vvoice.shared.security.headers import apply_browser_security_headers
 from vvoice.app.studio.router import router as studio_router
 from vvoice.app.system.router import router as system_router
 from vvoice.domains.tts.router import router as tts_router
@@ -99,6 +100,7 @@ def register_request_middleware(app: FastAPI) -> None:
             raise
         else:
             elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+            apply_browser_security_headers(request, response)
             response.headers[REQUEST_ID_HEADER] = request_id
             logger.info(
                 "http_request_completed",

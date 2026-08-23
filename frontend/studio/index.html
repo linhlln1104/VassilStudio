@@ -6,7 +6,7 @@
     <title>VassilStudio</title>
     <link rel="icon" type="image/png" href="/studio/assets/brand/vassil-mark.png" />
     <link rel="stylesheet" href="/studio/assets/styles.css" />
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+    <script src="/studio/assets/lucide.min.js" defer></script>
     <script type="module" src="/studio/assets/app.js"></script>
   </head>
   <body>
@@ -70,13 +70,16 @@
 
         <section class="sidebar-card auth-card">
           <label class="api-key-field">
-            <span>API key</span>
+            <span>Temporary API key</span>
             <input id="apiKeyInput" type="password" autocomplete="off" />
+          </label>
+          <label class="api-key-field">
+            <span><input id="persistApiKeyInput" type="checkbox" /> Keep through reloads in this tab</span>
           </label>
           <div class="sidebar-actions">
             <button id="saveApiKeyButton" class="command compact" type="button">
               <i data-lucide="key-round"></i>
-              <span>Save</span>
+              <span>Use key</span>
             </button>
             <button id="clearApiKeyButton" class="icon-button" type="button" title="Clear API key">
               <i data-lucide="x"></i>

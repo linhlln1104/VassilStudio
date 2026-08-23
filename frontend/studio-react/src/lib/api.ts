@@ -1,40 +1,137 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
-export const API_KEY_STORAGE_KEY = 'vassil.apiKey'
-const LEGACY_API_KEY_STORAGE_KEY = 'vvoice.apiKey'
+export const SESSION_API_KEY_STORAGE_KEY = 'vassil.sessionApiKey'
+const RETIRED_LOCAL_API_KEY_STORAGE_KEYS = ['vassil.apiKey', 'vvoice.apiKey'] as const
 
-export function getStoredApiKey(): string {
-  if (typeof window === 'undefined') {
-    return ''
-  }
+export type BrowserApiKeyPersistence = 'none' | 'memory' | 'session'
 
-  const value = window.localStorage.getItem(API_KEY_STORAGE_KEY)
-  if (value) {
-    return value
-  }
-
-  const legacyValue = window.localStorage.getItem(LEGACY_API_KEY_STORAGE_KEY)
-  if (legacyValue) {
-    window.localStorage.setItem(API_KEY_STORAGE_KEY, legacyValue)
-    return legacyValue
-  }
-
-  return ''
+export type BrowserApiKeyState = {
+  active: boolean
+  persistence: BrowserApiKeyPersistence
 }
 
-export function setStoredApiKey(apiKey: string): void {
+let browserApiKey = ''
+let browserApiKeyPersistence: BrowserApiKeyPersistence = 'none'
+let browserApiKeyInitialized = false
+let ownerSessionActive = false
+
+export function getBrowserApiKeyState(): BrowserApiKeyState {
+  initializeBrowserApiKey()
+  return {
+    active: Boolean(browserApiKey),
+    persistence: browserApiKeyPersistence,
+  }
+}
+
+export function setBrowserApiKey(
+  apiKey: string,
+  options: { persistForSession?: boolean } = {},
+): BrowserApiKeyState {
+  initializeBrowserApiKey()
+  browserApiKey = apiKey.trim()
+  if (!browserApiKey) {
+    return clearBrowserApiKey()
+  }
+
+  browserApiKeyPersistence = options.persistForSession && writeSessionApiKey(browserApiKey)
+    ? 'session'
+    : 'memory'
+  if (browserApiKeyPersistence === 'memory') {
+    removeSessionApiKey()
+  }
+  return getBrowserApiKeyState()
+}
+
+export function setBrowserApiKeyPersistence(persistForSession: boolean): BrowserApiKeyState {
+  initializeBrowserApiKey()
+  if (!browserApiKey) {
+    removeSessionApiKey()
+    browserApiKeyPersistence = 'none'
+    return getBrowserApiKeyState()
+  }
+
+  browserApiKeyPersistence = persistForSession && writeSessionApiKey(browserApiKey)
+    ? 'session'
+    : 'memory'
+  if (browserApiKeyPersistence === 'memory') {
+    removeSessionApiKey()
+  }
+  return getBrowserApiKeyState()
+}
+
+export function clearBrowserApiKey(): BrowserApiKeyState {
+  browserApiKey = ''
+  browserApiKeyPersistence = 'none'
+  removeSessionApiKey()
+  scrubRetiredLocalApiKeys()
+  return { active: false, persistence: 'none' }
+}
+
+export function getRequestApiKey(): string {
+  initializeBrowserApiKey()
+  return ownerSessionActive ? '' : browserApiKey
+}
+
+function initializeBrowserApiKey(): void {
+  if (browserApiKeyInitialized || typeof window === 'undefined') {
+    return
+  }
+  browserApiKeyInitialized = true
+  scrubRetiredLocalApiKeys()
+  const sessionValue = readSessionApiKey()
+  if (sessionValue) {
+    browserApiKey = sessionValue
+    browserApiKeyPersistence = 'session'
+  }
+}
+
+function scrubRetiredLocalApiKeys(): void {
   if (typeof window === 'undefined') {
     return
   }
-
-  const normalized = apiKey.trim()
-  if (normalized) {
-    window.localStorage.setItem(API_KEY_STORAGE_KEY, normalized)
-    window.localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY)
-  } else {
-    window.localStorage.removeItem(API_KEY_STORAGE_KEY)
-    window.localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY)
+  try {
+    for (const key of RETIRED_LOCAL_API_KEY_STORAGE_KEYS) {
+      window.localStorage.removeItem(key)
+    }
+  } catch {
+    // Browser storage may be unavailable; memory-only operation remains usable.
   }
 }
+
+function readSessionApiKey(): string {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+  try {
+    return window.sessionStorage.getItem(SESSION_API_KEY_STORAGE_KEY)?.trim() ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function writeSessionApiKey(value: string): boolean {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  try {
+    window.sessionStorage.setItem(SESSION_API_KEY_STORAGE_KEY, value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function removeSessionApiKey(): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    window.sessionStorage.removeItem(SESSION_API_KEY_STORAGE_KEY)
+  } catch {
+    // Browser storage may be unavailable; the in-memory key is still cleared.
+  }
+}
+
+initializeBrowserApiKey()
 
 export type HealthResponse = {
   status: string
@@ -277,7 +374,7 @@ async function fetchProbe(path: string): Promise<ProbeResponse> {
 }
 
 function fetchWithAuth(path: string, init?: RequestInit): Promise<Response> {
-  const apiKey = getStoredApiKey()
+  const apiKey = path.startsWith('/api/v1/auth/') ? '' : getRequestApiKey()
   return fetch(`${API_BASE_URL}${path}`, {
     ...init,
     credentials: init?.credentials ?? 'same-origin',
@@ -348,23 +445,37 @@ function errorDetailToString(value: unknown): string {
 }
 
 export const api = {
-  authStatus: () => fetchJson<AuthStatusResponse>('/api/v1/auth/status'),
-  authSetup: (payload: { username: string; password: string }) =>
-    fetchJson<AuthSessionResponse>('/api/v1/auth/setup', {
+  authStatus: async () => {
+    const status = await fetchJson<AuthStatusResponse>('/api/v1/auth/status')
+    ownerSessionActive = status.auth_required && status.authenticated
+    return status
+  },
+  authSetup: async (payload: { username: string; password: string }) => {
+    const session = await fetchJson<AuthSessionResponse>('/api/v1/auth/setup', {
       method: 'POST',
       body: JSON.stringify(payload),
       headers: { 'Content-Type': 'application/json' },
-    }),
-  authLogin: (payload: { username: string; password: string }) =>
-    fetchJson<AuthSessionResponse>('/api/v1/auth/login', {
+    })
+    ownerSessionActive = true
+    return session
+  },
+  authLogin: async (payload: { username: string; password: string }) => {
+    const session = await fetchJson<AuthSessionResponse>('/api/v1/auth/login', {
       method: 'POST',
       body: JSON.stringify(payload),
       headers: { 'Content-Type': 'application/json' },
-    }),
-  authLogout: () =>
-    fetchJson<AuthLogoutResponse>('/api/v1/auth/logout', {
-      method: 'POST',
-    }),
+    })
+    ownerSessionActive = true
+    return session
+  },
+  authLogout: async () => {
+    try {
+      return await fetchJson<AuthLogoutResponse>('/api/v1/auth/logout', { method: 'POST' })
+    } finally {
+      ownerSessionActive = false
+      clearBrowserApiKey()
+    }
+  },
   authChangePassword: (payload: { currentPassword: string; newPassword: string }) =>
     fetchJson<AuthPasswordChangeResponse>('/api/v1/auth/change-password', {
       method: 'POST',

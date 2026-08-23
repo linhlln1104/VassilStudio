@@ -162,7 +162,8 @@ retention window without touching active jobs.
 Every HTTP response includes `X-Request-ID`. Clients may send their own `X-Request-ID`; otherwise the
 server generates one. Application logs are structured JSON under the `vvoice` logger and include
 request IDs for HTTP requests plus job IDs for ASR/TTS job lifecycle events. API keys and query strings
-are not logged by the app request middleware.
+are not logged by the app request middleware. Uvicorn's query-bearing access log is disabled by the
+application and supported launchers.
 
 ## Verify
 
@@ -296,6 +297,17 @@ For smoke scripts, set:
 ```powershell
 $env:VASSIL_API_KEY="change-me"
 ```
+
+For interactive Studio use, prefer the local owner session. Settings -> Browser access accepts an
+automation key only as a temporary fallback: it remains in memory by default, or in tab-scoped
+`sessionStorage` when **Keep through reloads in this tab** is enabled. The form is cleared after
+activation, old `localStorage` key entries are scrubbed, and logout clears the temporary key.
+
+Studio HTML receives a fresh style nonce on every response. The application CSP permits scripts and
+assets only from the same origin, permits only nonce-authorized runtime style elements, and blocks
+framing and plugins. Responses also set MIME-sniffing, referrer, opener, permissions, and frame
+protections; WebSockets are limited to the current origin, nonced HTML and auth responses are
+`no-store`, and HTTPS responses include HSTS.
 
 Legacy `VVOICE_*` environment variables and `X-VVoice-API-Key` are still accepted for existing local setups.
 

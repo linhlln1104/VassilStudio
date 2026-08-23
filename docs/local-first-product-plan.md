@@ -245,7 +245,9 @@ Thứ tự đề xuất từ thời điểm hiện tại:
 - Không lưu session token vào localStorage.
 - Logout xóa cookie và session server-side.
 - Diagnostics bundle mask API keys, session secret, cookies, Authorization headers.
-- Browser UI chỉ hiển thị API key dạng masked.
+- Browser UI không đọc lại hoặc hiển thị API key sau khi kích hoạt; mặc định chỉ giữ trong memory,
+  tùy chọn giữ trong `sessionStorage` của tab hiện tại và xóa khi logout.
+- CSP giới hạn script cùng origin, dùng nonce ngẫu nhiên theo response cho runtime style và chặn frame.
 - API key automation tiếp tục hoạt động cho scripts hiện có.
 
 ## Landing Page MVP Detail
@@ -379,3 +381,4 @@ Các bước tiếp theo nên là hardening ngoài phạm vi MVP nhỏ:
 | 2026-07-10 | Reproducible Phonemizer Install | Done | Removed the unavailable Windows `piper_phonemize` index dependency; ZipVoice now uses `phonemizer-fork` with bundled `espeakng-loader`, stable VI/EN output tests, and fresh-install CI coverage |
 | 2026-08-11 | Frontend Dependency Audit | Done | Patched PostCSS/Nanoid transitive advisories and made high-severity npm audit failures block `scripts/check.ps1 -CI` |
 | 2026-08-24 | Diagnostics Privacy P1 | Done | Logical storage aliases, bucketed metrics, per-download host metadata opt-in, privacy regression tests, desktop/mobile Playwright QA, live archive scan, and `scripts/check.ps1` with 143 tests |
+| 2026-08-24 | Browser Security P1 | Done | Owner-session priority, memory/session-only browser API keys, retired `localStorage` cleanup, nonce-based CSP, standard security headers, desktop/mobile Playwright credential QA, and `scripts/check.ps1` with 147 tests |

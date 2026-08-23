@@ -7,6 +7,7 @@
 - Audit-time release decision: **NO-GO for Docker or any non-loopback exposure; usable for controlled localhost development**
 - P0 remediation status: **RESOLVED AND VERIFIED on 2026-08-24**
 - Diagnostics privacy P1 status: **RESOLVED AND VERIFIED on 2026-08-24**
+- Browser security P1 status: **RESOLVED AND VERIFIED on 2026-08-24**
 
 ## P0 remediation update
 
@@ -37,11 +38,28 @@ section above closes only the Security Boundary gate; the focused P1 closure fol
   passed with `scripts/check.ps1` (`143 passed`, Ruff, React lint/build, OpenAPI, auth smoke, Compose
   validation), live default/opt-in archive probes, and Settings Playwright QA at desktop/mobile.
 
+## P1 browser security remediation update
+
+- Studio now prefers the HttpOnly owner session and suppresses the temporary API-key header whenever
+  that session is active.
+- Browser-entered automation keys remain in memory by default. Operators can explicitly retain one
+  only in the current tab with `sessionStorage`; retired `localStorage` entries are scrubbed.
+- Settings clears the input after activation, no longer offers post-save copy, and clears temporary
+  credentials on logout.
+- Responses now carry a restrictive CSP, per-response style nonce, frame/MIME/referrer/opener and
+  permissions protections, same-origin-only WebSockets, no-store nonce HTML/auth caching, and
+  HTTPS-only HSTS.
+- Uvicorn access logs are disabled across application/native/Docker launch paths so browser
+  WebSocket query credentials cannot be persisted; structured request logs remain query-free.
+- Verification passed with `scripts/check.ps1` (`147 passed`, Ruff, React lint/build, OpenAPI, auth
+  smoke, Compose validation), live header/CSP probes, and Settings Playwright credential regression
+  QA at desktop/mobile.
+
 ## Executive summary
 
 The main workflows work: a local owner can sign in, manage a voice profile, render speech, transcribe audio, inspect jobs, use realtime ASR, and inspect runtime health. The visual system is consistent and responsive, and the automated baseline is healthy.
 
-The P0 remote-exposure and response-disclosure boundaries plus the P1 diagnostics privacy contract are now remediated. The release remains limited to controlled localhost use until the other P1 reliability, browser-security, access-control, and workflow findings below are resolved.
+The P0 remote-exposure and response-disclosure boundaries plus the P1 diagnostics privacy and browser-security contracts are now remediated. The release remains limited to controlled localhost use until the other P1 reliability, access-control, and workflow findings below are resolved.
 
 The largest product gaps are not cosmetic. Running TTS cancellation is delayed until inference returns, Generate can enqueue duplicates after the POST completes, Local files creates a voice immediately behind an ambiguous action, and Transcribe promises timestamps that the API does not provide.
 
@@ -117,6 +135,8 @@ Use logical aliases such as `DATA_ROOT/voices`, redact home/workspace prefixes, 
 
 ### VS-QA-004 - P1 - Browser API keys are persisted in `localStorage` without browser hardening
 
+**Remediation status: RESOLVED**
+
 **Evidence**
 
 - `frontend/studio-react/src/lib/api.ts:2-35` reads, migrates, and writes the API key in `localStorage`.
@@ -130,6 +150,21 @@ Any same-origin script execution can read the long-lived automation key. A share
 **Required change**
 
 Prefer owner sessions for the UI. If browser API-key entry remains, keep it in memory by default, offer session-only persistence, never provide one-click copy after save, and add a restrictive CSP plus standard security headers.
+
+**Resolution evidence**
+
+- `frontend/studio-react/src/lib/api.ts` keeps keys in memory or tab-scoped `sessionStorage`, removes
+  retired local entries, omits the key for auth routes and active owner sessions, and clears it on
+  logout.
+- Settings no longer reloads the secret into the form or exposes a copy action after activation.
+- `backend/vvoice/shared/security/headers.py` applies the browser header policy; Studio HTML and the
+  React entry point coordinate a fresh cryptographic style nonce for each response.
+- `backend/vvoice/core/observability.py` and supported launchers disable Uvicorn's query-bearing
+  access log while retaining structured, query-free request events.
+- The legacy fallback serves its pinned Lucide runtime from the application origin; browser QA
+  confirmed 43 icons with no external request or CSP error.
+- Static regression tests and Playwright cover memory loss on reload, tab persistence, owner-session
+  precedence, legacy-key cleanup, DOM non-disclosure, and logout cleanup.
 
 ### VS-QA-005 - P1 - Cancelling a running TTS job does not interrupt inference
 
@@ -303,9 +338,9 @@ Resolve `node.exe`, prepend its parent for npm child processes, and emit an acti
 
 ## Recommended implementation order
 
-1. **Security boundary:** protect detailed docs/readiness and finish browser response security headers; loopback defaults, response sanitization, and diagnostics path filtering are resolved.
+1. **Security boundary:** protect detailed docs/readiness; loopback defaults, response sanitization, diagnostics path filtering, and browser response security are resolved.
 2. **Runtime control:** make cancellation truthful/effective, add idempotency, lock duplicate Generate actions, and derive UI state from server jobs.
 3. **Voice/ASR product closure:** add voice import review/quality checks and either implement timed transcripts or remove the timestamp promise.
-4. **Account/privacy:** replace browser-persisted API keys, preserve deep links, and scope/clear local drafts; diagnostics sharing is now explicit.
+4. **Account/privacy:** preserve deep links and scope/clear local drafts; browser API-key persistence is removed and diagnostics sharing is now explicit.
 5. **Product completeness:** VI/EN UI localization, output naming/formats, realtime device selection, model management, backup/restore, and log workflow.
 6. **QA gate:** portable Node invocation, Axe checks, authenticated real-browser smoke, and a later opt-in Docker/language matrix release pass.

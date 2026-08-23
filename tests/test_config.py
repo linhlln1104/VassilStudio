@@ -57,6 +57,7 @@ def test_run_api_loads_local_env_file() -> None:
     assert "Import-LocalEnvFile" in script
     assert 'Join-Path $root ".env"' in script
     assert "--host $BindAddress" in script
+    assert "--no-access-log" in script
 
 
 def test_parse_settings_resolves_paths() -> None:

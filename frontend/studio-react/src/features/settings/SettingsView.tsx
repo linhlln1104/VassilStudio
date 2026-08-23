@@ -2,9 +2,7 @@ import { type FormEvent, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronDown,
-  CheckCircle2,
   BadgeCheck,
-  Copy,
   Database,
   Eraser,
   Eye,
@@ -28,8 +26,10 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/components/ui/use-toast'
 import {
   api,
-  getStoredApiKey,
-  setStoredApiKey,
+  clearBrowserApiKey,
+  getBrowserApiKeyState,
+  setBrowserApiKey,
+  setBrowserApiKeyPersistence,
   type DiagnosticsStorageItem,
 } from '@/lib/api'
 import { API_BRAND_NAME } from '@/lib/brand'
@@ -90,10 +90,12 @@ const settingsTabs: Array<{ value: SettingsTab; label: string }> = [
 
 export function SettingsView() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('runtime')
-  const [apiKeyDraft, setApiKeyDraft] = useState(() => getStoredApiKey())
-  const [apiKeySaved, setApiKeySaved] = useState(() => Boolean(getStoredApiKey()))
+  const [apiKeyDraft, setApiKeyDraft] = useState('')
+  const [apiKeySaved, setApiKeySaved] = useState(() => getBrowserApiKeyState().active)
+  const [persistApiKeyForSession, setPersistApiKeyForSession] = useState(
+    () => getBrowserApiKeyState().persistence === 'session',
+  )
   const [showApiKey, setShowApiKey] = useState(false)
-  const [copied, setCopied] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -129,6 +131,9 @@ export function SettingsView() {
     queryFn: api.authStatus,
     refetchInterval: 30000,
   })
+  const ownerSessionActive = Boolean(
+    authQuery.data?.auth_required && authQuery.data.authenticated,
+  )
   const diagnosticsQuery = useQuery({
     queryKey: ['diagnostics'],
     queryFn: api.diagnostics,
@@ -275,29 +280,32 @@ export function SettingsView() {
     if (!normalized) {
       return
     }
-    setStoredApiKey(normalized)
-    setApiKeyDraft(normalized)
-    setApiKeySaved(true)
+    const state = setBrowserApiKey(normalized, { persistForSession: persistApiKeyForSession })
+    setApiKeyDraft('')
+    setApiKeySaved(state.active)
+    setPersistApiKeyForSession(state.persistence === 'session')
+    setShowApiKey(false)
     void modelQuery.refetch()
     toast({
-      title: 'API key saved',
-      description: 'This browser will use the key for protected API requests.',
-      variant: 'success',
+      title: state.persistence === 'session' ? 'API key active for this tab' : 'API key active in memory',
+      description: state.persistence === 'session'
+        ? 'The key survives reloads in this tab and is cleared on sign-out.'
+        : 'The key is cleared on reload, sign-out, or tab close.',
+      variant: persistApiKeyForSession && state.persistence !== 'session' ? 'danger' : 'success',
     })
   }
 
-  const handleCopyKey = async () => {
-    if (!apiKeyDraft || typeof navigator === 'undefined') {
+  const handleApiKeyPersistenceChange = (persistForSession: boolean) => {
+    setPersistApiKeyForSession(persistForSession)
+    if (!apiKeySaved) {
       return
     }
-    try {
-      await navigator.clipboard.writeText(apiKeyDraft)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
-    } catch {
+    const state = setBrowserApiKeyPersistence(persistForSession)
+    setPersistApiKeyForSession(state.persistence === 'session')
+    if (persistForSession && state.persistence !== 'session') {
       toast({
-        title: 'Copy failed',
-        description: 'Clipboard access is unavailable in this browser.',
+        title: 'Session storage unavailable',
+        description: 'The API key remains memory-only.',
         variant: 'danger',
       })
     }
@@ -305,14 +313,15 @@ export function SettingsView() {
 
   const clearApiKey = () => {
     setApiKeyDraft('')
-    setStoredApiKey('')
+    clearBrowserApiKey()
     setApiKeySaved(false)
-    setCopied(false)
+    setPersistApiKeyForSession(false)
+    setShowApiKey(false)
     setClearKeyConfirmOpen(false)
     void modelQuery.refetch()
     toast({
       title: 'API key cleared',
-      description: 'Protected requests no longer use a browser-stored key.',
+      description: 'Protected requests no longer use a temporary browser key.',
       variant: 'success',
     })
   }
@@ -445,20 +454,20 @@ export function SettingsView() {
 
       {activeTab === 'security' ? (
         <Card>
-        <CardHeader>
+          <CardHeader>
           <div>
-            <div className="text-sm font-semibold text-slate-950">Security</div>
+            <div className="text-sm font-semibold text-slate-950">Browser access</div>
             <div className="mt-1 text-xs text-slate-600">
-              Store a local browser key when VASSIL_API_KEYS is enabled.
+              Owner sign-in is preferred. Use an automation key only for temporary browser access.
             </div>
           </div>
           <LockKeyhole className="size-5 text-slate-500" />
-        </CardHeader>
-        <CardContent>
+          </CardHeader>
+          <CardContent>
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
             <label className="block min-w-0">
               <span className="mb-2 block text-xs font-semibold text-slate-700">
-                {API_BRAND_NAME} key
+                {API_BRAND_NAME} automation key
               </span>
               <div className="flex min-w-0 rounded-md border border-slate-300 bg-white focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100">
                 <input
@@ -466,16 +475,18 @@ export function SettingsView() {
                   type={showApiKey ? 'text' : 'password'}
                   value={apiKeyDraft}
                   placeholder="Paste API key for protected endpoints"
+                  autoComplete="off"
+                  disabled={!authQuery.data?.api_key_auth_enabled}
                   onChange={(event) => {
                     setApiKeyDraft(event.target.value)
-                    setApiKeySaved(false)
-                    setCopied(false)
                   }}
                 />
                 <button
                   className="grid h-8 w-8 place-items-center text-slate-500 hover:text-slate-950"
                   type="button"
+                  disabled={!authQuery.data?.api_key_auth_enabled || !apiKeyDraft}
                   aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                  title={showApiKey ? 'Hide API key' : 'Show API key'}
                   onClick={() => setShowApiKey((value) => !value)}
                 >
                   {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -484,40 +495,53 @@ export function SettingsView() {
             </label>
             <div className="flex flex-wrap items-end gap-2">
               <Button
-                disabled={!apiKeyDraft.trim() || apiKeyDraft.trim() === getStoredApiKey()}
+                disabled={!authQuery.data?.api_key_auth_enabled || !apiKeyDraft.trim()}
                 onClick={handleApiKeySave}
               >
                 <KeyRound className="size-4" />
-                Save key
-              </Button>
-              <Button
-                className="w-9 px-0"
-                variant="secondary"
-                disabled={!apiKeyDraft}
-                aria-label={copied ? 'API key copied' : 'Copy API key'}
-                title={copied ? 'Copied' : 'Copy API key'}
-                onClick={() => { void handleCopyKey() }}
-              >
-                {copied ? <CheckCircle2 className="size-4" /> : <Copy className="size-4" />}
+                Use key
               </Button>
               <Button
                 className="w-9 border-red-200 px-0 text-red-700 hover:bg-red-50 hover:text-red-800"
                 variant="secondary"
-                disabled={!apiKeyDraft && !getStoredApiKey()}
-                aria-label="Clear local API key"
-                title="Clear local API key"
+                disabled={!apiKeyDraft && !apiKeySaved}
+                aria-label="Clear temporary API key"
+                title="Clear temporary API key"
                 onClick={() => setClearKeyConfirmOpen(true)}
               >
                 <Trash2 className="size-4" />
               </Button>
             </div>
           </div>
-          <p className="mt-2 text-xs font-medium leading-5 text-slate-600">
-            {apiKeySaved
-              ? 'Saved locally in this browser. Server-side secrets are not written by the UI.'
-              : 'Leave empty when API key auth is disabled.'}
-          </p>
-        </CardContent>
+          <div className="mt-3 flex flex-col gap-2 border-t border-slate-200 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
+              <Badge variant={apiKeySaved ? ownerSessionActive ? 'warning' : 'success' : 'muted'}>
+                {apiKeySaved ? ownerSessionActive ? 'Standby' : 'Active' : 'Not set'}
+              </Badge>
+              <span>
+                {apiKeySaved
+                  ? ownerSessionActive
+                    ? 'Owner session active; the temporary key is not sent.'
+                    : persistApiKeyForSession
+                    ? 'Available through reloads in this tab.'
+                    : 'Memory-only until this page reloads.'
+                  : authQuery.data?.api_key_auth_enabled
+                    ? 'Owner session remains the preferred access method.'
+                    : 'Automation key auth is not configured.'}
+              </span>
+            </div>
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+              <input
+                className="size-4 accent-blue-600"
+                type="checkbox"
+                checked={persistApiKeyForSession}
+                disabled={!authQuery.data?.api_key_auth_enabled}
+                onChange={(event) => handleApiKeyPersistenceChange(event.target.checked)}
+              />
+              Keep through reloads in this tab
+            </label>
+          </div>
+          </CardContent>
         </Card>
       ) : null}
 
@@ -546,8 +570,8 @@ export function SettingsView() {
 
       <ConfirmDialog
         open={clearKeyConfirmOpen}
-        title="Clear local API key?"
-        description={`This removes the saved ${API_BRAND_NAME} key from this browser. Server-side API keys are not changed.`}
+        title="Clear temporary API key?"
+        description={`This removes the active ${API_BRAND_NAME} key from memory and this tab's session storage. Server-side keys are unchanged.`}
         confirmLabel="Clear key"
         busyLabel="Clearing"
         onOpenChange={setClearKeyConfirmOpen}

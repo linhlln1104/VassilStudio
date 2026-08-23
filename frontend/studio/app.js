@@ -5,8 +5,9 @@ import { $, formatBytes, formatDuration, showToast, withBusy } from "./src/ui.js
 
 const api = createApi(getApiKey);
 const { authFetch, ensureOk, fetchJson, withAuthQuery } = createHttp(getApiKey);
-const API_KEY_STORAGE_KEY = "vassil.apiKey";
-const LEGACY_API_KEY_STORAGE_KEY = "vvoice.apiKey";
+const SESSION_API_KEY_STORAGE_KEY = "vassil.sessionApiKey";
+const RETIRED_LOCAL_API_KEY_STORAGE_KEYS = ["vassil.apiKey", "vvoice.apiKey"];
+let browserApiKey = "";
 
 document.addEventListener("DOMContentLoaded", () => {
   loadApiKey();
@@ -26,6 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function wireEvents() {
   $("#saveApiKeyButton").addEventListener("click", saveApiKey);
   $("#clearApiKeyButton").addEventListener("click", clearApiKey);
+  $("#persistApiKeyInput").addEventListener("change", updateApiKeyPersistence);
   $("#refreshStatusButton").addEventListener("click", refreshRuntime);
   $("#warmupButton").addEventListener("click", warmup);
   $("#refreshVoicesButton").addEventListener("click", refreshVoices);
@@ -1586,17 +1588,25 @@ function resetLiveLevel() {
 }
 
 function loadApiKey() {
-  $("#apiKeyInput").value = getApiKey();
+  scrubRetiredLocalApiKeys();
+  try {
+    browserApiKey = window.sessionStorage.getItem(SESSION_API_KEY_STORAGE_KEY)?.trim() || "";
+  } catch {
+    browserApiKey = "";
+  }
+  $("#apiKeyInput").value = "";
+  $("#persistApiKeyInput").checked = Boolean(browserApiKey);
   document.body.classList.toggle("has-api-key", Boolean(getApiKey()));
 }
 
 function saveApiKey() {
   const value = $("#apiKeyInput").value.trim();
   if (value) {
-    window.localStorage.setItem(API_KEY_STORAGE_KEY, value);
-    window.localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY);
+    browserApiKey = value;
+    $("#apiKeyInput").value = "";
+    updateApiKeyPersistence();
     document.body.classList.add("has-api-key");
-    showToast("API key saved");
+    showToast($("#persistApiKeyInput").checked ? "API key active for this tab" : "API key active in memory");
     refreshRuntime();
     refreshVoices();
     refreshImportCandidates();
@@ -1608,9 +1618,11 @@ function saveApiKey() {
 }
 
 function clearApiKey() {
-  window.localStorage.removeItem(API_KEY_STORAGE_KEY);
-  window.localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY);
+  browserApiKey = "";
+  removeSessionApiKey();
+  scrubRetiredLocalApiKeys();
   $("#apiKeyInput").value = "";
+  $("#persistApiKeyInput").checked = false;
   document.body.classList.remove("has-api-key");
   showToast("API key cleared");
   refreshRuntime();
@@ -1621,18 +1633,37 @@ function clearApiKey() {
 }
 
 function getApiKey() {
-  const value = window.localStorage.getItem(API_KEY_STORAGE_KEY);
-  if (value) {
-    return value;
-  }
+  return browserApiKey;
+}
 
-  const legacyValue = window.localStorage.getItem(LEGACY_API_KEY_STORAGE_KEY);
-  if (legacyValue) {
-    window.localStorage.setItem(API_KEY_STORAGE_KEY, legacyValue);
-    return legacyValue;
+function updateApiKeyPersistence() {
+  if (!browserApiKey || !$("#persistApiKeyInput").checked) {
+    removeSessionApiKey();
+    return;
   }
+  try {
+    window.sessionStorage.setItem(SESSION_API_KEY_STORAGE_KEY, browserApiKey);
+  } catch {
+    $("#persistApiKeyInput").checked = false;
+  }
+}
 
-  return "";
+function removeSessionApiKey() {
+  try {
+    window.sessionStorage.removeItem(SESSION_API_KEY_STORAGE_KEY);
+  } catch {
+    // Memory-only operation remains available when browser storage is blocked.
+  }
+}
+
+function scrubRetiredLocalApiKeys() {
+  try {
+    for (const key of RETIRED_LOCAL_API_KEY_STORAGE_KEYS) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Retired storage cannot be accessed in this browser context.
+  }
 }
 
 function disableDownload() {

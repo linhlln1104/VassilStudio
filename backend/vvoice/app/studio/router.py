@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import secrets
 
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 
 from vvoice.core.env import first_env
@@ -50,43 +51,43 @@ else:
 
 
 @router.get("/", include_in_schema=False)
-async def product_index():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+async def product_index(request: Request):
+    return _studio_html_response(request)
 
 
 @router.get("/login", include_in_schema=False)
-async def login_page():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+async def login_page(request: Request):
+    return _studio_html_response(request)
 
 
 @router.get("/setup", include_in_schema=False)
-async def setup_page():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+async def setup_page(request: Request):
+    return _studio_html_response(request)
 
 
 @router.get("/privacy", include_in_schema=False)
-async def privacy_page():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+async def privacy_page(request: Request):
+    return _studio_html_response(request)
 
 
 @router.get("/license", include_in_schema=False)
-async def license_page():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+async def license_page(request: Request):
+    return _studio_html_response(request)
 
 
 @router.get("/support", include_in_schema=False)
-async def support_page():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+async def support_page(request: Request):
+    return _studio_html_response(request)
 
 
 @router.get("/operations", include_in_schema=False)
-async def operations_page():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+async def operations_page(request: Request):
+    return _studio_html_response(request)
 
 
 @router.get("/changelog", include_in_schema=False)
-async def changelog_page():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+async def changelog_page(request: Request):
+    return _studio_html_response(request)
 
 
 @router.get("/studio", include_in_schema=False)
@@ -95,7 +96,7 @@ async def studio_index(request: Request):
     if redirect:
         return redirect
 
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    return _studio_html_response(request)
 
 
 @router.get("/studio/{path:path}", include_in_schema=False)
@@ -108,7 +109,16 @@ async def studio_static_file_or_index(request: Request, path: str):
     if redirect:
         return redirect
 
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    return _studio_html_response(request)
+
+
+def _studio_html_response(request: Request) -> HTMLResponse:
+    style_nonce = secrets.token_urlsafe(24)
+    request.state.style_nonce = style_nonce
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    nonce_meta = f'<meta name="csp-style-nonce" content="{style_nonce}" />'
+    page = page.replace("</head>", f"    {nonce_meta}\n  </head>", 1)
+    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
 
 def _safe_static_path(path: str) -> Path | None:

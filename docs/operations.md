@@ -141,6 +141,11 @@ To enable trusted-LAN access:
 API-key-only automation is also accepted for a non-loopback bind. Treat the key as a password and
 do not place it in URLs, logs, screenshots, or committed files.
 
+Browser WebSocket authentication may carry a temporary key in the connection query because browser
+WebSocket APIs cannot set an authorization header. VassilStudio disables Uvicorn's raw access log and
+its structured logger omits query strings. Any reverse proxy added by an operator must also omit or
+redact query strings from access logs. Owner-session authentication avoids the query credential.
+
 ## Auth Operations
 
 Studio local auth is disabled by default for developer convenience. When enabled:
@@ -151,7 +156,16 @@ Studio local auth is disabled by default for developer convenience. When enabled
 - Settings can change the owner password and revoke other active sessions.
 - Repeated failed login or password change attempts return `429` with `Retry-After`.
 - API key auth remains available for scripts and integrations.
+- Browser use prefers the owner session. A key entered under Settings -> Browser access is held in
+  memory unless the operator explicitly keeps it through reloads in the current tab.
+- Temporary browser keys are not restored from `localStorage`, are not shown again after activation,
+  and are cleared on logout or when the tab-scoped session ends.
 - Runtime profile, effective log level, and cookie security are visible in privacy-filtered diagnostics.
+
+All responses include CSP, frame, MIME-sniffing, referrer, opener, and permissions protections.
+Studio HTML uses a fresh CSP style nonce for runtime modal styles and is not cached. WebSocket
+connections are limited to the current request origin. Auth responses also use `Cache-Control:
+no-store`; HSTS is emitted only for HTTPS requests.
 
 If the owner password is lost, stop the app, back up `data/auth.sqlite3`, then remove or replace the
 auth database and run `/setup` again. This resets local accounts and sessions only; voice profiles and

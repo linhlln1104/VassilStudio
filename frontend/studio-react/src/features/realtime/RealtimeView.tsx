@@ -23,7 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { SegmentedControl } from '@/components/ui/segmented-control'
-import { api, getStoredApiKey } from '@/lib/api'
+import { api, getRequestApiKey } from '@/lib/api'
 import {
   VOICE_LANGUAGES,
   normalizeVoiceLanguage,
@@ -870,7 +870,7 @@ function buildRealtimeWebSocketUrl(language: VoiceLanguage) {
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   url.searchParams.set('language', language)
 
-  const apiKey = getStoredApiKey()
+  const apiKey = getRequestApiKey()
   if (apiKey) {
     url.searchParams.set('api_key', apiKey)
   }

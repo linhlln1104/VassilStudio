@@ -28,6 +28,7 @@ by those components.
 | ONNX Runtime | 1.27.0 | MIT | https://github.com/microsoft/onnxruntime |
 | PyTorch | 2.11.0 CPU | BSD-3-Clause | https://github.com/pytorch/pytorch |
 | TorchAudio | 2.11.0 CPU | BSD-2-Clause | https://github.com/pytorch/audio |
+| Lucide | 1.23.0 | ISC | https://github.com/lucide-icons/lucide |
 
 The Python wheel metadata installed in the runtime and
 `frontend/studio-react/package-lock.json` provide the detailed package inventory. Their upstream

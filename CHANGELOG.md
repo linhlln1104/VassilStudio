@@ -46,6 +46,18 @@ All notable VassilStudio productionization changes are tracked here.
 
 ### Hardened
 
+- Studio browser access now prefers the HttpOnly owner session. Temporary automation keys stay in
+  memory by default, may opt into tab-scoped `sessionStorage`, are never copied back into the form,
+  and are cleared on logout; retired `localStorage` entries are removed automatically.
+- Browser responses now include a restrictive Content Security Policy, a cryptographic per-response
+  nonce for Radix runtime styles, clickjacking/MIME/referrer/permissions protections, auth no-store
+  caching, same-origin-only WebSockets, and HTTPS-only HSTS. Nonced HTML is never cached.
+- ASR/TTS metadata reads now share the job-state lock with atomic writes, preventing transient
+  Windows polling failures while a worker replaces `metadata.json`.
+- Uvicorn access logging is disabled in application logging, native launch, and Docker launch paths;
+  the structured HTTP logger records paths without query strings so WebSocket keys are not persisted.
+- The tracked fallback Studio now loads a pinned same-origin Lucide runtime instead of executable
+  JavaScript from a public CDN.
 - Diagnostics now expose logical storage aliases and bucketed inventory/disk values; support bundles
   exclude host fingerprints by default and require an explicit per-download opt-in to include them.
 - Docker Compose and native launchers bind to loopback by default; direct images fail closed, and
@@ -70,6 +82,8 @@ All notable VassilStudio productionization changes are tracked here.
 
 ### Verified
 
+- Browser Security P1 passed `147` backend tests, frontend lint/build, Settings Playwright credential
+  regression QA at desktop and mobile viewports, and live CSP/security-header probes.
 - Diagnostics Privacy P1 passed `143` backend tests, frontend lint/build, OpenAPI/auth/Compose gates,
   live default/opt-in archive scans, and Settings Playwright QA at desktop and mobile viewports.
 - Security Boundary P0 passed `142` backend tests, frontend lint/build, OpenAPI/auth/Compose gates,

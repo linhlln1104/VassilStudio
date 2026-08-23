@@ -116,6 +116,17 @@ verifiable for existing local databases. Session cookies are HttpOnly and can be
 `security.session_cookie_name`, `security.session_ttl_seconds`, and `security.secure_cookies`.
 
 API key auth remains available for smoke scripts and automation even when Studio auth is required.
+The browser always prefers a valid owner session and does not attach a temporary API key while that
+session is active. Browser-entered keys live in module memory by default, can be retained only in the
+current tab with `sessionStorage`, and are cleared on logout. Startup code removes retired
+`localStorage` key entries instead of migrating them.
+
+The HTTP middleware applies a restrictive Content Security Policy and standard browser protections
+to every response. Studio HTML receives a cryptographically random nonce per response; the React
+entry point passes it to Radix's runtime style helper so dynamic modal styles remain CSP-authorized
+without enabling arbitrary inline style elements. Auth responses disable caching, and HTTPS
+responses enable HSTS. The connect policy derives the WebSocket source from the validated request
+host so realtime traffic cannot target an unrelated origin; nonced Studio HTML is never cached.
 
 ### Product Shell
 
@@ -132,7 +143,8 @@ before serving files so traversal attempts do not escape the asset root.
 HTTP requests receive an `X-Request-ID` response header. Clients can provide this header or let the
 server generate one. The app logger emits structured JSON for HTTP request completion/failure and
 ASR/TTS job lifecycle events. Request logging records the path without query strings so API keys are
-not written by the app middleware.
+not written by the app middleware. The application disables Uvicorn's access logger because its raw
+request line includes query strings; native and Docker launchers enforce the same setting.
 
 `GET /diagnostics` returns privacy-filtered operations metadata for the Studio Settings surface and
 support workflows: runtime configuration, auth mode, logical storage aliases with bucketed inventory
