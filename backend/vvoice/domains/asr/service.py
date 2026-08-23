@@ -7,6 +7,7 @@ import numpy as np
 
 from vvoice.core.config import AsrModelSettings, AsrSettings, RuntimeSettings
 from vvoice.core.errors import ModelConfigurationError
+from vvoice.domains.asr.transcript import TranscriptSegment, timed_segments_from_result
 from vvoice.shared.language import normalize_language
 
 
@@ -14,6 +15,7 @@ from vvoice.shared.language import normalize_language
 class Transcription:
     text: str
     sample_rate: int
+    segments: tuple[TranscriptSegment, ...] = ()
 
 
 class AsrService:
@@ -36,7 +38,18 @@ class AsrService:
             stream = recognizer.create_stream()
             stream.accept_waveform(sample_rate, samples)
             recognizer.decode_stream(stream)
-        return Transcription(text=stream.result.text.strip(), sample_rate=sample_rate)
+        result = stream.result
+        text = result.text.strip()
+        audio_duration_seconds = len(samples) / sample_rate if sample_rate > 0 else 0.0
+        return Transcription(
+            text=text,
+            sample_rate=sample_rate,
+            segments=timed_segments_from_result(
+                result,
+                text=text,
+                audio_duration_seconds=audio_duration_seconds,
+            ),
+        )
 
     @property
     def is_loaded(self) -> bool:

@@ -11,6 +11,8 @@ type AudioPlayerProps = {
   downloadName?: string
   autoPlay?: boolean
   className?: string
+  seekRequest?: { seconds: number; requestId: number } | null
+  onTimeUpdate?: (currentTime: number) => void
 }
 
 export function AudioPlayer({
@@ -19,6 +21,8 @@ export function AudioPlayer({
   downloadName,
   autoPlay = false,
   className,
+  seekRequest,
+  onTimeUpdate,
 }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
@@ -58,6 +62,14 @@ export function AudioPlayer({
     }
     void audioRef.current.play().catch(() => undefined)
   }, [autoPlay, objectUrl])
+
+  useEffect(() => {
+    if (!objectUrl || !audioRef.current || !seekRequest) {
+      return
+    }
+    audioRef.current.currentTime = Math.max(0, seekRequest.seconds)
+    void audioRef.current.play().catch(() => undefined)
+  }, [objectUrl, seekRequest])
 
   const download = () => {
     if (!objectUrl || !downloadName) {
@@ -116,6 +128,7 @@ export function AudioPlayer({
         controls
         preload="metadata"
         src={objectUrl}
+        onTimeUpdate={(event) => onTimeUpdate?.(event.currentTarget.currentTime)}
         onError={() => setError('The audio output could not be decoded.')}
       >
         Your browser does not support audio playback.

@@ -318,7 +318,23 @@ export type AsrJob = {
   sample_rate: number | null
   duration_seconds: number | null
   audio_url: string | null
+  raw_text: string | null
+  raw_segments: TranscriptSegment[]
+  segments: TranscriptSegment[]
+  timing_status: 'available' | 'unavailable'
+  transcript_revision: number
+  transcript_edited: boolean
+  transcript_updated_at: string | null
 }
+
+export type TranscriptSegment = {
+  segment_id: string
+  start_seconds: number
+  end_seconds: number
+  text: string
+}
+
+export type TranscriptExportFormat = 'txt' | 'srt' | 'vtt' | 'json'
 
 export type JobStatus = 'queued' | 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
 export type JobProgressStage =
@@ -549,6 +565,31 @@ export const api = {
     fetchJson<AsrJob>(`/api/v1/asr/jobs/${encodeURIComponent(jobId)}/cancel`, {
       method: 'POST',
     }),
+  reviseAsrTranscript: (
+    jobId: string,
+    payload:
+      | { expectedRevision: number; text: string }
+      | { expectedRevision: number; segments: Array<{ segmentId: string; text: string }> },
+  ) =>
+    fetchJson<AsrJob>(`/api/v1/asr/jobs/${encodeURIComponent(jobId)}/transcript`, {
+      method: 'PATCH',
+      body: JSON.stringify(
+        'segments' in payload
+          ? {
+              expected_revision: payload.expectedRevision,
+              segments: payload.segments.map((segment) => ({
+                segment_id: segment.segmentId,
+                text: segment.text,
+              })),
+            }
+          : { expected_revision: payload.expectedRevision, text: payload.text },
+      ),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  asrTranscriptExport: (jobId: string, format: TranscriptExportFormat) =>
+    fetchBlob(
+      `/api/v1/asr/jobs/${encodeURIComponent(jobId)}/exports/${encodeURIComponent(format)}`,
+    ),
   createAsrJob: (
     file: File,
     payload: { language?: string } = {},

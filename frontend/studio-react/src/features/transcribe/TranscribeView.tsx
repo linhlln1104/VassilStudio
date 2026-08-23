@@ -4,11 +4,11 @@ import {
   ArrowRight,
   Check,
   Copy,
-  Download,
   FileAudio,
   Languages,
   Loader2,
   Mic2,
+  PencilLine,
   X,
   XCircle,
   UploadCloud,
@@ -34,6 +34,7 @@ import {
 import { queryErrorMessage } from '@/lib/query-error'
 import { getPreferredLanguage, setPendingScript, setPreferredLanguage } from '@/lib/studio-preferences'
 import { cn } from '@/lib/utils'
+import { TranscriptReviewDialog } from './TranscriptReviewDialog'
 
 const ASR_AUDIO_EXTENSIONS = new Set(['wav', 'mp3', 'webm', 'weba', 'flac', 'm4a', 'ogg', 'opus'])
 
@@ -54,6 +55,7 @@ export function TranscribeView() {
   const [audioPreviewUrl, setAudioPreviewUrl] = useState('')
   const [audioPreviewError, setAudioPreviewError] = useState('')
   const [audioDuration, setAudioDuration] = useState<number | null>(null)
+  const [reviewJobId, setReviewJobId] = useState<string | null>(null)
   const [selectedLanguage, setSelectedLanguage] = useState<VoiceLanguage>(() =>
     normalizeVoiceLanguage(getPreferredLanguage()),
   )
@@ -129,6 +131,7 @@ export function TranscribeView() {
     ? jobs.find((job) => job.job_id === uploadMutation.data.job_id) ?? uploadMutation.data
     : null
   const latestTranscript = jobs.find((job) => job.text)
+  const reviewJob = reviewJobId ? jobs.find((job) => job.job_id === reviewJobId) ?? null : null
   const activeAsrCount = jobs.filter((job) => ['queued', 'running', 'cancelling'].includes(job.status)).length
   const latestFailedJob = jobs.find((job) => job.status === 'failed') ?? null
   const jobsError = asrJobsQuery.isError
@@ -368,7 +371,7 @@ export function TranscribeView() {
         </Card>
 
         <div className="xl:hidden">
-          <TranscriptPreview job={latestTranscript} />
+          <TranscriptPreview job={latestTranscript} onReview={(job) => setReviewJobId(job.job_id)} />
         </div>
 
         <section>
@@ -428,6 +431,16 @@ export function TranscribeView() {
                           <Button
                             size="sm"
                             variant="secondary"
+                            onClick={() => setReviewJobId(job.job_id)}
+                          >
+                            <PencilLine className="size-4" />
+                            Review
+                          </Button>
+                        ) : null}
+                        {job.text ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
                             onClick={() => sendTranscriptToGenerate(job)}
                           >
                             Generate
@@ -468,8 +481,17 @@ export function TranscribeView() {
 
       <aside className="hidden space-y-3 xl:block">
         <QueueHealthPanel activeCount={activeAsrCount} latestFailedJob={latestFailedJob} />
-        <TranscriptPreview job={latestTranscript} />
+        <TranscriptPreview job={latestTranscript} onReview={(job) => setReviewJobId(job.job_id)} />
       </aside>
+
+      <TranscriptReviewDialog
+        job={reviewJob}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReviewJobId(null)
+          }
+        }}
+      />
     </div>
   )
 }
@@ -600,12 +622,17 @@ function LanguagePicker({
   )
 }
 
-function TranscriptPreview({ job }: { job: AsrJob | undefined }) {
+function TranscriptPreview({
+  job,
+  onReview,
+}: {
+  job: AsrJob | undefined
+  onReview: (job: AsrJob) => void
+}) {
   const [copied, setCopied] = useState(false)
   const { toast } = useToast()
   const text = job?.text ?? ''
   const hasText = Boolean(text.trim())
-  const downloadHref = hasText ? `data:text/plain;charset=utf-8,${encodeURIComponent(text)}` : undefined
 
   const handleCopy = async () => {
     if (!hasText || typeof navigator === 'undefined') {
@@ -651,13 +678,11 @@ function TranscriptPreview({ job }: { job: AsrJob | undefined }) {
               className="w-8 px-0"
               size="sm"
               variant="secondary"
-              asChild
-              aria-label="Download transcript"
-              title="Download transcript"
+              aria-label="Review and export transcript"
+              title="Review and export"
+              onClick={() => { if (job) onReview(job) }}
             >
-              <a href={downloadHref} download={`vassil-transcript-${normalizeVoiceLanguage(job?.language)}.txt`}>
-                <Download className="size-4" />
-              </a>
+              <PencilLine className="size-4" />
             </Button>
           </div>
         ) : null}
@@ -668,11 +693,17 @@ function TranscriptPreview({ job }: { job: AsrJob | undefined }) {
             <div className="min-h-[240px] whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-3 text-xs leading-6 text-slate-800 xl:min-h-[300px]">
               {text}
             </div>
-            <Button className="mt-3 w-full" onClick={() => { if (job) sendTranscriptToGenerate(job) }}>
-              <Languages className="size-4" />
-              Use as Generate script
-              <ArrowRight className="size-4" />
-            </Button>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              <Button variant="secondary" onClick={() => { if (job) onReview(job) }}>
+                <PencilLine className="size-4" />
+                Review and export
+              </Button>
+              <Button onClick={() => { if (job) sendTranscriptToGenerate(job) }}>
+                <Languages className="size-4" />
+                Use in Generate
+                <ArrowRight className="size-4" />
+              </Button>
+            </div>
           </>
         ) : (
           <div className="grid min-h-[240px] place-items-center rounded-md border border-dashed border-slate-300 bg-white p-4 text-center xl:min-h-[300px]">

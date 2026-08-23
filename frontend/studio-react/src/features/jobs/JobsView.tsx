@@ -25,13 +25,14 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/components/ui/use-toast'
-import { api, createIdempotencyKey, fetchBlob, type JobStatus } from '@/lib/api'
+import { api, createIdempotencyKey, fetchBlob, type AsrJob, type JobStatus } from '@/lib/api'
 import { compactId, formatDuration } from '@/lib/format'
 import { jobRefetchInterval } from '@/lib/job-polling'
 import { cancellationResultMessage, jobProgressLabel, jobStatusLabel } from '@/lib/job-runtime'
 import { normalizeVoiceLanguage, voiceLanguageShortLabel } from '@/lib/language'
 import { setPendingScript, setPreferredLanguage } from '@/lib/studio-preferences'
 import { cn } from '@/lib/utils'
+import { TranscriptReviewDialog } from '@/features/transcribe/TranscriptReviewDialog'
 import { JobInspector, type StudioJob } from './JobInspector'
 
 type JobFilter = 'all' | 'active' | 'succeeded' | 'failed' | 'cancelled'
@@ -60,6 +61,7 @@ export function JobsView() {
   const [visibleLimit, setVisibleLimit] = useState(30)
   const [deleteTarget, setDeleteTarget] = useState<StudioJob | null>(null)
   const [selectedJobKey, setSelectedJobKey] = useState<string | null>(null)
+  const [reviewJobId, setReviewJobId] = useState<string | null>(null)
   const [expandedAudioJobKey, setExpandedAudioJobKey] = useState<string | null>(null)
   const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false)
   const runAgainSubmitLockRef = useRef(false)
@@ -145,6 +147,9 @@ export function JobsView() {
 
   const selectedJob = selectedJobKey
     ? jobs.find((job) => jobKey(job) === selectedJobKey) ?? null
+    : null
+  const reviewJob: AsrJob | null = reviewJobId
+    ? asrJobsQuery.data?.find((job) => job.job_id === reviewJobId) ?? null
     : null
 
   const activeCount = jobs.filter((job) => isActiveStatus(job.status)).length
@@ -474,6 +479,7 @@ export function JobsView() {
                   setExpandedAudioJobKey((current) => current === key ? null : key)
                 }}
                 onReuse={() => reuseJob(job)}
+                onReview={() => setReviewJobId(job.id)}
               />
             ))}
             {visibleJobs.length < filteredJobs.length ? (
@@ -506,6 +512,19 @@ export function JobsView() {
         }}
         onReuse={reuseJob}
         onRunAgain={runJobAgain}
+        onReviewTranscript={(job) => {
+          setSelectedJobKey(null)
+          setReviewJobId(job.id)
+        }}
+      />
+
+      <TranscriptReviewDialog
+        job={reviewJob}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReviewJobId(null)
+          }
+        }}
       />
 
       <ConfirmDialog
@@ -555,6 +574,7 @@ function JobRow({
   audioExpanded,
   onToggleAudio,
   onReuse,
+  onReview,
 }: {
   job: StudioJob
   deleting: boolean
@@ -565,11 +585,13 @@ function JobRow({
   audioExpanded: boolean
   onToggleAudio: () => void
   onReuse: () => void
+  onReview: () => void
 }) {
   const failed = job.status === 'failed'
   const terminal = isTerminalStatus(job.status)
   const canCancel = job.status === 'queued' || job.status === 'running'
   const canReuse = Boolean(job.reusableText.trim())
+  const canReview = job.type === 'ASR' && job.status === 'succeeded' && canReuse
   const hasAudio = Boolean(job.audioUrl)
 
   return (
@@ -635,6 +657,12 @@ function JobRow({
             <Button size="sm" variant="secondary" disabled={cancelling} onClick={onCancel}>
               {cancelling ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
               Cancel
+            </Button>
+          ) : null}
+          {canReview ? (
+            <Button size="sm" variant="secondary" onClick={onReview}>
+              <Captions className="size-4" />
+              Review
             </Button>
           ) : null}
           {canReuse ? (

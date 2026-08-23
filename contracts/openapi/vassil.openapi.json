@@ -144,6 +144,24 @@
             "title": "Progress Stage",
             "type": "string"
           },
+          "raw_segments": {
+            "items": {
+              "$ref": "#/components/schemas/TranscriptSegmentResponse"
+            },
+            "title": "Raw Segments",
+            "type": "array"
+          },
+          "raw_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Text"
+          },
           "sample_rate": {
             "anyOf": [
               {
@@ -154,6 +172,13 @@
               }
             ],
             "title": "Sample Rate"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/TranscriptSegmentResponse"
+            },
+            "title": "Segments",
+            "type": "array"
           },
           "stage_started_at": {
             "title": "Stage Started At",
@@ -184,6 +209,33 @@
               }
             ],
             "title": "Text"
+          },
+          "timing_status": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Timing Status",
+            "type": "string"
+          },
+          "transcript_edited": {
+            "title": "Transcript Edited",
+            "type": "boolean"
+          },
+          "transcript_revision": {
+            "title": "Transcript Revision",
+            "type": "integer"
+          },
+          "transcript_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transcript Updated At"
           }
         },
         "required": [
@@ -205,7 +257,14 @@
           "text",
           "sample_rate",
           "duration_seconds",
-          "audio_url"
+          "audio_url",
+          "raw_text",
+          "raw_segments",
+          "segments",
+          "timing_status",
+          "transcript_revision",
+          "transcript_edited",
+          "transcript_updated_at"
         ],
         "title": "AsrJobResponse",
         "type": "object"
@@ -1146,6 +1205,98 @@
         "title": "RuntimeStatus",
         "type": "object"
       },
+      "TranscriptRevisionRequest": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "segments": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TranscriptSegmentEdit"
+                },
+                "maxItems": 5000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segments"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 100000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "TranscriptRevisionRequest",
+        "type": "object"
+      },
+      "TranscriptSegmentEdit": {
+        "properties": {
+          "segment_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Segment Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "segment_id",
+          "text"
+        ],
+        "title": "TranscriptSegmentEdit",
+        "type": "object"
+      },
+      "TranscriptSegmentResponse": {
+        "properties": {
+          "end_seconds": {
+            "title": "End Seconds",
+            "type": "number"
+          },
+          "segment_id": {
+            "title": "Segment Id",
+            "type": "string"
+          },
+          "start_seconds": {
+            "title": "Start Seconds",
+            "type": "number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "segment_id",
+          "start_seconds",
+          "end_seconds",
+          "text"
+        ],
+        "title": "TranscriptSegmentResponse",
+        "type": "object"
+      },
       "TranscriptionResponse": {
         "properties": {
           "duration_seconds": {
@@ -1156,15 +1307,32 @@
             "title": "Sample Rate",
             "type": "integer"
           },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/TranscriptSegmentResponse"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
           "text": {
             "title": "Text",
+            "type": "string"
+          },
+          "timing_status": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Timing Status",
             "type": "string"
           }
         },
         "required": [
           "text",
           "sample_rate",
-          "duration_seconds"
+          "duration_seconds",
+          "timing_status",
+          "segments"
         ],
         "title": "TranscriptionResponse",
         "type": "object"
@@ -1911,6 +2079,119 @@
           }
         },
         "summary": "Cancel Asr Job",
+        "tags": [
+          "asr"
+        ]
+      }
+    },
+    "/api/v1/asr/jobs/{job_id}/exports/{export_format}": {
+      "get": {
+        "operationId": "export_asr_transcript_api_v1_asr_jobs__job_id__exports__export_format__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "export_format",
+            "required": true,
+            "schema": {
+              "enum": [
+                "txt",
+                "srt",
+                "vtt",
+                "json"
+              ],
+              "title": "Export Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Transcript or timed segments are not ready"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Asr Transcript",
+        "tags": [
+          "asr"
+        ]
+      }
+    },
+    "/api/v1/asr/jobs/{job_id}/transcript": {
+      "patch": {
+        "operationId": "revise_asr_transcript_api_v1_asr_jobs__job_id__transcript_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscriptRevisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsrJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Transcript is not ready or the revision is stale"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revise Asr Transcript",
         "tags": [
           "asr"
         ]

@@ -13,10 +13,17 @@ from pathlib import Path
 from vvoice.core.errors import (
     AsrJobNotFoundError,
     IdempotencyConflictError,
+    TranscriptNotReadyError,
+    TranscriptRevisionConflictError,
     VVoiceError,
     public_error_message,
 )
 from vvoice.domains.asr.service import AsrService
+from vvoice.domains.asr.transcript import (
+    TranscriptSegment,
+    segment_to_dict,
+    segments_from_metadata,
+)
 from vvoice.shared.audio.io import duration_seconds, encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
 from vvoice.shared.jobs.integrity import (
@@ -29,6 +36,8 @@ from vvoice.shared.jobs.integrity import (
 
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
 CANCELLABLE_STATUSES = {"queued", "running", "cancelling"}
+MAX_TRANSCRIPT_CHARS = 100_000
+MAX_SEGMENT_TEXT_CHARS = 2_000
 logger = logging.getLogger("vvoice.jobs.asr")
 
 
@@ -58,6 +67,12 @@ class AsrJob:
     text: str | None
     sample_rate: int | None
     duration_seconds: float | None
+    raw_text: str | None
+    raw_segments: tuple[TranscriptSegment, ...]
+    segments: tuple[TranscriptSegment, ...]
+    timing_status: str
+    transcript_revision: int
+    transcript_updated_at: str | None
 
 
 class AsrJobService:
@@ -137,6 +152,12 @@ class AsrJobService:
                 text=None,
                 sample_rate=sample_rate,
                 duration_seconds=duration_seconds(samples, sample_rate),
+                raw_text=None,
+                raw_segments=(),
+                segments=(),
+                timing_status="unavailable",
+                transcript_revision=0,
+                transcript_updated_at=None,
             )
             self._save(job)
         logger.info(
@@ -189,6 +210,55 @@ class AsrJobService:
         if not metadata_path.exists():
             raise AsrJobNotFoundError(f"ASR job not found: {job_id}")
         return self._load(metadata_path)
+
+    def revise_transcript(
+        self,
+        job_id: str,
+        *,
+        expected_revision: int,
+        text: str | None = None,
+        segment_edits: tuple[tuple[str, str], ...] | None = None,
+    ) -> AsrJob:
+        with self._lock:
+            job = self.get(job_id)
+            if job.status != "succeeded" or job.raw_text is None:
+                raise TranscriptNotReadyError("Transcript is not ready for review")
+            if expected_revision != job.transcript_revision:
+                raise TranscriptRevisionConflictError(
+                    "Transcript changed since it was opened; reload the latest revision"
+                )
+
+            if job.segments:
+                if text is not None or segment_edits is None:
+                    raise VVoiceError("Timed transcripts must be revised by segment")
+                revised_segments = _revised_segments(job.segments, segment_edits)
+                revised_text = " ".join(segment.text for segment in revised_segments).strip()
+            else:
+                if segment_edits is not None or text is None:
+                    raise VVoiceError("Untimed transcripts must be revised as plain text")
+                revised_text = _validated_transcript_text(text, "Transcript")
+                revised_segments = ()
+
+            if revised_text == job.text and revised_segments == job.segments:
+                return job
+
+            updated = _replace_job(
+                job,
+                text=revised_text,
+                segments=revised_segments,
+                transcript_revision=job.transcript_revision + 1,
+                transcript_updated_at=_now(),
+            )
+            self._save(updated)
+        logger.info(
+            "asr_transcript_revised",
+            extra={
+                "job_id": job_id,
+                "language": job.language,
+                "transcript_revision": updated.transcript_revision,
+            },
+        )
+        return updated
 
     def delete(self, job_id: str) -> None:
         job = self.get(job_id)
@@ -292,6 +362,7 @@ class AsrJobService:
                     text=result.text,
                     sample_rate=result.sample_rate,
                     audio_duration_seconds=duration_seconds(samples, sample_rate),
+                    segments=result.segments,
                 )
                 logger.info(
                     "asr_job_succeeded",
@@ -348,6 +419,11 @@ class AsrJobService:
         status = raw["status"]
         failed_reason = raw.get("failed_reason")
         max_attempts = int(raw.get("max_attempts") or self._max_attempts)
+        raw_segments = segments_from_metadata(
+            raw.get("raw_segments", raw.get("segments", []))
+        )
+        segments = segments_from_metadata(raw.get("segments", raw_segments))
+        raw_text = raw.get("raw_text", raw.get("text"))
         return AsrJob(
             job_id=raw["job_id"],
             status=status,
@@ -378,6 +454,12 @@ class AsrJobService:
             text=raw.get("text"),
             sample_rate=raw.get("sample_rate"),
             duration_seconds=raw.get("duration_seconds"),
+            raw_text=raw_text,
+            raw_segments=raw_segments,
+            segments=segments,
+            timing_status="available" if segments else "unavailable",
+            transcript_revision=max(0, int(raw.get("transcript_revision") or 0)),
+            transcript_updated_at=raw.get("transcript_updated_at"),
         )
 
     def _start_attempt(self, job_id: str) -> AsrJob | None:
@@ -530,6 +612,7 @@ class AsrJobService:
         text: str,
         sample_rate: int,
         audio_duration_seconds: float,
+        segments: tuple[TranscriptSegment, ...],
     ) -> AsrJob:
         with self._lock:
             job = self.get(job_id)
@@ -546,6 +629,12 @@ class AsrJobService:
                 text=text,
                 sample_rate=sample_rate,
                 duration_seconds=audio_duration_seconds,
+                raw_text=text,
+                raw_segments=segments,
+                segments=segments,
+                timing_status="available" if segments else "unavailable",
+                transcript_revision=0,
+                transcript_updated_at=None,
             )
             self._save(completed)
             return completed
@@ -587,6 +676,12 @@ def _job_to_metadata(job: AsrJob) -> dict:
         "text": job.text,
         "sample_rate": job.sample_rate,
         "duration_seconds": job.duration_seconds,
+        "raw_text": job.raw_text,
+        "raw_segments": [segment_to_dict(segment) for segment in job.raw_segments],
+        "segments": [segment_to_dict(segment) for segment in job.segments],
+        "timing_status": job.timing_status,
+        "transcript_revision": job.transcript_revision,
+        "transcript_updated_at": job.transcript_updated_at,
     }
 
 
@@ -594,6 +689,10 @@ def _replace_job(job: AsrJob, **changes) -> AsrJob:
     values = _job_to_metadata(job)
     values.update(changes)
     input_path = values.get("input_path")
+    segments = segments_from_metadata(values.get("segments", []))
+    raw_segments = segments_from_metadata(
+        values.get("raw_segments", values.get("segments", []))
+    )
     return AsrJob(
         job_id=values["job_id"],
         status=values["status"],
@@ -615,7 +714,64 @@ def _replace_job(job: AsrJob, **changes) -> AsrJob:
         text=values.get("text"),
         sample_rate=values.get("sample_rate"),
         duration_seconds=values.get("duration_seconds"),
+        raw_text=values.get("raw_text", values.get("text")),
+        raw_segments=raw_segments,
+        segments=segments,
+        timing_status="available" if segments else "unavailable",
+        transcript_revision=max(0, int(values.get("transcript_revision") or 0)),
+        transcript_updated_at=values.get("transcript_updated_at"),
     )
+
+
+def _revised_segments(
+    current: tuple[TranscriptSegment, ...],
+    edits: tuple[tuple[str, str], ...],
+) -> tuple[TranscriptSegment, ...]:
+    if len(edits) != len(current):
+        raise VVoiceError("Every transcript segment must be included in the revision")
+
+    edit_map: dict[str, str] = {}
+    for segment_id, value in edits:
+        if segment_id in edit_map:
+            raise VVoiceError(f"Duplicate transcript segment: {segment_id}")
+        edit_map[segment_id] = _validated_transcript_text(
+            value,
+            f"Transcript segment {segment_id}",
+            max_chars=MAX_SEGMENT_TEXT_CHARS,
+        )
+
+    expected_ids = {segment.segment_id for segment in current}
+    if set(edit_map) != expected_ids:
+        raise VVoiceError("Transcript revision does not match the current segment set")
+
+    revised = tuple(
+        TranscriptSegment(
+            segment_id=segment.segment_id,
+            start_seconds=segment.start_seconds,
+            end_seconds=segment.end_seconds,
+            text=edit_map[segment.segment_id],
+        )
+        for segment in current
+    )
+    _validated_transcript_text(
+        " ".join(segment.text for segment in revised),
+        "Transcript",
+    )
+    return revised
+
+
+def _validated_transcript_text(
+    value: str,
+    field_name: str,
+    *,
+    max_chars: int = MAX_TRANSCRIPT_CHARS,
+) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise VVoiceError(f"{field_name} cannot be empty")
+    if len(normalized) > max_chars:
+        raise VVoiceError(f"{field_name} must be {max_chars} characters or fewer")
+    return normalized
 
 
 def _now() -> str:

@@ -480,6 +480,25 @@ Cancel an active ASR job:
 Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/v1/asr/jobs/<job_id>/cancel
 ```
 
+Correct an untimed transcript with optimistic revision protection:
+
+```powershell
+$body = @{ expected_revision = 0; text = "Corrected transcript" } | ConvertTo-Json
+Invoke-RestMethod `
+  -Method Patch `
+  -ContentType "application/json" `
+  -Body $body `
+  -Uri http://127.0.0.1:8000/api/v1/asr/jobs/<job_id>/transcript
+```
+
+Export the current transcript. SRT and VTT are available only when the model returned timing:
+
+```powershell
+Invoke-WebRequest `
+  -Uri http://127.0.0.1:8000/api/v1/asr/jobs/<job_id>/exports/srt `
+  -OutFile transcript.srt
+```
+
 Realtime ASR websocket:
 
 ```text

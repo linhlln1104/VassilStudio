@@ -25,6 +25,10 @@ transducer state.
 The module exposes direct transcription and filesystem-backed async jobs under `/api/v1/asr/jobs`.
 Jobs store normalized input WAV files and transcript metadata under `data/jobs/asr`, then run through
 a single-worker queue to avoid concurrent recognizer pressure.
+When sherpa-onnx returns token or native segment timestamps, ASR persists stable timed segments beside
+the immutable raw model text. The editable transcript is stored separately with an optimistic revision
+number, so correction never destroys the original recognition result. Existing metadata without this
+contract loads as an untimed revision-zero transcript.
 Terminal ASR jobs can be cleaned with `DELETE /api/v1/asr/jobs`, optionally filtered by
 `max_age_seconds`.
 ASR jobs use a small lifecycle state machine: `queued`, `running`, `cancelling`, `succeeded`,
@@ -34,6 +38,10 @@ and asks running work to stop at the next safe point. Retry metadata is stored w
 `POST /api/v1/asr/jobs` accepts an optional `Idempotency-Key`. The service stores a digest of the key
 and a fingerprint of language, source name, and audio content. A replay with the same request returns
 the existing job; reusing the key for different content returns `409`.
+`PATCH /api/v1/asr/jobs/{job_id}/transcript` updates either all timed segment texts or one untimed text
+body and requires `expected_revision`; stale writers receive `409`. Transcript exports are available at
+`GET /api/v1/asr/jobs/{job_id}/exports/{format}` for `txt`, `srt`, `vtt`, and `json`. Subtitle formats
+require persisted model timing. JSON includes current and raw transcript state for traceability.
 
 ### TTS
 
@@ -177,6 +185,8 @@ sharing.
 - Upload audio and transcribe it with `/api/v1/asr/transcribe`.
 - Queue long-running transcription with `/api/v1/asr/jobs`.
 - Cancel active transcription jobs with `/api/v1/asr/jobs/{job_id}/cancel`.
+- Correct a completed transcript with `/api/v1/asr/jobs/{job_id}/transcript`.
+- Export a completed transcript with `/api/v1/asr/jobs/{job_id}/exports/{format}`.
 - Clean terminal transcription jobs with `DELETE /api/v1/asr/jobs`.
 - Generate one-off speech with `/api/v1/tts/synthesize`.
 - Create/list/get/delete voice profiles with `/api/v1/voices`.

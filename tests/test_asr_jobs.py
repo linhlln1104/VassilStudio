@@ -7,10 +7,16 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from vvoice.core.errors import IdempotencyConflictError, PUBLIC_JOB_ERROR_MESSAGE, VVoiceError
+from vvoice.core.errors import (
+    IdempotencyConflictError,
+    PUBLIC_JOB_ERROR_MESSAGE,
+    TranscriptRevisionConflictError,
+    VVoiceError,
+)
 from vvoice.domains.asr.jobs import AsrJobService
 from vvoice.domains.asr.router import _job_response
 from vvoice.domains.asr.service import Transcription
+from vvoice.domains.asr.transcript import TranscriptSegment
 from vvoice.shared.audio.io import encode_wav
 
 
@@ -71,6 +77,23 @@ class FailingAsr(FakeAsr):
         language: str | None = None,
     ) -> Transcription:
         raise RuntimeError(r"decoder failed at C:\Users\private\models\encoder.onnx")
+
+
+class TimedAsr(FakeAsr):
+    def transcribe(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        language: str | None = None,
+    ) -> Transcription:
+        return Transcription(
+            text="Raw first sentence. Raw second sentence.",
+            sample_rate=sample_rate,
+            segments=(
+                TranscriptSegment("segment-0001", 0.1, 1.4, "Raw first sentence."),
+                TranscriptSegment("segment-0002", 1.4, 2.8, "Raw second sentence."),
+            ),
+        )
 
 
 def test_asr_job_service_runs_job_from_audio(tmp_path, caplog) -> None:
@@ -316,6 +339,99 @@ def test_asr_job_service_rejects_invalid_idempotency_key(tmp_path) -> None:
                 filename="input.wav",
                 idempotency_key="contains spaces",
             )
+    finally:
+        jobs.shutdown()
+
+
+def test_asr_job_service_preserves_raw_transcript_across_revisions(tmp_path) -> None:
+    jobs = AsrJobService(
+        tmp_path / "asr-jobs",
+        TimedAsr(),
+        target_sample_rate=16000,
+    )
+    try:
+        audio = encode_wav(np.zeros(48_000, dtype=np.float32), 16000)
+        created = jobs.create_from_audio(
+            audio_bytes=audio,
+            filename="interview.wav",
+            language="en",
+        )
+        completed = wait_for_job(jobs, created.job_id)
+
+        assert completed.timing_status == "available"
+        assert completed.text == completed.raw_text
+        assert completed.segments == completed.raw_segments
+        assert completed.transcript_revision == 0
+
+        revised = jobs.revise_transcript(
+            completed.job_id,
+            expected_revision=0,
+            segment_edits=(
+                ("segment-0001", "Corrected first sentence."),
+                ("segment-0002", "Corrected second sentence."),
+            ),
+        )
+
+        assert revised.text == "Corrected first sentence. Corrected second sentence."
+        assert revised.raw_text == "Raw first sentence. Raw second sentence."
+        assert revised.raw_segments[0].text == "Raw first sentence."
+        assert revised.segments[0].text == "Corrected first sentence."
+        assert revised.segments[0].start_seconds == 0.1
+        assert revised.transcript_revision == 1
+        assert revised.transcript_updated_at
+        assert jobs.get(completed.job_id) == revised
+
+        with pytest.raises(TranscriptRevisionConflictError, match="reload"):
+            jobs.revise_transcript(
+                completed.job_id,
+                expected_revision=0,
+                segment_edits=(
+                    ("segment-0001", "Stale edit."),
+                    ("segment-0002", "Stale edit."),
+                ),
+            )
+    finally:
+        jobs.shutdown()
+
+
+def test_asr_job_service_revises_legacy_untimed_transcript(tmp_path) -> None:
+    jobs_dir = tmp_path / "asr-jobs"
+    job_dir = jobs_dir / "legacy"
+    job_dir.mkdir(parents=True)
+    (job_dir / "metadata.json").write_text(
+        """
+        {
+          "job_id": "legacy",
+          "status": "succeeded",
+          "filename": "legacy.wav",
+          "language": "vi",
+          "created_at": "2026-06-30T00:00:00+00:00",
+          "started_at": "2026-06-30T00:00:01+00:00",
+          "completed_at": "2026-06-30T00:00:02+00:00",
+          "error": null,
+          "input_path": null,
+          "text": "Ban goc",
+          "sample_rate": 16000,
+          "duration_seconds": 1.0
+        }
+        """,
+        encoding="utf-8",
+    )
+    jobs = AsrJobService(jobs_dir, FakeAsr(), target_sample_rate=16000)
+    try:
+        legacy = jobs.get("legacy")
+        assert legacy.raw_text == "Ban goc"
+        assert legacy.timing_status == "unavailable"
+        assert legacy.segments == ()
+
+        revised = jobs.revise_transcript(
+            "legacy",
+            expected_revision=0,
+            text="Ban da sua",
+        )
+        assert revised.text == "Ban da sua"
+        assert revised.raw_text == "Ban goc"
+        assert revised.transcript_revision == 1
     finally:
         jobs.shutdown()
 

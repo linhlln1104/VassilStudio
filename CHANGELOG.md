@@ -49,6 +49,10 @@ All notable VassilStudio productionization changes are tracked here.
   runtime integrity, transcript review/export, voice intake, realtime sessions, and model operations.
 - Idempotent ASR/TTS job creation with request fingerprints, replay-safe retries, explicit progress
   stages, and safe-point cancellation capability in the public contract.
+- Timed ASR transcript review with synchronized authenticated playback, seek-to-segment navigation,
+  non-destructive revisions, raw model comparison, and shared Transcribe/Jobs access.
+- Deterministic UTF-8 transcript exports for TXT, SRT, VTT, and structured JSON; subtitle formats fail
+  closed when a recognition result or legacy job has no model timing.
 
 ### Hardened
 
@@ -92,6 +96,9 @@ All notable VassilStudio productionization changes are tracked here.
 
 ### Verified
 
+- Transcript Review & Export P1-B passed `160` backend tests, the full `scripts/check.ps1` gate, a
+  real VI ZipFormer timing probe, and desktop/mobile Playwright coverage for segment seek/active state,
+  protected revisions, raw-result retention, reopen persistence, authenticated export, and responsive layout.
 - Runtime Integrity P1-A passed `153` backend tests, the full `scripts/check.ps1` gate, and desktop/mobile
   Playwright coverage proving one POST per double submit, idempotency headers, lifecycle stages,
   authenticated recovery, and zero horizontal overflow.

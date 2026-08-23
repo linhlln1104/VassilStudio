@@ -1,5 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import {
+  Captions,
   CheckCircle2,
   Clock3,
   Copy,
@@ -64,6 +65,7 @@ type JobInspectorProps = {
   onDelete: (job: StudioJob) => void
   onReuse: (job: StudioJob) => void
   onRunAgain: (job: StudioJob) => void
+  onReviewTranscript: (job: StudioJob) => void
 }
 
 export function JobInspector({
@@ -76,6 +78,7 @@ export function JobInspector({
   onDelete,
   onReuse,
   onRunAgain,
+  onReviewTranscript,
 }: JobInspectorProps) {
   const { toast } = useToast()
 
@@ -284,6 +287,12 @@ export function JobInspector({
                 <Button size="sm" variant="secondary" onClick={() => onReuse(job)}>
                   <FileText className="size-4" />
                   Use in Generate
+                </Button>
+              ) : null}
+              {job.type === 'ASR' && job.status === 'succeeded' && canReuse ? (
+                <Button size="sm" variant="secondary" onClick={() => onReviewTranscript(job)}>
+                  <Captions className="size-4" />
+                  Review transcript
                 </Button>
               ) : null}
               {terminal ? (

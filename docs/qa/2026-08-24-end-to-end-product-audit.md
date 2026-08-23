@@ -257,7 +257,7 @@ The public product surface reads like an engineering runbook and exposes an unne
 
 Return aggregate readiness publicly and keep detailed checks behind owner auth. Disable or protect OpenAPI docs outside development. Replace public pages with user support, privacy, release notes, and troubleshooting that do not require repository knowledge.
 
-### VS-QA-009 - P1 - Transcribe promises timestamps but only returns plain text
+### VS-QA-009 - P1 - Resolved 2026-08-24 - Transcript review lacked real timing
 
 **Evidence**
 
@@ -272,6 +272,14 @@ The feature does not meet its own promise and is incomplete for a voice-studio t
 **Required change**
 
 Either remove the timestamp claim for the small release or add timed segments, completed-audio playback beside the transcript, editing, and TXT/SRT/VTT export.
+
+**Resolution**
+
+P1-B now persists real ZipFormer token timing as review segments, keeps immutable raw output beside
+editable optimistic revisions, and exports TXT/SRT/VTT/JSON. The shared Transcribe/Jobs dialog supports
+authenticated playback, seek-to-segment, active tracking, reopen-after-save, and untimed legacy fallback.
+A local VI runtime probe returned a real `0.000 -> 3.296` segment for a 3.296-second clip. Backend
+contract tests and desktop/mobile Playwright review QA cover the completed workflow.
 
 ### VS-QA-010 - P2 - Studio semantics and password labeling are not accessibility-ready
 

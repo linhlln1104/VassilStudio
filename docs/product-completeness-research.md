@@ -69,16 +69,23 @@ same-key/different-payload returns `409`. Job responses expose `progress_stage`,
 from a temporary file only after the final cancellation check. Playwright double-submit coverage passed
 for Generate and Transcribe at desktop and mobile viewports.
 
-### P1-B: Transcript review and export
+### P1-B: Transcript review and export - completed 2026-08-24
 
-1. Extend the ASR result contract with timed segments; retain room for word timestamps and speaker ID.
-2. Show audio and transcript in one review surface with seek-to-segment and active-segment tracking.
-3. Allow non-destructive transcript editing while retaining the raw model result.
-4. Export TXT, SRT, VTT, and structured JSON with deterministic filenames and UTF-8 encoding.
-5. Remove any timestamp claim until the backend contract supplies real timings.
+1. [x] Extend the ASR result contract with timed segments; retain room for word timestamps and speaker ID.
+2. [x] Show audio and transcript in one review surface with seek-to-segment and active-segment tracking.
+3. [x] Allow non-destructive transcript editing while retaining the raw model result.
+4. [x] Export TXT, SRT, VTT, and structured JSON with deterministic filenames and UTF-8 encoding.
+5. [x] Remove any timestamp claim until the backend contract supplies real timings.
 
 Acceptance: a completed ASR job can be reviewed against audio, corrected, reopened, and exported as a
 valid subtitle file without external tools.
+
+Implemented contract: ZipFormer token timestamps are converted into stable timed segments when the
+runtime supplies them. Raw model text/segments remain immutable while the current transcript uses an
+optimistic `transcript_revision`; stale edits return `409`. Legacy jobs load as untimed and can still be
+edited and exported to TXT/JSON, while SRT/VTT remain unavailable instead of receiving inferred fake
+timings. The shared Transcribe/Jobs review dialog provides authenticated audio playback, segment seek,
+active tracking, edit protection, raw-result comparison, and deterministic UTF-8 exports.
 
 ### P1-C: Voice intake quality gate
 
@@ -132,6 +139,6 @@ audio.
 
 ## Recommended next phase
 
-With Jobs playback and **P1-A Runtime integrity** complete, implement **P1-B Transcript review and
-export** next. It is now the largest missing end-to-end user workflow and removes the remaining false
-expectation around timestamped transcript review.
+With **P1-A Runtime integrity** and **P1-B Transcript review and export** complete, implement **P1-C
+Voice intake quality gate** next. Voice creation remains the highest-risk irreversible workflow because
+local candidates can become reusable profiles before duplicate and recording-quality review.

@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from vvoice.core.errors import public_job_error
+from vvoice.domains.asr.exports import TranscriptExportFormat, render_transcript_export
 from vvoice.domains.asr.jobs import AsrJob
 from vvoice.domains.asr.schemas import (
     AsrJobCleanupResponse,
     AsrJobDeleteResponse,
     AsrJobResponse,
+    TranscriptRevisionRequest,
     TranscriptionResponse,
 )
+from vvoice.domains.asr.transcript import segment_to_dict
 from vvoice.shared.audio.io import duration_seconds, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
 from vvoice.shared.jobs.integrity import CANCELLATION_MODE, IDEMPOTENCY_KEY_HEADER
@@ -48,6 +51,8 @@ async def transcribe_audio(
         "text": result.text,
         "sample_rate": result.sample_rate,
         "duration_seconds": duration_seconds(samples, sample_rate),
+        "timing_status": "available" if result.segments else "unavailable",
+        "segments": [segment_to_dict(segment) for segment in result.segments],
     }
 
 
@@ -106,6 +111,52 @@ async def cancel_asr_job(request: Request, job_id: str):
     return _job_response(container.asr_jobs.cancel(job_id))
 
 
+@router.patch(
+    "/jobs/{job_id}/transcript",
+    response_model=AsrJobResponse,
+    responses={409: {"description": "Transcript is not ready or the revision is stale"}},
+)
+async def revise_asr_transcript(
+    request: Request,
+    job_id: str,
+    revision: TranscriptRevisionRequest,
+):
+    container = request.app.state.container
+    segment_edits = (
+        tuple((segment.segment_id, segment.text) for segment in revision.segments)
+        if revision.segments is not None
+        else None
+    )
+    job = container.asr_jobs.revise_transcript(
+        job_id,
+        expected_revision=revision.expected_revision,
+        text=revision.text,
+        segment_edits=segment_edits,
+    )
+    return _job_response(job)
+
+
+@router.get(
+    "/jobs/{job_id}/exports/{export_format}",
+    responses={409: {"description": "Transcript or timed segments are not ready"}},
+)
+async def export_asr_transcript(
+    request: Request,
+    job_id: str,
+    export_format: TranscriptExportFormat,
+):
+    container = request.app.state.container
+    export = render_transcript_export(container.asr_jobs.get(job_id), export_format)
+    return Response(
+        content=export.content,
+        media_type=export.media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{export.filename}"',
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
 @router.get("/jobs/{job_id}/audio")
 async def get_asr_job_audio(request: Request, job_id: str):
     container = request.app.state.container
@@ -148,4 +199,11 @@ def _job_response(job: AsrJob) -> dict:
         "sample_rate": job.sample_rate,
         "duration_seconds": job.duration_seconds,
         "audio_url": f"/api/v1/asr/jobs/{job.job_id}/audio" if job.input_path else None,
+        "raw_text": job.raw_text,
+        "raw_segments": [segment_to_dict(segment) for segment in job.raw_segments],
+        "segments": [segment_to_dict(segment) for segment in job.segments],
+        "timing_status": job.timing_status,
+        "transcript_revision": job.transcript_revision,
+        "transcript_edited": job.transcript_revision > 0,
+        "transcript_updated_at": job.transcript_updated_at,
     }

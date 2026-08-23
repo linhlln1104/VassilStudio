@@ -13,6 +13,8 @@ def test_export_openapi_writes_contract(tmp_path) -> None:
     assert "/health" in schema["paths"]
     assert "/api/v1/voices/import-candidates" in schema["paths"]
     assert "/api/v1/asr/jobs/{job_id}/cancel" in schema["paths"]
+    assert "/api/v1/asr/jobs/{job_id}/transcript" in schema["paths"]
+    assert "/api/v1/asr/jobs/{job_id}/exports/{export_format}" in schema["paths"]
     assert "/api/v1/tts/jobs/{job_id}/cancel" in schema["paths"]
 
     schemas = schema["components"]["schemas"]
@@ -28,6 +30,9 @@ def test_export_openapi_writes_contract(tmp_path) -> None:
     assert "attempt" in schemas["AsrJobResponse"]["properties"]
     assert "cancel_requested" in schemas["TtsJobResponse"]["properties"]
     assert "progress_stage" in schemas["AsrJobResponse"]["properties"]
+    assert "segments" in schemas["AsrJobResponse"]["properties"]
+    assert "raw_text" in schemas["AsrJobResponse"]["properties"]
+    assert "transcript_revision" in schemas["AsrJobResponse"]["properties"]
     assert "stage_started_at" in schemas["TtsJobResponse"]["properties"]
     assert "cancellation_mode" in schemas["TtsJobResponse"]["properties"]
 
