@@ -279,7 +279,10 @@ export type TtsJob = {
   attempt: number
   max_attempts: number
   cancel_requested: boolean
+  cancellation_mode: 'safe_point'
   failed_reason: string | null
+  progress_stage: JobProgressStage
+  stage_started_at: string
   sample_rate: number | null
   duration_seconds: number | null
   audio_url: string | null
@@ -307,7 +310,10 @@ export type AsrJob = {
   attempt: number
   max_attempts: number
   cancel_requested: boolean
+  cancellation_mode: 'safe_point'
   failed_reason: string | null
+  progress_stage: JobProgressStage
+  stage_started_at: string
   text: string | null
   sample_rate: number | null
   duration_seconds: number | null
@@ -315,6 +321,20 @@ export type AsrJob = {
 }
 
 export type JobStatus = 'queued' | 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
+export type JobProgressStage =
+  | 'queued'
+  | 'preparing_input'
+  | 'running_model'
+  | 'finalizing'
+  | 'retry_wait'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+
+export function createIdempotencyKey(scope: 'tts' | 'asr'): string {
+  const randomId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return `${scope}:${randomId}`
+}
 
 export type AuthUser = {
   account_id: string
@@ -529,7 +549,11 @@ export const api = {
     fetchJson<AsrJob>(`/api/v1/asr/jobs/${encodeURIComponent(jobId)}/cancel`, {
       method: 'POST',
     }),
-  createAsrJob: (file: File, payload: { language?: string } = {}) => {
+  createAsrJob: (
+    file: File,
+    payload: { language?: string } = {},
+    options: { idempotencyKey?: string } = {},
+  ) => {
     const form = new FormData()
     form.set('audio', file)
     if (payload.language) {
@@ -539,11 +563,13 @@ export const api = {
     return fetchJson<AsrJob>('/api/v1/asr/jobs', {
       method: 'POST',
       body: form,
+      headers: options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined,
     })
   },
   createTtsJobWithVoice: (
     voiceId: string,
     payload: { text: string; language?: string; numSteps?: number; speed?: number },
+    options: { idempotencyKey?: string } = {},
   ) => {
     const form = new FormData()
     form.set('text', payload.text)
@@ -560,6 +586,7 @@ export const api = {
     return fetchJson<TtsJob>(`/api/v1/tts/jobs/voices/${encodeURIComponent(voiceId)}`, {
       method: 'POST',
       body: form,
+      headers: options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined,
     })
   },
   createVoice: (

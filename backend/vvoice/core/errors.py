@@ -41,6 +41,10 @@ class AsrJobNotFoundError(VVoiceError):
     pass
 
 
+class IdempotencyConflictError(VVoiceError):
+    pass
+
+
 def public_error_message(exc: Exception) -> str:
     if isinstance(exc, UnsupportedAudioFormatError):
         return PUBLIC_UNSUPPORTED_AUDIO_FORMAT_MESSAGE

@@ -31,6 +31,9 @@ ASR jobs use a small lifecycle state machine: `queued`, `running`, `cancelling`,
 `failed`, and `cancelled`. `POST /api/v1/asr/jobs/{job_id}/cancel` cancels queued work immediately
 and asks running work to stop at the next safe point. Retry metadata is stored with each job as
 `attempt`, `max_attempts`, `failed_reason`, and `cancel_requested`.
+`POST /api/v1/asr/jobs` accepts an optional `Idempotency-Key`. The service stores a digest of the key
+and a fingerprint of language, source name, and audio content. A replay with the same request returns
+the existing job; reusing the key for different content returns `409`.
 
 ### TTS
 
@@ -66,6 +69,15 @@ Terminal TTS jobs can be cleaned with `DELETE /api/v1/tts/jobs`, optionally filt
 TTS jobs use the same lifecycle contract as ASR jobs. `POST /api/v1/tts/jobs/{job_id}/cancel`
 cancels queued work immediately and prevents a running generation from writing output if cancellation
 is requested before the final output step.
+`POST /api/v1/tts/jobs/voices/{voice_id}` supports the same idempotency contract, fingerprinting the
+validated voice, text, language, steps, and speed. TTS writes to `output.wav.tmp`, then atomically
+promotes the file only inside the lock-protected success transition.
+
+Both job responses expose a non-percent progress contract through `progress_stage` and
+`stage_started_at`. Stages are `queued`, `preparing_input`, `running_model`, `finalizing`,
+`retry_wait`, and terminal states. `cancellation_mode` is currently `safe_point`: a blocking model
+call is allowed to return before cancellation becomes terminal, so the UI says `Stopping` and keeps
+showing the actual stage instead of promising immediate interruption.
 
 ### Voices
 

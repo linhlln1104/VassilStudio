@@ -14,6 +14,7 @@ from vvoice.core.container import AppContainer
 from vvoice.core.errors import (
     AudioError,
     AsrJobNotFoundError,
+    IdempotencyConflictError,
     ModelConfigurationError,
     TtsJobNotFoundError,
     UnsupportedAudioFormatError,
@@ -158,6 +159,16 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=503,
             content=_error_content("model_configuration_error", public_error_message(exc)),
+        )
+
+    @app.exception_handler(IdempotencyConflictError)
+    async def idempotency_conflict_handler(
+        _: Request,
+        exc: IdempotencyConflictError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content=_error_content("idempotency_conflict", str(exc)),
         )
 
     @app.exception_handler(VVoiceError)

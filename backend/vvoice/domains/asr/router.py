@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
@@ -14,6 +14,7 @@ from vvoice.domains.asr.schemas import (
 )
 from vvoice.shared.audio.io import duration_seconds, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
+from vvoice.shared.jobs.integrity import CANCELLATION_MODE, IDEMPOTENCY_KEY_HEADER
 from vvoice.shared.validation import read_audio_upload, safe_display_filename
 
 
@@ -50,11 +51,17 @@ async def transcribe_audio(
     }
 
 
-@router.post("/jobs", response_model=AsrJobResponse, status_code=202)
+@router.post(
+    "/jobs",
+    response_model=AsrJobResponse,
+    status_code=202,
+    responses={409: {"description": "Idempotency key conflicts with an earlier request"}},
+)
 async def create_asr_job(
     request: Request,
     audio: UploadFile = File(...),
     language: str = Form(default=DEFAULT_LANGUAGE),
+    idempotency_key: str | None = Header(default=None, alias=IDEMPOTENCY_KEY_HEADER),
 ):
     container = request.app.state.container
     data = await read_audio_upload(
@@ -66,6 +73,7 @@ async def create_asr_job(
         audio_bytes=data,
         filename=safe_display_filename(audio.filename),
         language=normalize_language(language),
+        idempotency_key=idempotency_key,
     )
     return _job_response(job)
 
@@ -132,7 +140,10 @@ def _job_response(job: AsrJob) -> dict:
         "attempt": job.attempt,
         "max_attempts": job.max_attempts,
         "cancel_requested": job.cancel_requested,
+        "cancellation_mode": CANCELLATION_MODE,
         "failed_reason": job.failed_reason,
+        "progress_stage": job.progress_stage,
+        "stage_started_at": job.stage_started_at,
         "text": job.text,
         "sample_rate": job.sample_rate,
         "duration_seconds": job.duration_seconds,

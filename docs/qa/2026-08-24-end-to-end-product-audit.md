@@ -169,6 +169,8 @@ Prefer owner sessions for the UI. If browser API-key entry remains, keep it in m
 
 ### VS-QA-005 - P1 - Cancelling a running TTS job does not interrupt inference
 
+**Status: mitigated by an explicit safe-point contract; process-level interruption remains open**
+
 **Evidence**
 
 - A real CPU job reached `running`; cancel returned `cancelling`, but terminal `cancelled` arrived **47.72 seconds** later.
@@ -183,7 +185,19 @@ The UI says Cancel, but CPU and queue capacity remain occupied. Repeated long re
 
 Run inference in a killable worker process or add cooperative checkpoints supported by the runtime. Until interruption is real, label the state “Stop requested; current inference is finishing” and expose elapsed time.
 
+**Resolution evidence**
+
+- Job responses now expose `cancellation_mode: safe_point`, `progress_stage`, and `stage_started_at`.
+- Generate, Transcribe, Jobs rows, and Job Inspector use `Stopping` plus the actual current stage; they
+  no longer imply immediate interruption.
+- Success and cancellation transitions are serialized under the job lock. A stop request cannot be
+  overwritten by stale worker state, and cancelled TTS work cannot promote a final WAV output.
+- Inference still occupies CPU until the current blocking model call returns. A killable worker process
+  remains a later runtime architecture option, not a hidden product promise.
+
 ### VS-QA-006 - P1 - Generate can enqueue accidental duplicates and leaves stale success copy
+
+**Status: resolved 2026-08-24**
 
 **Evidence**
 
@@ -199,6 +213,15 @@ Users can create duplicate expensive jobs and cannot trust the local status mess
 **Required change**
 
 Disable or change the primary action while the same voice/script/parameters are active. Add an idempotency key or request fingerprint, derive the message from the server job lifecycle, and expose queue position, elapsed time, progress when available, and cancellation.
+
+**Resolution evidence**
+
+- ASR/TTS create endpoints accept `Idempotency-Key`; same-payload replay returns one job and key reuse
+  for a different payload returns `409`. Raw keys are not persisted or returned.
+- Generate and Transcribe use synchronous submit locks, retry-stable keys, and persisted job stages.
+  Generate remains disabled while an equivalent voice/text/language/steps/speed job is active.
+- Playwright invoked each primary action twice in the same browser task and observed exactly one POST
+  for TTS and one for ASR at `1440x1000` and `390x844`, with no overflow or browser errors.
 
 ### VS-QA-007 - P1 - Local voice import has an ambiguous immediate side effect and permits duplicates
 
@@ -322,7 +345,7 @@ the API-key header required by temporary automation access.
 | --- | --- | --- |
 | Landing | Responsive, local assets, clear primary CTA, no broken content images | Add a real favicon; replace engineering language with user outcomes; localize VI/EN; make privacy claims conditional and precise |
 | Setup/Auth | First-owner setup, invalid-login error, protected Studio/API routes, logout, password change/rate-limit tests | Preserve deep link; recovery/reset procedure; clear local-data policy; secure non-loopback defaults |
-| Generate | Voice/language/speed/mode selection, queue, output player/download, history handoff | Idempotency, active-state lock, cancel/progress/ETA, output filename/format, batch takes, pronunciation controls |
+| Generate | Voice/language/speed/mode selection, idempotent queue, active-state lock, progress, output player/download, history handoff | Output filename/format, batch takes, pronunciation controls, benchmark-backed ETA |
 | Voices | Upload/local import, metadata edit, audio preview, search/filter, delete | Review-before-import, duplicate detection, trim/silence/clipping checks, replace source audio, tags/backup/export |
 | Transcribe | File staging/preview, VI/EN selection, queue, result copy/download, Generate handoff | Timed segments, editing, completed-source playback in context, SRT/VTT, multi-file batch |
 | Realtime | Real WebSocket smoke, mocked browser capture, language selection, segments, copy/download, stop/finalize | Microphone selector, pause/resume, reconnect behavior, saved session history, live permission/device diagnostics |
@@ -358,7 +381,7 @@ the API-key header required by temporary automation access.
 ## Recommended implementation order
 
 1. **Security boundary:** protect detailed docs/readiness; loopback defaults, response sanitization, diagnostics path filtering, and browser response security are resolved.
-2. **Runtime control:** make cancellation truthful/effective, add idempotency, lock duplicate Generate actions, and derive UI state from server jobs.
+2. **Runtime control:** safe-point cancellation semantics, idempotency, duplicate-submit locks, and server-derived stages are resolved; process-level inference interruption remains optional future work.
 3. **Voice/ASR product closure:** add voice import review/quality checks and either implement timed transcripts or remove the timestamp promise.
 4. **Account/privacy:** preserve deep links and scope/clear local drafts; browser API-key persistence is removed and diagnostics sharing is now explicit.
 5. **Product completeness:** VI/EN UI localization, output naming/formats, realtime device selection, model management, backup/restore, and log workflow.

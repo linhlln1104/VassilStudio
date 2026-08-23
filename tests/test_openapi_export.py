@@ -27,3 +27,19 @@ def test_export_openapi_writes_contract(tmp_path) -> None:
     assert "audio_path" not in schemas["VoiceResponse"]["properties"]
     assert "attempt" in schemas["AsrJobResponse"]["properties"]
     assert "cancel_requested" in schemas["TtsJobResponse"]["properties"]
+    assert "progress_stage" in schemas["AsrJobResponse"]["properties"]
+    assert "stage_started_at" in schemas["TtsJobResponse"]["properties"]
+    assert "cancellation_mode" in schemas["TtsJobResponse"]["properties"]
+
+    asr_create = schema["paths"]["/api/v1/asr/jobs"]["post"]
+    tts_create = schema["paths"]["/api/v1/tts/jobs/voices/{voice_id}"]["post"]
+    assert "409" in asr_create["responses"]
+    assert "409" in tts_create["responses"]
+    assert any(
+        parameter["name"] == "Idempotency-Key" and parameter["in"] == "header"
+        for parameter in asr_create["parameters"]
+    )
+    assert any(
+        parameter["name"] == "Idempotency-Key" and parameter["in"] == "header"
+        for parameter in tts_create["parameters"]
+    )

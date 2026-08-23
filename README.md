@@ -18,6 +18,7 @@ See `docs/product-completeness-research.md` for the evidence-backed feature back
 - `backend/vvoice/domains/voices`: reference voice profile storage.
 - `backend/vvoice/domains/realtime`: websocket chunked ASR for live microphone workflows.
 - `backend/vvoice/shared/audio`: shared audio decode, resample, and WAV encoding.
+- `backend/vvoice/shared/jobs`: idempotency, request fingerprint, and lifecycle-stage contracts.
 - `backend/vvoice/shared/security`: API key, Studio session, and WebSocket auth helpers.
 - `backend/vvoice/app/auth`: local owner account and session endpoints.
 - `backend/vvoice/app/studio`: public product shell and Studio static UI route.
@@ -143,6 +144,10 @@ Jobs support cooperative cancellation and retry metadata. Queued jobs cancel imm
 move through `cancelling` and stop at the next safe point around decode/model/output work. Retry is
 disabled by default with one attempt; raise `asr_max_attempts` or `tts_max_attempts` only after testing
 latency and CPU pressure on the target machine.
+ASR and TTS create endpoints accept an optional `Idempotency-Key`. Replaying the same key and payload
+returns the original job; using that key for a different payload returns `409`. Studio generates these
+keys automatically, blocks synchronous double submits, and derives active/success copy from persisted
+job stages rather than mutation state.
 
 Retained TTS outputs and ASR source audio can be played directly from Jobs and downloaded as WAV.
 The Studio fetches job media through the authenticated API client and plays a temporary `blob:` URL,

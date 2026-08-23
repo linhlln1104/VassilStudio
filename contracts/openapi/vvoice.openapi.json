@@ -61,6 +61,11 @@
             "title": "Cancel Requested",
             "type": "boolean"
           },
+          "cancellation_mode": {
+            "const": "safe_point",
+            "title": "Cancellation Mode",
+            "type": "string"
+          },
           "completed_at": {
             "anyOf": [
               {
@@ -125,6 +130,20 @@
             "title": "Max Attempts",
             "type": "integer"
           },
+          "progress_stage": {
+            "enum": [
+              "queued",
+              "preparing_input",
+              "running_model",
+              "finalizing",
+              "retry_wait",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Progress Stage",
+            "type": "string"
+          },
           "sample_rate": {
             "anyOf": [
               {
@@ -135,6 +154,10 @@
               }
             ],
             "title": "Sample Rate"
+          },
+          "stage_started_at": {
+            "title": "Stage Started At",
+            "type": "string"
           },
           "started_at": {
             "anyOf": [
@@ -175,7 +198,10 @@
           "attempt",
           "max_attempts",
           "cancel_requested",
+          "cancellation_mode",
           "failed_reason",
+          "progress_stage",
+          "stage_started_at",
           "text",
           "sample_rate",
           "duration_seconds",
@@ -1203,6 +1229,11 @@
             "title": "Cancel Requested",
             "type": "boolean"
           },
+          "cancellation_mode": {
+            "const": "safe_point",
+            "title": "Cancellation Mode",
+            "type": "string"
+          },
           "completed_at": {
             "anyOf": [
               {
@@ -1274,6 +1305,20 @@
             ],
             "title": "Num Steps"
           },
+          "progress_stage": {
+            "enum": [
+              "queued",
+              "preparing_input",
+              "running_model",
+              "finalizing",
+              "retry_wait",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Progress Stage",
+            "type": "string"
+          },
           "sample_rate": {
             "anyOf": [
               {
@@ -1295,6 +1340,10 @@
               }
             ],
             "title": "Speed"
+          },
+          "stage_started_at": {
+            "title": "Stage Started At",
+            "type": "string"
           },
           "started_at": {
             "anyOf": [
@@ -1335,7 +1384,10 @@
           "attempt",
           "max_attempts",
           "cancel_requested",
+          "cancellation_mode",
           "failed_reason",
+          "progress_stage",
+          "stage_started_at",
           "sample_rate",
           "duration_seconds",
           "audio_url"
@@ -1641,6 +1693,24 @@
       },
       "post": {
         "operationId": "create_asr_job_api_v1_asr_jobs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "multipart/form-data": {
@@ -1661,6 +1731,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "Idempotency key conflicts with an earlier request"
           },
           "422": {
             "content": {
@@ -2161,6 +2234,22 @@
               "title": "Voice Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -2183,6 +2272,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "Idempotency key conflicts with an earlier request"
           },
           "422": {
             "content": {

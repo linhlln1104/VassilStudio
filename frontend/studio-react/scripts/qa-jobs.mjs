@@ -53,7 +53,10 @@ function jobFixture() {
       attempt: 1,
       max_attempts: 3,
       cancel_requested: false,
+      cancellation_mode: 'safe_point',
       failed_reason: null,
+      progress_stage: 'succeeded',
+      stage_started_at: '2026-08-23T08:20:06Z',
       sample_rate: 24000,
       duration_seconds: 4.2,
       audio_url: '/api/v1/tts/jobs/tts-20260823-success-abcdef12/audio',
@@ -73,7 +76,10 @@ function jobFixture() {
       attempt: 3,
       max_attempts: 3,
       cancel_requested: false,
+      cancellation_mode: 'safe_point',
       failed_reason: 'model_dependency_missing',
+      progress_stage: 'failed',
+      stage_started_at: '2026-08-23T08:10:03Z',
       sample_rate: null,
       duration_seconds: null,
       audio_url: null,
@@ -92,7 +98,10 @@ function jobFixture() {
       attempt: 1,
       max_attempts: 3,
       cancel_requested: false,
+      cancellation_mode: 'safe_point',
       failed_reason: null,
+      progress_stage: 'running_model',
+      stage_started_at: '2026-08-23T08:30:03Z',
       text: null,
       sample_rate: 16000,
       duration_seconds: null,
@@ -110,7 +119,10 @@ function jobFixture() {
       attempt: 1,
       max_attempts: 3,
       cancel_requested: false,
+      cancellation_mode: 'safe_point',
       failed_reason: null,
+      progress_stage: 'succeeded',
+      stage_started_at: '2026-08-23T07:30:05Z',
       text: 'The local recording is ready for editorial review.',
       sample_rate: 16000,
       duration_seconds: 12.4,
@@ -128,7 +140,10 @@ function jobFixture() {
       attempt: 1,
       max_attempts: 3,
       cancel_requested: true,
-      failed_reason: 'cancelled_by_user',
+      cancellation_mode: 'safe_point',
+      failed_reason: 'cancelled',
+      progress_stage: 'cancelled',
+      stage_started_at: '2026-08-23T07:00:02Z',
       text: null,
       sample_rate: null,
       duration_seconds: null,
@@ -172,7 +187,11 @@ async function installApiFixture(page, fixture) {
       return json(fixture.asrJobs)
     }
     if (url.pathname.startsWith('/api/v1/tts/jobs/voices/') && method === 'POST') {
-      fixture.ttsCreates.push({ path: url.pathname, body: request.postData() || '' })
+      fixture.ttsCreates.push({
+        path: url.pathname,
+        body: request.postData() || '',
+        idempotencyKey: request.headers()['idempotency-key'] || '',
+      })
       const source = fixture.ttsJobs.find((job) => job.job_id === 'tts-20260823-failed-deadbeef')
       const created = {
         ...source,
@@ -184,12 +203,18 @@ async function installApiFixture(page, fixture) {
         error: null,
         attempt: 0,
         failed_reason: null,
+        progress_stage: 'queued',
+        stage_started_at: new Date().toISOString(),
       }
       fixture.ttsJobs.unshift(created)
       return json(created, 202)
     }
     if (url.pathname === '/api/v1/asr/jobs' && method === 'POST') {
-      fixture.asrCreates.push({ path: url.pathname, body: request.postData() || '' })
+      fixture.asrCreates.push({
+        path: url.pathname,
+        body: request.postData() || '',
+        idempotencyKey: request.headers()['idempotency-key'] || '',
+      })
       const created = {
         ...fixture.asrJobs.find((job) => job.job_id === 'asr-20260823-success-1234abcd'),
         job_id: `asr-qa-retry-${fixture.asrCreates.length}`,
@@ -199,6 +224,8 @@ async function installApiFixture(page, fixture) {
         completed_at: null,
         text: null,
         duration_seconds: null,
+        progress_stage: 'queued',
+        stage_started_at: new Date().toISOString(),
       }
       fixture.asrJobs.unshift(created)
       return json(created, 202)
@@ -317,7 +344,7 @@ try {
     })
     await dialog.getByRole('button', { name: 'Run again', exact: true }).click()
     await ttsRecoveryResponse
-    await page.getByText('New job queued', { exact: true }).waitFor({ state: 'visible' })
+    await page.getByText('Job accepted', { exact: true }).waitFor({ state: 'visible' })
     if (fixture.ttsCreates.length !== 1) {
       throw new Error(`${viewport.name}: expected one TTS recovery request`)
     }
@@ -328,6 +355,9 @@ try {
     )
     if (!fixture.ttsCreates[0].path.endsWith('/voice-saigon-narrator-1f119ecc')) {
       throw new Error(`${viewport.name}: TTS recovery used the wrong voice profile`)
+    }
+    if (!fixture.ttsCreates[0].idempotencyKey.startsWith('tts:')) {
+      throw new Error(`${viewport.name}: TTS recovery omitted its idempotency key`)
     }
 
     await page.getByRole('button', { name: 'Done', exact: true }).click()
@@ -395,6 +425,9 @@ try {
     )
     if (!fixture.audioReads.some((value) => value.includes('asr-20260823-success-1234abcd'))) {
       throw new Error(`${viewport.name}: ASR recovery did not read the original input audio`)
+    }
+    if (!fixture.asrCreates[0].idempotencyKey.startsWith('asr:')) {
+      throw new Error(`${viewport.name}: ASR recovery omitted its idempotency key`)
     }
     if (fixture.audioApiKeys.some((value) => value !== 'jobs-qa-api-key')) {
       throw new Error(`${viewport.name}: one or more job audio requests omitted the API key header`)

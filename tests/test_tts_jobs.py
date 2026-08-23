@@ -1,11 +1,12 @@
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
 import numpy as np
 import pytest
 
-from vvoice.core.errors import PUBLIC_JOB_ERROR_MESSAGE, VVoiceError
+from vvoice.core.errors import IdempotencyConflictError, PUBLIC_JOB_ERROR_MESSAGE, VVoiceError
 from vvoice.shared.audio.io import encode_wav
 from vvoice.domains.tts.jobs import TtsJobService
 from vvoice.domains.tts.router import _job_response
@@ -87,6 +88,8 @@ def test_tts_job_service_runs_job_from_voice(tmp_path) -> None:
         assert completed.max_attempts == 1
         assert completed.cancel_requested is False
         assert completed.failed_reason is None
+        assert completed.progress_stage == "succeeded"
+        assert completed.stage_started_at
         assert completed.language == "en"
         assert fake_tts.last_kwargs["language"] == "en"
         assert completed.output_path is not None
@@ -160,6 +163,7 @@ def test_tts_job_service_cancels_running_job_at_safe_point(tmp_path) -> None:
         cancelling = jobs.cancel(job.job_id)
         assert cancelling.status == "cancelling"
         assert cancelling.cancel_requested is True
+        assert cancelling.progress_stage == "running_model"
 
         fake_tts.release.set()
         completed = wait_for_job(jobs, job.job_id)
@@ -167,6 +171,7 @@ def test_tts_job_service_cancels_running_job_at_safe_point(tmp_path) -> None:
         assert completed.status == "cancelled"
         assert completed.cancel_requested is True
         assert completed.failed_reason == "cancelled"
+        assert completed.progress_stage == "cancelled"
         assert completed.output_path is not None
         assert not completed.output_path.exists()
     finally:
@@ -246,6 +251,8 @@ def test_tts_job_service_marks_interrupted_jobs_failed(tmp_path) -> None:
         assert job.status == "failed"
         assert job.error == "Job was interrupted by server restart"
         assert job.failed_reason == "interrupted"
+        assert job.progress_stage == "failed"
+        assert job.stage_started_at == job.completed_at
     finally:
         recovered.shutdown()
 
@@ -276,6 +283,67 @@ def test_tts_job_service_rejects_text_over_limit(tmp_path) -> None:
     try:
         with pytest.raises(VVoiceError, match="text must be 4 characters or fewer"):
             jobs.create_from_voice(voice_id="missing", text="hello")
+    finally:
+        jobs.shutdown()
+
+
+def test_tts_job_service_deduplicates_concurrent_create_requests(tmp_path) -> None:
+    voices = VoiceStore(tmp_path / "voices")
+    profile = create_voice(voices)
+    fake_tts = BlockingTts()
+    jobs = TtsJobService(tmp_path / "tts-jobs", fake_tts, voices)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as callers:
+            futures = [
+                callers.submit(
+                    jobs.create_from_voice,
+                    voice_id=profile.voice_id,
+                    text="same render",
+                    language="en",
+                    num_steps=4,
+                    speed=1.0,
+                    idempotency_key="tts:create:request-1",
+                )
+                for _ in range(2)
+            ]
+            created = [future.result() for future in futures]
+
+        assert created[0].job_id == created[1].job_id
+        assert len(list((tmp_path / "tts-jobs").glob("*/metadata.json"))) == 1
+        metadata = (tmp_path / "tts-jobs" / created[0].job_id / "metadata.json").read_text(
+            encoding="utf-8"
+        )
+        assert "tts:create:request-1" not in metadata
+        assert fake_tts.started.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS)
+
+        with pytest.raises(IdempotencyConflictError, match="different TTS request"):
+            jobs.create_from_voice(
+                voice_id=profile.voice_id,
+                text="different render",
+                language="en",
+                idempotency_key="tts:create:request-1",
+            )
+
+        fake_tts.release.set()
+        assert wait_for_job(jobs, created[0].job_id).status == "succeeded"
+    finally:
+        fake_tts.release.set()
+        jobs.shutdown()
+
+
+def test_tts_job_service_rejects_invalid_idempotency_key(tmp_path) -> None:
+    jobs = TtsJobService(
+        tmp_path / "tts-jobs",
+        FakeTts(),
+        VoiceStore(tmp_path / "voices"),
+    )
+    try:
+        with pytest.raises(VVoiceError, match="Idempotency-Key"):
+            jobs.create_from_voice(
+                voice_id="missing",
+                text="hello",
+                idempotency_key="contains spaces",
+            )
     finally:
         jobs.shutdown()
 

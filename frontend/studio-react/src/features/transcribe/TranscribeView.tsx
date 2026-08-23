@@ -20,9 +20,10 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { QueryErrorState } from '@/components/ui/query-error'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/components/ui/use-toast'
-import { api, type AsrJob } from '@/lib/api'
+import { api, createIdempotencyKey, type AsrJob } from '@/lib/api'
 import { compactId, formatBytes, formatDuration } from '@/lib/format'
 import { jobRefetchInterval } from '@/lib/job-polling'
+import { cancellationResultMessage, jobProgressLabel } from '@/lib/job-runtime'
 import {
   VOICE_LANGUAGES,
   normalizeVoiceLanguage,
@@ -36,8 +37,17 @@ import { cn } from '@/lib/utils'
 
 const ASR_AUDIO_EXTENSIONS = new Set(['wav', 'mp3', 'webm', 'weba', 'flac', 'm4a', 'ogg', 'opus'])
 
+type UploadRequest = {
+  file: File
+  language: VoiceLanguage
+  fingerprint: string
+  idempotencyKey: string
+}
+
 export function TranscribeView() {
   const uploadInputRef = useRef<HTMLInputElement>(null)
+  const submitLockRef = useRef(false)
+  const retryRequestRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState('')
@@ -74,17 +84,25 @@ export function TranscribeView() {
     return () => URL.revokeObjectURL(previewUrl)
   }, [selectedFile])
   const uploadMutation = useMutation({
-    mutationFn: ({ file, language }: { file: File; language: VoiceLanguage }) =>
-      api.createAsrJob(file, { language }),
+    mutationFn: ({ file, language, idempotencyKey }: UploadRequest) =>
+      api.createAsrJob(file, { language }, { idempotencyKey }),
     onSuccess: (job) => {
+      retryRequestRef.current = null
+      queryClient.setQueryData<AsrJob[]>(['asr-jobs'], (current = []) => [
+        job,
+        ...current.filter((item) => item.job_id !== job.job_id),
+      ])
       void queryClient.invalidateQueries({ queryKey: ['asr-jobs'] })
       setSelectedFile(null)
       setFileError('')
       toast({
-        title: 'Transcription queued',
-        description: `${job.filename} is queued as ${compactId(job.job_id)}.`,
+        title: job.status === 'succeeded' ? 'Transcription ready' : 'Transcription accepted',
+        description: `${compactId(job.job_id)}: ${jobProgressLabel(job, 'ASR')}.`,
         variant: 'success',
       })
+    },
+    onSettled: () => {
+      submitLockRef.current = false
     },
   })
   const cancelJobMutation = useMutation({
@@ -92,8 +110,8 @@ export function TranscribeView() {
     onSuccess: (job) => {
       void queryClient.invalidateQueries({ queryKey: ['asr-jobs'] })
       toast({
-        title: 'Cancellation requested',
-        description: `${compactId(job.job_id)} will stop at the next safe point.`,
+        title: job.status === 'cancelled' ? 'Transcription cancelled' : 'Stopping requested',
+        description: cancellationResultMessage(job, compactId(job.job_id), 'ASR'),
         variant: 'success',
       })
     },
@@ -107,6 +125,9 @@ export function TranscribeView() {
   })
 
   const jobs = asrJobsQuery.data ?? []
+  const submittedJob = uploadMutation.data
+    ? jobs.find((job) => job.job_id === uploadMutation.data.job_id) ?? uploadMutation.data
+    : null
   const latestTranscript = jobs.find((job) => job.text)
   const activeAsrCount = jobs.filter((job) => ['queued', 'running', 'cancelling'].includes(job.status)).length
   const latestFailedJob = jobs.find((job) => job.status === 'failed') ?? null
@@ -129,6 +150,7 @@ export function TranscribeView() {
       return
     }
     uploadMutation.reset()
+    retryRequestRef.current = null
     if (!file) {
       setSelectedFile(null)
       setFileError('')
@@ -152,10 +174,20 @@ export function TranscribeView() {
   }
 
   const queueSelectedFile = () => {
-    if (!selectedFile || runtimeLanguageWarning) {
+    if (!selectedFile || runtimeLanguageWarning || uploadMutation.isPending || submitLockRef.current) {
       return
     }
-    uploadMutation.mutate({ file: selectedFile, language: selectedLanguage })
+    const fingerprint = uploadRequestFingerprint(selectedFile, selectedLanguage)
+    const retryRequest = retryRequestRef.current?.fingerprint === fingerprint
+      ? retryRequestRef.current
+      : { fingerprint, idempotencyKey: createIdempotencyKey('asr') }
+    retryRequestRef.current = retryRequest
+    submitLockRef.current = true
+    uploadMutation.mutate({
+      file: selectedFile,
+      language: selectedLanguage,
+      ...retryRequest,
+    })
   }
 
   const handleLanguageSelect = (language: VoiceLanguage) => {
@@ -203,10 +235,16 @@ export function TranscribeView() {
                 {modelReadinessMessage}
               </div>
             ) : null}
-            {uploadMutation.isSuccess ? (
-              <div className="mb-3 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold leading-5 text-emerald-800">
-                <Check className="mt-0.5 size-4 shrink-0" />
-                <span>{uploadMutation.data.filename} was added to the ASR queue.</span>
+            {submittedJob ? (
+              <div className={`mb-3 flex items-start gap-2 rounded-md border px-3 py-2 text-xs font-semibold leading-5 ${transcriptionNoticeClass(submittedJob)}`} role="status">
+                {submittedJob.status === 'failed' || submittedJob.status === 'cancelled' ? (
+                  <XCircle className="mt-0.5 size-4 shrink-0" />
+                ) : submittedJob.status === 'succeeded' ? (
+                  <Check className="mt-0.5 size-4 shrink-0" />
+                ) : (
+                  <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" />
+                )}
+                <span>{submittedJob.filename}: {jobProgressLabel(submittedJob, 'ASR')}.</span>
               </div>
             ) : null}
             <div
@@ -382,7 +420,8 @@ export function TranscribeView() {
                     </p>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                       <span className="text-xs font-medium text-slate-500">
-                        {job.max_attempts > 1 ? `Attempt ${job.attempt}/${job.max_attempts}` : 'ASR queue'}
+                        {jobProgressLabel(job, 'ASR')}
+                        {job.max_attempts > 1 ? ` / Attempt ${job.attempt}/${job.max_attempts}` : ''}
                       </span>
                       <div className="flex flex-wrap gap-2">
                         {job.text ? (
@@ -420,7 +459,7 @@ export function TranscribeView() {
                 <Mic2 className="mx-auto size-6 text-slate-400" />
                 <div className="mt-2 text-sm font-semibold text-slate-900">No ASR jobs yet</div>
                 <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-slate-600">
-                  Upload a clip to see timestamps, transcripts, and review status here.
+                  Upload a clip to see transcripts and processing status here.
                 </p>
               </div>
             )}
@@ -491,13 +530,30 @@ function JobStatusBadge({ job }: { job: AsrJob }) {
   return (
     <Badge variant="warning">
       <Loader2 className="mr-1 size-3 animate-spin" />
-      {job.status === 'cancelling' ? 'Cancelling' : job.status === 'queued' ? 'Queued' : 'Running'}
+      {job.status === 'cancelling' ? 'Stopping' : job.status === 'queued' ? 'Queued' : 'Running'}
     </Badge>
   )
 }
 
 function canCancelJob(job: AsrJob) {
   return job.status === 'queued' || job.status === 'running'
+}
+
+function uploadRequestFingerprint(file: File, language: VoiceLanguage) {
+  return JSON.stringify([
+    file.name,
+    file.size,
+    file.type,
+    file.lastModified,
+    language,
+  ])
+}
+
+function transcriptionNoticeClass(job: AsrJob) {
+  if (job.status === 'failed') return 'border-red-200 bg-red-50 text-red-700'
+  if (job.status === 'cancelled') return 'border-slate-200 bg-slate-50 text-slate-700'
+  if (job.status === 'succeeded') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
+  return 'border-amber-200 bg-amber-50 text-amber-800'
 }
 
 function sendTranscriptToGenerate(job: AsrJob) {

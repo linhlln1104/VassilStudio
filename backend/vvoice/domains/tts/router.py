@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 
@@ -15,6 +15,7 @@ from vvoice.domains.tts.parameters import validate_tts_parameters
 from vvoice.domains.tts.service import GeneratedSpeech
 from vvoice.shared.audio.io import encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
+from vvoice.shared.jobs.integrity import CANCELLATION_MODE, IDEMPOTENCY_KEY_HEADER
 from vvoice.shared.validation import read_audio_upload, validate_text_field
 
 
@@ -101,7 +102,12 @@ async def synthesize_with_voice(
     return _wav_response(speech)
 
 
-@router.post("/jobs/voices/{voice_id}", response_model=TtsJobResponse, status_code=202)
+@router.post(
+    "/jobs/voices/{voice_id}",
+    response_model=TtsJobResponse,
+    status_code=202,
+    responses={409: {"description": "Idempotency key conflicts with an earlier request"}},
+)
 async def create_tts_job_with_voice(
     request: Request,
     voice_id: str,
@@ -109,6 +115,7 @@ async def create_tts_job_with_voice(
     language: str | None = Form(default=None),
     num_steps: int | None = Form(default=None),
     speed: float | None = Form(default=None),
+    idempotency_key: str | None = Header(default=None, alias=IDEMPOTENCY_KEY_HEADER),
 ):
     container = request.app.state.container
     validate_tts_parameters(num_steps, speed)
@@ -118,6 +125,7 @@ async def create_tts_job_with_voice(
         language=language,
         num_steps=num_steps,
         speed=speed,
+        idempotency_key=idempotency_key,
     )
     return _job_response(job)
 
@@ -202,7 +210,10 @@ def _job_response(job: TtsJob) -> dict:
         "attempt": job.attempt,
         "max_attempts": job.max_attempts,
         "cancel_requested": job.cancel_requested,
+        "cancellation_mode": CANCELLATION_MODE,
         "failed_reason": job.failed_reason,
+        "progress_stage": job.progress_stage,
+        "stage_started_at": job.stage_started_at,
         "sample_rate": job.sample_rate,
         "duration_seconds": job.duration_seconds,
         "audio_url": audio_url,

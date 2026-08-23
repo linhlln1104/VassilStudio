@@ -41,6 +41,125 @@ function createWaveBuffer(seconds = 1, sampleRate = 16000) {
   return buffer
 }
 
+async function installAsrCreateFixture(page, fixture) {
+  await page.route('**/api/v1/asr/jobs', async (route) => {
+    const request = route.request()
+    if (request.method() !== 'POST') return route.continue()
+
+    fixture.creates.push({
+      idempotencyKey: request.headers()['idempotency-key'] || '',
+      body: request.postData() || '',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    const now = new Date().toISOString()
+    return route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        job_id: 'asr-qa-double-submit',
+        status: 'queued',
+        filename: 'interview-vi.wav',
+        language: 'vi',
+        created_at: now,
+        started_at: null,
+        completed_at: null,
+        error: null,
+        attempt: 0,
+        max_attempts: 2,
+        cancel_requested: false,
+        cancellation_mode: 'safe_point',
+        failed_reason: null,
+        progress_stage: 'queued',
+        stage_started_at: now,
+        text: null,
+        sample_rate: 16000,
+        duration_seconds: 1,
+        audio_url: '/api/v1/asr/jobs/asr-qa-double-submit/audio',
+      }),
+    })
+  })
+}
+
+async function installGenerateFixture(page, fixture) {
+  await page.route('**/*', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const method = request.method()
+    const json = (body, status = 200) => route.fulfill({
+      status,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    })
+
+    if (url.pathname === '/api/v1/auth/status') {
+      return json({ auth_required: false, setup_required: false, authenticated: true, api_key_auth_enabled: false, user: null })
+    }
+    if (url.pathname === '/model-status') {
+      return json({
+        ready: true,
+        runtime: {
+          tts_configured_languages: ['vi', 'en'],
+          tts_loaded_languages: ['vi'],
+          asr_configured_languages: ['vi', 'en'],
+          asr_loaded_languages: ['vi'],
+        },
+      })
+    }
+    if (url.pathname === '/api/v1/voices' && method === 'GET') {
+      return json([{
+        voice_id: 'voice-qa-runtime',
+        name: 'QA Voice',
+        language: 'vi',
+        reference_text: 'Xin chao tu VassilStudio.',
+        reference_text_source: 'user',
+        audio_size_bytes: 32044,
+        sample_rate: 16000,
+        duration_seconds: 1,
+        created_at: '2026-08-24T00:00:00Z',
+        updated_at: null,
+        reference_audio_url: '',
+      }])
+    }
+    if (url.pathname === '/api/v1/tts/jobs' && method === 'GET') {
+      return json(fixture.jobs)
+    }
+    if (url.pathname.startsWith('/api/v1/tts/jobs/voices/') && method === 'POST') {
+      fixture.creates.push({
+        idempotencyKey: request.headers()['idempotency-key'] || '',
+        body: request.postData() || '',
+      })
+      await new Promise((resolve) => setTimeout(resolve, 80))
+      const now = new Date().toISOString()
+      const job = {
+        job_id: 'tts-qa-double-submit',
+        status: 'queued',
+        voice_id: 'voice-qa-runtime',
+        language: 'vi',
+        text: 'Day la bai kiem tra runtime integrity.',
+        num_steps: 4,
+        speed: 1,
+        created_at: now,
+        started_at: null,
+        completed_at: null,
+        error: null,
+        attempt: 0,
+        max_attempts: 2,
+        cancel_requested: false,
+        cancellation_mode: 'safe_point',
+        failed_reason: null,
+        progress_stage: 'queued',
+        stage_started_at: now,
+        sample_rate: null,
+        duration_seconds: null,
+        audio_url: null,
+      }
+      fixture.jobs = [job]
+      return json(job, 202)
+    }
+    return route.continue()
+  })
+}
+
 function installRealtimeFixture() {
   class QaWebSocket {
     static CONNECTING = 0
@@ -180,6 +299,8 @@ try {
       reducedMotion: 'reduce',
     })
     const transcribeErrors = captureBrowserErrors(transcribePage)
+    const asrFixture = { creates: [] }
+    await installAsrCreateFixture(transcribePage, asrFixture)
     await assertPageResponse(transcribePage, 'transcribe')
     await transcribePage.locator('input[type="file"]').setInputFiles({
       name: 'interview-vi.wav',
@@ -209,7 +330,79 @@ try {
 
     const transcribeScreenshot = path.join(outputDir, `transcribe-staged-${viewport.name}.png`)
     await transcribePage.screenshot({ path: transcribeScreenshot, fullPage: true })
+
+    const asrCreateResponse = transcribePage.waitForResponse((response) => (
+      response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/asr/jobs'
+    ))
+    await transcribePage.getByRole('button', { name: 'Queue transcription' }).evaluate((button) => {
+      button.click()
+      button.click()
+    })
+    await asrCreateResponse
+    await transcribePage.getByText('interview-vi.wav: Waiting in queue.', { exact: true }).waitFor({ state: 'visible' })
+    if (asrFixture.creates.length !== 1) {
+      throw new Error(`${viewport.name}: double submit created ${asrFixture.creates.length} ASR requests`)
+    }
+    if (!asrFixture.creates[0].idempotencyKey.startsWith('asr:')) {
+      throw new Error(`${viewport.name}: ASR create omitted its idempotency key`)
+    }
     await transcribePage.close()
+
+    const generatePage = await browser.newPage({
+      viewport: { width: viewport.width, height: viewport.height },
+      colorScheme: 'light',
+      reducedMotion: 'reduce',
+    })
+    const generateErrors = captureBrowserErrors(generatePage)
+    const ttsFixture = { creates: [], jobs: [] }
+    await installGenerateFixture(generatePage, ttsFixture)
+    await assertPageResponse(generatePage, 'generate')
+    await generatePage.locator('textarea:visible').fill('Day la bai kiem tra runtime integrity.')
+    const generateButton = generatePage.getByRole('button', { name: 'Generate audio', exact: true })
+    await generateButton.waitFor({ state: 'visible' })
+    const ttsCreateResponse = generatePage.waitForResponse((response) => (
+      response.request().method() === 'POST' && new URL(response.url()).pathname.startsWith('/api/v1/tts/jobs/voices/')
+    ))
+    await generateButton.evaluate((button) => {
+      button.click()
+      button.click()
+    })
+    await ttsCreateResponse
+    await generatePage.getByText('Queued. Waiting in queue.', { exact: true }).filter({ visible: true }).waitFor({ state: 'visible' })
+    await generatePage.getByRole('button', { name: 'Render active', exact: true }).waitFor({ state: 'visible' })
+    if (ttsFixture.creates.length !== 1) {
+      throw new Error(`${viewport.name}: double submit created ${ttsFixture.creates.length} TTS requests`)
+    }
+    if (!ttsFixture.creates[0].idempotencyKey.startsWith('tts:')) {
+      throw new Error(`${viewport.name}: TTS create omitted its idempotency key`)
+    }
+    const completedAt = new Date().toISOString()
+    ttsFixture.jobs[0] = {
+      ...ttsFixture.jobs[0],
+      status: 'succeeded',
+      started_at: completedAt,
+      completed_at: completedAt,
+      progress_stage: 'succeeded',
+      stage_started_at: completedAt,
+      sample_rate: 24000,
+      duration_seconds: 1.2,
+    }
+    const completedPoll = generatePage.waitForResponse((response) => (
+      response.request().method() === 'GET' && new URL(response.url()).pathname === '/api/v1/tts/jobs'
+    ))
+    await completedPoll
+    await generatePage.getByText('Succeeded. Completed.', { exact: true }).filter({ visible: true }).waitFor({ state: 'visible' })
+    await generatePage.getByRole('button', { name: 'Generate audio', exact: true }).waitFor({ state: 'visible' })
+    const generateLayout = await getLayoutMetrics(generatePage)
+    if (generateLayout.horizontalOverflow > 1) {
+      throw new Error(`${viewport.name}: Generate overflowed by ${generateLayout.horizontalOverflow}px`)
+    }
+    if (generateErrors.length > 0) {
+      throw new Error(`${viewport.name}: Generate browser errors: ${generateErrors.join(' | ')}`)
+    }
+    const generateScreenshot = path.join(outputDir, `generate-runtime-${viewport.name}.png`)
+    await generatePage.screenshot({ path: generateScreenshot, fullPage: true })
+    await generatePage.close()
 
     const realtimePage = await browser.newPage({
       viewport: { width: viewport.width, height: viewport.height },
@@ -251,12 +444,16 @@ try {
       ...viewport,
       audioDuration,
       queueButtonEnabled,
+      asrCreateRequests: asrFixture.creates.length,
+      ttsCreateRequests: ttsFixture.creates.length,
       inputDecibels,
       sessionTime,
       stoppedCleanly,
       transcribeScreenshot,
+      generateScreenshot,
       realtimeScreenshot,
       transcribeLayout,
+      generateLayout,
       realtimeLayout,
     })
   }

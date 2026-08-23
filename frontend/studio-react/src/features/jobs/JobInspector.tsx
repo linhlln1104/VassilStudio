@@ -20,8 +20,9 @@ import { Badge } from '@/components/ui/badge'
 import { AudioPlayer } from '@/components/ui/audio-player'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
-import type { JobStatus } from '@/lib/api'
+import type { JobProgressStage, JobStatus } from '@/lib/api'
 import { formatDuration } from '@/lib/format'
+import { jobProgressLabel, jobStatusLabel } from '@/lib/job-runtime'
 import { voiceLanguageShortLabel } from '@/lib/language'
 import { cn } from '@/lib/utils'
 
@@ -40,7 +41,10 @@ export type StudioJob = {
   attempt: number
   maxAttempts: number
   cancelRequested: boolean
+  cancellationMode: 'safe_point'
   failedReason: string | null
+  progressStage: JobProgressStage
+  stageStartedAt: string
   summary: string
   reusableText: string
   error: string | null
@@ -159,6 +163,13 @@ export function JobInspector({
                   active={job.status === 'queued'}
                 />
                 <LifecycleRow
+                  label="Current stage"
+                  value={jobProgressLabel(job, job.type)}
+                  complete={terminal && job.status !== 'failed'}
+                  active={!terminal}
+                  failed={job.status === 'failed'}
+                />
+                <LifecycleRow
                   label="Finished"
                   value={job.completedAt ? formatTimestamp(job.completedAt) : lifecycleProgressLabel(job.status)}
                   complete={Boolean(job.completedAt)}
@@ -169,6 +180,11 @@ export function JobInspector({
                 Elapsed {formatElapsed(job)}
                 {job.maxAttempts > 1 ? ` / Attempt ${job.attempt} of ${job.maxAttempts}` : ''}
               </div>
+              {job.status === 'cancelling' ? (
+                <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800">
+                  Stop requested. The current stage will exit at its next safe point.
+                </div>
+              ) : null}
             </InspectorSection>
 
             <InspectorSection title="Runtime" icon={Gauge}>
@@ -316,16 +332,20 @@ function LifecycleRow({
   value,
   complete = false,
   active = false,
+  failed = false,
 }: {
   label: string
   value: string
   complete?: boolean
   active?: boolean
+  failed?: boolean
 }) {
   return (
     <div className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
       <div className="mt-0.5 grid size-5 shrink-0 place-items-center">
-        {complete ? (
+        {failed ? (
+          <XCircle className="size-4 text-red-600" />
+        ) : complete ? (
           <CheckCircle2 className="size-4 text-emerald-600" />
         ) : active ? (
           <Loader2 className="size-4 animate-spin text-amber-600" />
@@ -334,8 +354,8 @@ function LifecycleRow({
         )}
       </div>
       <div className="min-w-0 flex-1 sm:flex sm:items-baseline sm:justify-between sm:gap-4">
-        <div className="text-xs font-medium leading-5 text-slate-700">{label}</div>
-        <div className="text-xs leading-5 text-slate-500 sm:text-right">{value}</div>
+        <div className={cn('text-xs font-medium leading-5 text-slate-700', failed && 'text-red-800')}>{label}</div>
+        <div className={cn('text-xs leading-5 text-slate-500 sm:text-right', failed && 'text-red-700')}>{value}</div>
       </div>
     </div>
   )
@@ -366,7 +386,7 @@ function Metadata({
 }
 
 function InspectorStatusBadge({ status }: { status: JobStatus }) {
-  const label = status === 'succeeded' ? 'Succeeded' : status.charAt(0).toUpperCase() + status.slice(1)
+  const label = jobStatusLabel(status)
   const variant = status === 'succeeded' ? 'success' : status === 'failed' ? 'danger' : status === 'cancelled' ? 'muted' : 'warning'
 
   return (
@@ -387,7 +407,7 @@ function lifecycleProgressLabel(status: JobStatus) {
     return 'Processing now'
   }
   if (status === 'cancelling') {
-    return 'Cancellation requested'
+    return 'Stopping at safe point'
   }
   return 'Timestamp unavailable'
 }

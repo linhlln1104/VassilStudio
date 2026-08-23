@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -18,7 +20,19 @@ class TtsJobResponse(BaseModel):
     attempt: int
     max_attempts: int
     cancel_requested: bool
+    cancellation_mode: Literal["safe_point"]
     failed_reason: str | None
+    progress_stage: Literal[
+        "queued",
+        "preparing_input",
+        "running_model",
+        "finalizing",
+        "retry_wait",
+        "succeeded",
+        "failed",
+        "cancelled",
+    ]
+    stage_started_at: str
     sample_rate: int | None
     duration_seconds: float | None
     audio_url: str | None

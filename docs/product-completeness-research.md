@@ -39,7 +39,7 @@ The following are product patterns, not a requirement to copy every feature.
 
 | Workflow | Current product capability | Missing completion criteria | Priority |
 | --- | --- | --- | --- |
-| Generate | Voice/language/mode/speed selection, persistent draft, queue submission, latest output | Idempotent submission, truthful cancellation/progress, output name/format, take comparison, pronunciation overrides | P1 |
+| Generate | Voice/language/mode/speed selection, idempotent queue submission, server-derived progress, latest output | Output name/format, take comparison, pronunciation overrides | P1 |
 | Voices | Upload/local import, metadata edit, preview, search/filter, delete | Review-before-create, duplicate detection, trim, silence/clipping checks, source replacement, record from microphone, backup/export | P1 |
 | Jobs/History | Search/filter, lifecycle, retry/reuse/delete/cleanup; inline authenticated playback and WAV download added in this phase | User title, favorite/pin, retention indicator, batch export/delete, pagination, compare takes, reveal/export destination | P1/P2 |
 | Transcribe | Upload/preview, queued ASR, result copy/TXT download, Generate handoff | Timed segments, synchronized playback, transcript editing, SRT/VTT/JSON export, multi-file batch, optional speaker/channel metadata | P1 |
@@ -49,18 +49,25 @@ The following are product patterns, not a requirement to copy every feature.
 
 ## Prioritized implementation backlog
 
-### P1-A: Runtime integrity
+### P1-A: Runtime integrity - completed 2026-08-24
 
-1. Add an idempotency key to TTS/ASR job creation and reject accidental duplicate submission.
-2. Lock Generate submission while the create request is unresolved and derive success state from the
+1. [x] Add an idempotency key to TTS/ASR job creation and reject accidental duplicate submission.
+2. [x] Lock Generate submission while the create request is unresolved and derive success state from the
    server job, not stale mutation state.
-3. Make cancellation capability explicit. If inference cannot be interrupted, show `Stopping after
+3. [x] Make cancellation capability explicit. If inference cannot be interrupted, show `Stopping after
    current inference` instead of implying immediate cancellation.
-4. Add progress stages (`queued`, `loading model`, `encoding`, `inference`, `writing output`) and
+4. [x] Add progress stages (`queued`, `preparing_input`, `running_model`, `finalizing`, `retry_wait`) and
    measured elapsed time; add ETA only after it is benchmark-backed.
 
 Acceptance: repeated clicks create one job, UI state survives refresh, and cancellation wording matches
 the actual safe point.
+
+Implemented contract: create endpoints accept optional `Idempotency-Key`; only its SHA-256 digest and
+a request fingerprint are persisted. Same-key/same-payload replay returns the original job, while
+same-key/different-payload returns `409`. Job responses expose `progress_stage`, `stage_started_at`, and
+`cancellation_mode: safe_point`. Terminal transitions are lock-protected, and TTS output is promoted
+from a temporary file only after the final cancellation check. Playwright double-submit coverage passed
+for Generate and Transcribe at desktop and mobile viewports.
 
 ### P1-B: Transcript review and export
 
@@ -125,6 +132,6 @@ audio.
 
 ## Recommended next phase
 
-After the Jobs playback closure, implement **P1-A Runtime integrity** first because duplicate renders
-and misleading cancellation can waste the most CPU time and undermine trust. Follow it with **P1-B
-Transcript review and export**, which is the largest missing end-to-end user workflow.
+With Jobs playback and **P1-A Runtime integrity** complete, implement **P1-B Transcript review and
+export** next. It is now the largest missing end-to-end user workflow and removes the remaining false
+expectation around timestamped transcript review.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -25,9 +25,10 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/components/ui/use-toast'
-import { api, fetchBlob, type JobStatus } from '@/lib/api'
+import { api, createIdempotencyKey, fetchBlob, type JobStatus } from '@/lib/api'
 import { compactId, formatDuration } from '@/lib/format'
 import { jobRefetchInterval } from '@/lib/job-polling'
+import { cancellationResultMessage, jobProgressLabel, jobStatusLabel } from '@/lib/job-runtime'
 import { normalizeVoiceLanguage, voiceLanguageShortLabel } from '@/lib/language'
 import { setPendingScript, setPreferredLanguage } from '@/lib/studio-preferences'
 import { cn } from '@/lib/utils'
@@ -61,6 +62,8 @@ export function JobsView() {
   const [selectedJobKey, setSelectedJobKey] = useState<string | null>(null)
   const [expandedAudioJobKey, setExpandedAudioJobKey] = useState<string | null>(null)
   const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false)
+  const runAgainSubmitLockRef = useRef(false)
+  const runAgainRetryRef = useRef<{ sourceKey: string; idempotencyKey: string } | null>(null)
   const ttsJobsQuery = useQuery({
     queryKey: ['tts-jobs'],
     queryFn: api.ttsJobs,
@@ -89,7 +92,10 @@ export function JobsView() {
         attempt: job.attempt,
         maxAttempts: job.max_attempts,
         cancelRequested: job.cancel_requested,
+        cancellationMode: job.cancellation_mode,
         failedReason: job.failed_reason,
+        progressStage: job.progress_stage,
+        stageStartedAt: job.stage_started_at,
         summary: job.text,
         reusableText: job.text,
         error: job.error,
@@ -115,7 +121,10 @@ export function JobsView() {
         attempt: job.attempt,
         maxAttempts: job.max_attempts,
         cancelRequested: job.cancel_requested,
+        cancellationMode: job.cancellation_mode,
         failedReason: job.failed_reason,
+        progressStage: job.progress_stage,
+        stageStartedAt: job.stage_started_at,
         summary: job.text || job.filename,
         reusableText: job.text || '',
         error: job.error,
@@ -196,17 +205,16 @@ export function JobsView() {
   const cancelJobMutation = useMutation({
     mutationFn: async (job: StudioJob) => {
       if (job.type === 'TTS') {
-        await api.cancelTtsJob(job.id)
-      } else {
-        await api.cancelAsrJob(job.id)
+        return api.cancelTtsJob(job.id)
       }
+      return api.cancelAsrJob(job.id)
     },
-    onSuccess: (_, job) => {
+    onSuccess: (result, job) => {
       void queryClient.invalidateQueries({ queryKey: ['tts-jobs'] })
       void queryClient.invalidateQueries({ queryKey: ['asr-jobs'] })
       toast({
-        title: 'Cancellation requested',
-        description: `${job.type} job ${compactId(job.id)} will stop at the next safe point.`,
+        title: result.status === 'cancelled' ? 'Job cancelled' : 'Stopping requested',
+        description: cancellationResultMessage(result, compactId(job.id), job.type),
         variant: 'success',
       })
     },
@@ -250,17 +258,21 @@ export function JobsView() {
   })
 
   const runAgainMutation = useMutation({
-    mutationFn: async (job: StudioJob) => {
+    mutationFn: async ({ job, idempotencyKey }: { job: StudioJob; idempotencyKey: string }) => {
       if (job.type === 'TTS') {
         if (!job.voiceId || !job.reusableText.trim()) {
           throw new Error('The original voice profile or script is unavailable.')
         }
-        return api.createTtsJobWithVoice(job.voiceId, {
-          text: job.reusableText,
-          language: job.language,
-          numSteps: job.numSteps ?? undefined,
-          speed: job.speed ?? undefined,
-        })
+        return api.createTtsJobWithVoice(
+          job.voiceId,
+          {
+            text: job.reusableText,
+            language: job.language,
+            numSteps: job.numSteps ?? undefined,
+            speed: job.speed ?? undefined,
+          },
+          { idempotencyKey },
+        )
       }
 
       if (!job.audioUrl) {
@@ -270,15 +282,17 @@ export function JobsView() {
       const source = new File([blob], job.filename || `${job.id}-input.wav`, {
         type: blob.type || 'audio/wav',
       })
-      return api.createAsrJob(source, { language: job.language })
+      return api.createAsrJob(source, { language: job.language }, { idempotencyKey })
     },
-    onSuccess: (createdJob, sourceJob) => {
+    onSuccess: (createdJob, request) => {
+      const sourceJob = request.job
+      runAgainRetryRef.current = null
       void queryClient.invalidateQueries({ queryKey: ['tts-jobs'] })
       void queryClient.invalidateQueries({ queryKey: ['asr-jobs'] })
       setSelectedJobKey(null)
       toast({
-        title: 'New job queued',
-        description: `${sourceJob.type} job ${compactId(createdJob.job_id)} was created from ${compactId(sourceJob.id)}.`,
+        title: 'Job accepted',
+        description: `${compactId(createdJob.job_id)} from ${compactId(sourceJob.id)}: ${jobProgressLabel(createdJob, sourceJob.type)}.`,
         variant: 'success',
       })
     },
@@ -289,7 +303,21 @@ export function JobsView() {
         variant: 'danger',
       })
     },
+    onSettled: () => {
+      runAgainSubmitLockRef.current = false
+    },
   })
+
+  const runJobAgain = (job: StudioJob) => {
+    if (runAgainSubmitLockRef.current) return
+    const sourceKey = jobKey(job)
+    const retryRequest = runAgainRetryRef.current?.sourceKey === sourceKey
+      ? runAgainRetryRef.current
+      : { sourceKey, idempotencyKey: createIdempotencyKey(job.type === 'TTS' ? 'tts' : 'asr') }
+    runAgainRetryRef.current = retryRequest
+    runAgainSubmitLockRef.current = true
+    runAgainMutation.mutate({ job, idempotencyKey: retryRequest.idempotencyKey })
+  }
 
   const refetchJobs = () => {
     void ttsJobsQuery.refetch()
@@ -465,7 +493,7 @@ export function JobsView() {
         job={selectedJob}
         cancelling={cancelJobMutation.isPending && cancelJobMutation.variables?.id === selectedJob?.id}
         deleting={deleteJobMutation.isPending && deleteTarget?.id === selectedJob?.id}
-        runningAgain={runAgainMutation.isPending && runAgainMutation.variables?.id === selectedJob?.id}
+        runningAgain={runAgainMutation.isPending && runAgainMutation.variables?.job.id === selectedJob?.id}
         onOpenChange={(open) => {
           if (!open) {
             setSelectedJobKey(null)
@@ -477,7 +505,7 @@ export function JobsView() {
           setDeleteTarget(job)
         }}
         onReuse={reuseJob}
-        onRunAgain={(job) => runAgainMutation.mutate(job)}
+        onRunAgain={runJobAgain}
       />
 
       <ConfirmDialog
@@ -575,6 +603,7 @@ function JobRow({
             {job.durationSeconds ? ` / ${formatDuration(job.durationSeconds)}` : ''}
             {job.maxAttempts > 1 ? ` / Attempt ${job.attempt}/${job.maxAttempts}` : ''}
             {job.failedReason ? ` / ${formatReason(job.failedReason)}` : ''}
+            {isActiveStatus(job.status) ? ` / ${jobProgressLabel(job, job.type)}` : ''}
           </div>
         </div>
       </div>
@@ -760,7 +789,7 @@ function StatusBadge({ status }: { status: JobStatus }) {
     return (
       <Badge variant="warning">
         <Loader2 className="mr-1 size-3 animate-spin" />
-        Cancelling
+        {jobStatusLabel(status)}
       </Badge>
     )
   }

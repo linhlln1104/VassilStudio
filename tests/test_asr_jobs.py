@@ -1,11 +1,13 @@
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
 import numpy as np
+import pytest
 
-from vvoice.core.errors import PUBLIC_JOB_ERROR_MESSAGE
+from vvoice.core.errors import IdempotencyConflictError, PUBLIC_JOB_ERROR_MESSAGE, VVoiceError
 from vvoice.domains.asr.jobs import AsrJobService
 from vvoice.domains.asr.router import _job_response
 from vvoice.domains.asr.service import Transcription
@@ -88,6 +90,8 @@ def test_asr_job_service_runs_job_from_audio(tmp_path, caplog) -> None:
         assert completed.max_attempts == 1
         assert completed.cancel_requested is False
         assert completed.failed_reason is None
+        assert completed.progress_stage == "succeeded"
+        assert completed.stage_started_at
         assert completed.language == "en"
         assert completed.input_path is not None
         assert completed.input_path.exists()
@@ -165,6 +169,7 @@ def test_asr_job_service_cancels_running_job_at_safe_point(tmp_path) -> None:
         cancelling = jobs.cancel(job.job_id)
         assert cancelling.status == "cancelling"
         assert cancelling.cancel_requested is True
+        assert cancelling.progress_stage == "running_model"
 
         fake_asr.release.set()
         completed = wait_for_job(jobs, job.job_id)
@@ -172,6 +177,7 @@ def test_asr_job_service_cancels_running_job_at_safe_point(tmp_path) -> None:
         assert completed.status == "cancelled"
         assert completed.cancel_requested is True
         assert completed.failed_reason == "cancelled"
+        assert completed.progress_stage == "cancelled"
         assert completed.text is None
     finally:
         fake_asr.release.set()
@@ -246,8 +252,72 @@ def test_asr_job_service_marks_interrupted_jobs_failed(tmp_path) -> None:
         assert job.language == "vi"
         assert job.error == "Job was interrupted by server restart"
         assert job.failed_reason == "interrupted"
+        assert job.progress_stage == "failed"
+        assert job.stage_started_at == job.completed_at
     finally:
         recovered.shutdown()
+
+
+def test_asr_job_service_deduplicates_concurrent_create_requests(tmp_path) -> None:
+    fake_asr = BlockingAsr()
+    jobs = AsrJobService(
+        tmp_path / "asr-jobs",
+        fake_asr,
+        target_sample_rate=16000,
+    )
+    audio = encode_wav(np.zeros(1600, dtype=np.float32), 16000)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as callers:
+            futures = [
+                callers.submit(
+                    jobs.create_from_audio,
+                    audio_bytes=audio,
+                    filename="same.wav",
+                    language="en",
+                    idempotency_key="asr:create:request-1",
+                )
+                for _ in range(2)
+            ]
+            created = [future.result() for future in futures]
+
+        assert created[0].job_id == created[1].job_id
+        assert len(list((tmp_path / "asr-jobs").glob("*/metadata.json"))) == 1
+        metadata = (tmp_path / "asr-jobs" / created[0].job_id / "metadata.json").read_text(
+            encoding="utf-8"
+        )
+        assert "asr:create:request-1" not in metadata
+        assert fake_asr.started.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS)
+
+        with pytest.raises(IdempotencyConflictError, match="different ASR request"):
+            jobs.create_from_audio(
+                audio_bytes=audio,
+                filename="renamed.wav",
+                language="en",
+                idempotency_key="asr:create:request-1",
+            )
+
+        fake_asr.release.set()
+        assert wait_for_job(jobs, created[0].job_id).status == "succeeded"
+    finally:
+        fake_asr.release.set()
+        jobs.shutdown()
+
+
+def test_asr_job_service_rejects_invalid_idempotency_key(tmp_path) -> None:
+    jobs = AsrJobService(
+        tmp_path / "asr-jobs",
+        FakeAsr(),
+        target_sample_rate=16000,
+    )
+    try:
+        with pytest.raises(VVoiceError, match="Idempotency-Key"):
+            jobs.create_from_audio(
+                audio_bytes=b"not decoded",
+                filename="input.wav",
+                idempotency_key="contains spaces",
+            )
+    finally:
+        jobs.shutdown()
 
 
 def wait_for_job(jobs: AsrJobService, job_id: str):

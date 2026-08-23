@@ -5,7 +5,6 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Circle,
-  Download,
   Eraser,
   Languages,
   Loader2,
@@ -16,15 +15,17 @@ import {
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { AudioPlayer } from '@/components/ui/audio-player'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { QueryErrorState } from '@/components/ui/query-error'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/components/ui/use-toast'
-import { api, type TtsJob, type Voice } from '@/lib/api'
+import { api, createIdempotencyKey, type TtsJob, type Voice } from '@/lib/api'
 import { BRAND_NAME } from '@/lib/brand'
 import { compactId, formatDuration } from '@/lib/format'
 import { jobRefetchInterval } from '@/lib/job-polling'
+import { jobProgressLabel, jobStatusLabel } from '@/lib/job-runtime'
 import {
   VOICE_LANGUAGES,
   hasVietnameseDiacritics,
@@ -59,6 +60,16 @@ const promptSuggestions: Record<VoiceLanguage, string[]> = {
 
 type RenderMode = 'preview' | 'production'
 
+type GenerateRequest = {
+  voiceId: string
+  text: string
+  language: VoiceLanguage
+  numSteps: number
+  speed: number
+  fingerprint: string
+  idempotencyKey: string
+}
+
 const renderProfiles: Record<RenderMode, { label: string; numSteps: number; helper: string }> = {
   preview: {
     label: 'Preview',
@@ -81,6 +92,8 @@ export function GenerateView() {
   const [renderMode, setRenderMode] = useState<RenderMode>('preview')
   const [speedPercent, setSpeedPercent] = useState(100)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const submitLockRef = useRef(false)
+  const retryRequestRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null)
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
@@ -111,24 +124,54 @@ export function GenerateView() {
   const latestFailedTtsJob = ttsJobs.find((job) => job.status === 'failed') ?? null
   const latestOutputVoice = voices.find((voice) => voice.voice_id === latestOutput?.voice_id)
   const renderProfile = renderProfiles[renderMode]
+  const currentRequestFingerprint = selectedVoice
+    ? renderRequestFingerprint({
+        voiceId: selectedVoice.voice_id,
+        text: script.trim(),
+        language: selectedLanguage,
+        numSteps: renderProfile.numSteps,
+        speed: speedFromPercent(speedPercent),
+      })
+    : ''
   const generateMutation = useMutation({
-    mutationFn: ({ voiceId, text, language }: { voiceId: string; text: string; language: VoiceLanguage }) =>
+    mutationFn: ({ voiceId, text, language, numSteps, speed, idempotencyKey }: GenerateRequest) =>
       api.createTtsJobWithVoice(voiceId, {
         text,
         language,
-        numSteps: renderProfile.numSteps,
-        speed: speedFromPercent(speedPercent),
-      }),
-    onSuccess: () => {
+        numSteps,
+        speed,
+      }, { idempotencyKey }),
+    onSuccess: (job) => {
+      retryRequestRef.current = null
+      queryClient.setQueryData<TtsJob[]>(['tts-jobs'], (current = []) => [
+        job,
+        ...current.filter((item) => item.job_id !== job.job_id),
+      ])
       void queryClient.invalidateQueries({ queryKey: ['tts-jobs'] })
+    },
+    onSettled: () => {
+      submitLockRef.current = false
     },
   })
   const latestJob = generateMutationJob(ttsJobs, generateMutation.data)
   const latestJobVoice = voices.find((voice) => voice.voice_id === latestJob?.voice_id)
+  const activeRequestJob = findActiveRenderJob(
+    ttsJobs,
+    generateMutation.data,
+    currentRequestFingerprint,
+  )
+  const submittedJob =
+    generateMutation.isSuccess && generateMutation.variables?.fingerprint === currentRequestFingerprint
+      ? latestJob
+      : null
   const firstRunRenderQueued = activeTtsCount > 0 || Boolean(latestOutput) || generateMutation.isSuccess
 
   const generateErrorMessage =
-    generateMutation.error instanceof Error ? generateMutation.error.message : 'Unable to queue TTS job.'
+    generateMutation.isError && generateMutation.variables?.fingerprint === currentRequestFingerprint
+      ? generateMutation.error instanceof Error
+        ? generateMutation.error.message
+        : 'Unable to queue TTS job.'
+      : null
   const voicesError = voicesQuery.isError
     ? queryErrorMessage(voicesQuery.error, 'Unable to load voice profiles.')
     : null
@@ -148,7 +191,13 @@ export function GenerateView() {
     statusError: modelStatusQuery.error,
     kind: 'TTS',
   })
-  const canGenerate = Boolean(scriptReady && selectedVoice && !runtimeLanguageWarning && !generateMutation.isPending)
+  const canGenerate = Boolean(
+    scriptReady &&
+    selectedVoice &&
+    !runtimeLanguageWarning &&
+    !generateMutation.isPending &&
+    !activeRequestJob,
+  )
 
   useEffect(() => {
     const pendingScript = consumePendingScript()
@@ -229,13 +278,22 @@ export function GenerateView() {
   }
 
   const handleGenerate = () => {
-    if (selectedVoice) {
-      generateMutation.mutate({
-        voiceId: selectedVoice.voice_id,
-        text: script.trim(),
-        language: selectedLanguage,
-      })
+    if (!selectedVoice || !canGenerate || submitLockRef.current) return
+
+    const request = {
+      voiceId: selectedVoice.voice_id,
+      text: script.trim(),
+      language: selectedLanguage,
+      numSteps: renderProfile.numSteps,
+      speed: speedFromPercent(speedPercent),
     }
+    const fingerprint = renderRequestFingerprint(request)
+    const retryRequest = retryRequestRef.current?.fingerprint === fingerprint
+      ? retryRequestRef.current
+      : { fingerprint, idempotencyKey: createIdempotencyKey('tts') }
+    retryRequestRef.current = retryRequest
+    submitLockRef.current = true
+    generateMutation.mutate({ ...request, ...retryRequest })
   }
 
   const sharedProps = {
@@ -256,8 +314,9 @@ export function GenerateView() {
     scriptReady,
     canGenerate,
     generatePending: generateMutation.isPending,
-    generateSuccess: generateMutation.isSuccess,
-    generateError: generateMutation.isError ? generateErrorMessage : null,
+    submittedJob,
+    activeRequestJob,
+    generateError: generateErrorMessage,
     voicesError,
     onRetryVoices: () => {
       void voicesQuery.refetch()
@@ -469,7 +528,8 @@ type VoicePanelProps = {
   scriptReady: boolean
   canGenerate: boolean
   generatePending: boolean
-  generateSuccess: boolean
+  submittedJob: TtsJob | null
+  activeRequestJob: TtsJob | null
   generateError: string | null
   voicesError: string | null
   onRetryVoices: () => void
@@ -494,7 +554,8 @@ function VoicePanel({
   scriptReady,
   canGenerate,
   generatePending,
-  generateSuccess,
+  submittedJob,
+  activeRequestJob,
   generateError,
   voicesError,
   onRetryVoices,
@@ -584,7 +645,8 @@ function VoicePanel({
               scriptReady={scriptReady}
               canGenerate={canGenerate}
               generatePending={generatePending}
-              generateSuccess={generateSuccess}
+              submittedJob={submittedJob}
+              activeRequestJob={activeRequestJob}
               generateError={generateError}
               blockedReason={runtimeLanguageWarning}
               onGenerate={onGenerate}
@@ -601,7 +663,8 @@ function GenerateActionContent({
   scriptReady,
   canGenerate,
   generatePending,
-  generateSuccess,
+  submittedJob,
+  activeRequestJob,
   generateError,
   blockedReason,
   onGenerate,
@@ -610,7 +673,8 @@ function GenerateActionContent({
   scriptReady: boolean
   canGenerate: boolean
   generatePending: boolean
-  generateSuccess: boolean
+  submittedJob: TtsJob | null
+  activeRequestJob: TtsJob | null
   generateError: string | null
   blockedReason: string | null
   onGenerate: () => void
@@ -621,7 +685,9 @@ function GenerateActionContent({
       ? 'Add a script to enable rendering.'
       : blockedReason
         ? 'Select a configured render language.'
-        : 'Queue a local ZipVoice render.'
+        : activeRequestJob
+          ? jobProgressLabel(activeRequestJob, 'TTS')
+          : 'Queue a local ZipVoice render.'
 
   return (
     <div className="space-y-2.5">
@@ -631,11 +697,7 @@ function GenerateActionContent({
         </div>
       ) : null}
 
-      {generateSuccess ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-          Job queued. Output refreshes automatically.
-        </div>
-      ) : null}
+      {submittedJob ? <RenderLifecycleNotice job={submittedJob} /> : null}
 
       <div className="text-xs font-medium text-slate-600">{helper}</div>
       <Button className="w-full" disabled={!canGenerate} onClick={onGenerate}>
@@ -644,8 +706,24 @@ function GenerateActionContent({
         ) : (
           <SendHorizontal className="size-4" />
         )}
-        {generatePending ? 'Queueing' : 'Generate audio'}
+        {generatePending ? 'Queueing' : activeRequestJob ? 'Render active' : 'Generate audio'}
       </Button>
+    </div>
+  )
+}
+
+function RenderLifecycleNotice({ job }: { job: TtsJob }) {
+  const className = job.status === 'failed'
+    ? 'border-red-200 bg-red-50 text-red-700'
+    : job.status === 'succeeded'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : job.status === 'cancelled'
+        ? 'border-slate-200 bg-slate-50 text-slate-700'
+        : 'border-amber-200 bg-amber-50 text-amber-800'
+
+  return (
+    <div className={`rounded-md border px-3 py-2 text-xs font-semibold leading-5 ${className}`} role="status">
+      {jobStatusLabel(job.status)}. {jobProgressLabel(job, 'TTS')}.
     </div>
   )
 }
@@ -783,7 +861,10 @@ function OutputPanel({
                   {compactId(latestJob.job_id)} / {formatDateTime(latestJob.created_at)}
                 </div>
               </div>
-              <Badge variant={jobBadgeVariant(latestJob.status)}>{formatJobStatus(latestJob.status)}</Badge>
+              <Badge variant={jobBadgeVariant(latestJob.status)}>{jobStatusLabel(latestJob.status)}</Badge>
+            </div>
+            <div className="mt-2 text-xs font-medium text-neutral-600">
+              {jobProgressLabel(latestJob, 'TTS')}
             </div>
           </div>
         ) : null}
@@ -839,22 +920,16 @@ function OutputPanel({
               <OutputMeta label="Language" value={voiceLanguageShortLabel(latestOutput.language)} />
             </div>
             {latestOutput.audio_url ? (
-              <audio className="mt-3 w-full" controls src={latestOutput.audio_url} />
+              <div className="mt-3">
+                <AudioPlayer
+                  src={latestOutput.audio_url}
+                  label={`TTS job ${compactId(latestOutput.job_id)} audio`}
+                  downloadName={`vassil-render-${compactId(latestOutput.job_id)}.wav`}
+                />
+              </div>
             ) : null}
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <span className="truncate text-xs font-medium text-slate-500">
-                Job {compactId(latestOutput.job_id)}
-              </span>
-              {latestOutput.audio_url ? (
-                <a
-                  className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-50"
-                  href={latestOutput.audio_url}
-                  download
-                >
-                  <Download className="size-4" />
-                  Download
-                </a>
-              ) : null}
+            <div className="mt-3 truncate text-xs font-medium text-slate-500">
+              Job {compactId(latestOutput.job_id)}
             </div>
           </div>
         ) : (
@@ -1016,15 +1091,51 @@ function generateMutationJob(jobs: TtsJob[], mutationJob: TtsJob | undefined): T
   return jobs.find((job) => job.job_id === mutationJob.job_id) ?? mutationJob
 }
 
+function findActiveRenderJob(
+  jobs: TtsJob[],
+  mutationJob: TtsJob | undefined,
+  fingerprint: string,
+): TtsJob | null {
+  if (!fingerprint) return null
+  const currentMutationJob = mutationJob
+    ? jobs.find((job) => job.job_id === mutationJob.job_id) ?? mutationJob
+    : undefined
+  const candidates = currentMutationJob
+    ? [currentMutationJob, ...jobs.filter((job) => job.job_id !== currentMutationJob.job_id)]
+    : jobs
+  return candidates.find((job) => (
+    ['queued', 'running', 'cancelling'].includes(job.status) &&
+    renderRequestFingerprint({
+      voiceId: job.voice_id,
+      text: job.text,
+      language: normalizeVoiceLanguage(job.language),
+      numSteps: job.num_steps ?? 0,
+      speed: job.speed ?? 1,
+    }) === fingerprint
+  )) ?? null
+}
+
+function renderRequestFingerprint(request: {
+  voiceId: string
+  text: string
+  language: VoiceLanguage
+  numSteps: number
+  speed: number
+}) {
+  return JSON.stringify([
+    request.voiceId,
+    request.text,
+    request.language,
+    request.numSteps,
+    request.speed,
+  ])
+}
+
 function jobBadgeVariant(status: TtsJob['status']): 'success' | 'warning' | 'danger' | 'muted' {
   if (status === 'succeeded') return 'success'
   if (status === 'failed') return 'danger'
   if (status === 'cancelled') return 'muted'
   return 'warning'
-}
-
-function formatJobStatus(status: TtsJob['status']) {
-  return status.charAt(0).toUpperCase() + status.slice(1)
 }
 
 function formatReferenceSource(source: string | undefined) {

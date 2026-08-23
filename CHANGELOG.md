@@ -47,6 +47,8 @@ All notable VassilStudio productionization changes are tracked here.
   loading/error/retry media states in both queue rows and the job inspector.
 - Evidence-backed product completeness research defines the local-first scope and prioritizes
   runtime integrity, transcript review/export, voice intake, realtime sessions, and model operations.
+- Idempotent ASR/TTS job creation with request fingerprints, replay-safe retries, explicit progress
+  stages, and safe-point cancellation capability in the public contract.
 
 ### Hardened
 
@@ -75,6 +77,10 @@ All notable VassilStudio productionization changes are tracked here.
 - Local auth login and password change attempts are rate-limited with `429` and `Retry-After`.
 - New local account passwords use scrypt hashes while legacy PBKDF2 hashes remain verifiable.
 - ASR/TTS job lifecycle with cancellation, retry metadata, cleanup, and consistent terminal states.
+- Job terminal transitions are lock-protected; cancelled TTS work cannot be overwritten by a stale
+  success transition, and output WAV files are atomically promoted only after the final stop check.
+- Generate, Transcribe, and Jobs Run again guard synchronous double submits, preserve idempotency keys
+  across request retries, and render progress/cancellation copy from server lifecycle state.
 - Language-aware ASR/TTS runtime selection and model readiness reporting.
 - Realtime session shutdown now waits for the backend final transcript before closing the websocket, with a bounded timeout fallback.
 - Studio navigation keeps runtime status actionable on small screens and handles drawer/session failures explicitly.
@@ -86,6 +92,9 @@ All notable VassilStudio productionization changes are tracked here.
 
 ### Verified
 
+- Runtime Integrity P1-A passed `153` backend tests, the full `scripts/check.ps1` gate, and desktop/mobile
+  Playwright coverage proving one POST per double submit, idempotency headers, lifecycle stages,
+  authenticated recovery, and zero horizontal overflow.
 - Jobs playback passed authenticated media-header, blob-source, failure/retry, auto-play,
   WAV-download, inspector, recovery-action, and responsive Playwright checks at desktop and mobile
   viewports; the repository gate passed with `148` backend tests.

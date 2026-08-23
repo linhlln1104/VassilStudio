@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from vvoice.core.errors import (
     AudioError,
+    IdempotencyConflictError,
     ModelConfigurationError,
     PUBLIC_AUDIO_ERROR_MESSAGE,
     PUBLIC_MODEL_ERROR_MESSAGE,
@@ -47,6 +48,18 @@ def test_unsupported_audio_uses_stable_415_response() -> None:
         "message": PUBLIC_UNSUPPORTED_AUDIO_FORMAT_MESSAGE,
     }
     assert "C:\\Users" not in response.text
+
+
+def test_idempotency_conflict_uses_stable_409_response() -> None:
+    response = _response_for(
+        IdempotencyConflictError("Idempotency-Key was already used for a different request")
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": "idempotency_conflict",
+        "message": "Idempotency-Key was already used for a different request",
+    }
 
 
 def _response_for(exc: Exception):
