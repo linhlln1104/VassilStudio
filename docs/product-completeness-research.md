@@ -40,7 +40,7 @@ The following are product patterns, not a requirement to copy every feature.
 | Workflow | Current product capability | Missing completion criteria | Priority |
 | --- | --- | --- | --- |
 | Generate | Voice/language/mode/speed selection, idempotent queue submission, server-derived progress, latest output | Output name/format, take comparison, pronunciation overrides | P1 |
-| Voices | Upload/local import, metadata edit, preview, search/filter, delete | Review-before-create, duplicate detection, trim, silence/clipping checks, source replacement, record from microphone, backup/export | P1 |
+| Voices | Reviewed upload/local/microphone intake, duplicate detection, trim, signal report, metadata edit, preview, search/filter, delete | Source replacement, backup/export | P2 |
 | Jobs/History | Search/filter, lifecycle, retry/reuse/delete/cleanup; inline authenticated playback and WAV download added in this phase | User title, favorite/pin, retention indicator, batch export/delete, pagination, compare takes, reveal/export destination | P1/P2 |
 | Transcribe | Upload/preview, queued ASR, result copy/TXT download, Generate handoff | Timed segments, synchronized playback, transcript editing, SRT/VTT/JSON export, multi-file batch, optional speaker/channel metadata | P1 |
 | Realtime | Microphone capture, level meter, partial/final segments, copy/download, finalize | Device selector, pause/resume, reconnect, permission diagnostics, saved session with source audio and transcript | P1 |
@@ -89,14 +89,23 @@ active tracking, edit protection, raw-result comparison, and deterministic UTF-8
 
 ### P1-C: Voice intake quality gate
 
-1. Stage upload/local candidates in a review step before creating a voice profile.
-2. Detect duplicate audio by content hash and explain whether to reuse or replace the profile.
-3. Report duration, sample rate, channels, leading/trailing silence, clipping, and speech coverage.
-4. Add trim boundaries and microphone recording; keep denoise/normalization optional and reversible.
-5. Validate reference transcript/language compatibility before saving.
+1. [x] Stage upload/local candidates in a review step before creating a voice profile.
+2. [x] Detect duplicate audio by content hash and explain whether to reuse or replace the profile.
+3. [x] Report duration, sample rate, channels, leading/trailing silence, clipping, and speech coverage.
+4. [x] Add trim boundaries and microphone recording; keep future denoise/normalization optional and reversible.
+5. [x] Validate reference transcript/language compatibility before saving.
 
 Acceptance: invalid or poor reference audio is caught before it becomes a reusable profile, and an
 import action never creates an unexpected duplicate.
+
+Implemented contract: upload blobs remain in the browser and loose local candidates remain in the
+workspace until the user confirms a review. Both sources use the same stateless analyze endpoint and
+return source/canonical hashes, source format, selected duration, energy-based speech coverage,
+silence, clipping, suggested trim, transcript checks, and any matching profile. Commit re-decodes the
+audio, reapplies trim, verifies the source hash, requires reviewed warnings to be acknowledged, and
+enforces canonical-audio uniqueness under the voice-store lock. Invalid audio is rejected even when
+an older client skips analyze. The Studio adds authenticated previews, microphone capture, editable
+profile fields, recheck-after-change protection, duplicate reuse, and responsive review states.
 
 ### P1-D: Realtime session completion
 
@@ -139,6 +148,7 @@ audio.
 
 ## Recommended next phase
 
-With **P1-A Runtime integrity** and **P1-B Transcript review and export** complete, implement **P1-C
-Voice intake quality gate** next. Voice creation remains the highest-risk irreversible workflow because
-local candidates can become reusable profiles before duplicate and recording-quality review.
+With **P1-A Runtime integrity**, **P1-B Transcript review and export**, and **P1-C Voice intake quality
+gate** complete, implement **P1-D Realtime session completion** next. Realtime output is still
+disposable after stop and does not yet have the durable history/recovery contract available to batch
+ASR jobs.

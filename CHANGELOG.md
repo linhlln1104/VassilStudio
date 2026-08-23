@@ -53,6 +53,11 @@ All notable VassilStudio productionization changes are tracked here.
   non-destructive revisions, raw model comparison, and shared Transcribe/Jobs access.
 - Deterministic UTF-8 transcript exports for TXT, SRT, VTT, and structured JSON; subtitle formats fail
   closed when a recognition result or legacy job has no model timing.
+- Reviewed voice intake for uploads, loose local files, and microphone recordings with editable trim,
+  source playback, signal metrics, transcript/language checks, warning acknowledgement, and responsive
+  ready/review/blocked states.
+- Stateless voice quality analysis endpoints with source/canonical hashes, suggested trim boundaries,
+  duplicate profile details, and a repeatable desktop/mobile Playwright intake gate.
 
 ### Hardened
 
@@ -76,6 +81,11 @@ All notable VassilStudio productionization changes are tracked here.
   signature before decoding.
 - Public HTTP, queued-job, realtime, and Voice contracts redact decoder commands, model paths,
   legacy raw job failures, and local voice storage paths.
+- Voice commits now re-decode and revalidate reviewed audio, reject changed sources and unusable
+  selections, and enforce canonical-audio uniqueness under a store lock; metadata v4 persists the
+  content hash while retaining compatibility with legacy profiles.
+- ASR/TTS terminal transitions now assign completion and terminal-stage timestamps from the same
+  clock read, removing millisecond drift and a flaky restart-recovery invariant.
 - Split ASR/TTS CPU thread tuning, measured 4/8-step render profiles, and active queue polling reduce local render wait without weakening the quality smoke gate.
 - Request IDs, structured HTTP/job logs, liveness/readiness split, request upload limits, and path-safe Studio static serving.
 - Local auth login and password change attempts are rate-limited with `429` and `Retry-After`.

@@ -21,6 +21,9 @@ from vvoice.core.errors import (
     TtsJobNotFoundError,
     UnsupportedAudioFormatError,
     VVoiceError,
+    VoiceDuplicateError,
+    VoiceIntakeConflictError,
+    VoiceIntakeRejectedError,
     VoiceNotFoundError,
     public_error_message,
 )
@@ -143,6 +146,30 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(VoiceNotFoundError)
     async def voice_not_found_handler(_: Request, exc: VoiceNotFoundError) -> JSONResponse:
         return JSONResponse(status_code=404, content=_error_content("voice_not_found", str(exc)))
+
+    @app.exception_handler(VoiceDuplicateError)
+    async def voice_duplicate_handler(_: Request, exc: VoiceDuplicateError) -> JSONResponse:
+        return JSONResponse(status_code=409, content=_error_content("voice_duplicate", str(exc)))
+
+    @app.exception_handler(VoiceIntakeConflictError)
+    async def voice_intake_conflict_handler(
+        _: Request,
+        exc: VoiceIntakeConflictError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content=_error_content("voice_intake_conflict", str(exc)),
+        )
+
+    @app.exception_handler(VoiceIntakeRejectedError)
+    async def voice_intake_rejected_handler(
+        _: Request,
+        exc: VoiceIntakeRejectedError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content=_error_content("voice_intake_rejected", str(exc)),
+        )
 
     @app.exception_handler(TtsJobNotFoundError)
     async def tts_job_not_found_handler(_: Request, exc: TtsJobNotFoundError) -> JSONResponse:

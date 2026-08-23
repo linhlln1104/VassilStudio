@@ -91,7 +91,13 @@ showing the actual stage instead of promising immediate interruption.
 
 `backend/vvoice/domains/voices`
 
-Stores reusable voice references: normalized WAV audio, transcript, and metadata. The first implementation is filesystem-based under `data/voices`.
+Stores reusable voice references as normalized WAV audio, transcript, content hash, and metadata under
+`data/voices`. Intake is a stateless analyze/review/commit workflow: upload bytes stay in the browser
+and loose local files stay in the workspace until commit. Analysis measures source format, selected
+duration, silence, clipping, and energy-based speech coverage; it also proposes trim boundaries and
+checks transcript/language compatibility. Commit repeats decode and validation, verifies the reviewed
+source hash, and rejects duplicate canonical audio while holding the voice-store lock. Metadata version
+4 adds `audio_sha256`; legacy profiles remain readable and are hashed lazily during duplicate checks.
 
 ### Audio
 
@@ -190,6 +196,8 @@ sharing.
 - Clean terminal transcription jobs with `DELETE /api/v1/asr/jobs`.
 - Generate one-off speech with `/api/v1/tts/synthesize`.
 - Create/list/get/delete voice profiles with `/api/v1/voices`.
+- Review uploads with `/api/v1/voices/intake/analyze` and loose files with
+  `/api/v1/voices/import-candidates/{filename}/analyze` before committing them.
 - Create a voice profile with ASR-derived `reference_text` by posting `auto_transcribe=true`.
 - Generate speech from a stored profile with `/api/v1/tts/synthesize/voices/{voice_id}`.
 - Queue long-running speech generation with `/api/v1/tts/jobs/voices/{voice_id}`.

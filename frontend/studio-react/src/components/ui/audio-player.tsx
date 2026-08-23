@@ -13,6 +13,8 @@ type AudioPlayerProps = {
   className?: string
   seekRequest?: { seconds: number; requestId: number } | null
   onTimeUpdate?: (currentTime: number) => void
+  playbackStartSeconds?: number
+  playbackEndSeconds?: number
 }
 
 export function AudioPlayer({
@@ -23,6 +25,8 @@ export function AudioPlayer({
   className,
   seekRequest,
   onTimeUpdate,
+  playbackStartSeconds,
+  playbackEndSeconds,
 }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
@@ -70,6 +74,27 @@ export function AudioPlayer({
     audioRef.current.currentTime = Math.max(0, seekRequest.seconds)
     void audioRef.current.play().catch(() => undefined)
   }, [objectUrl, seekRequest])
+
+  useEffect(() => {
+    if (!objectUrl || !audioRef.current || playbackStartSeconds === undefined) return
+    audioRef.current.currentTime = playbackStartSeconds
+  }, [objectUrl, playbackStartSeconds])
+
+  const handleTimeUpdate = (audio: HTMLAudioElement) => {
+    if (playbackEndSeconds !== undefined && audio.currentTime >= playbackEndSeconds) {
+      audio.pause()
+    }
+    onTimeUpdate?.(audio.currentTime)
+  }
+
+  const handlePlay = (audio: HTMLAudioElement) => {
+    if (playbackStartSeconds === undefined) return
+    if (audio.currentTime < playbackStartSeconds || (
+      playbackEndSeconds !== undefined && audio.currentTime >= playbackEndSeconds
+    )) {
+      audio.currentTime = playbackStartSeconds
+    }
+  }
 
   const download = () => {
     if (!objectUrl || !downloadName) {
@@ -128,7 +153,8 @@ export function AudioPlayer({
         controls
         preload="metadata"
         src={objectUrl}
-        onTimeUpdate={(event) => onTimeUpdate?.(event.currentTarget.currentTime)}
+        onPlay={(event) => handlePlay(event.currentTarget)}
+        onTimeUpdate={(event) => handleTimeUpdate(event.currentTarget)}
         onError={() => setError('The audio output could not be decoded.')}
       >
         Your browser does not support audio playback.

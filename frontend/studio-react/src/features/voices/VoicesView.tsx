@@ -13,12 +13,13 @@ import {
   RefreshCw,
   Save,
   Search,
+  ShieldCheck,
   Trash2,
   Upload,
-  Waves,
   X,
 } from 'lucide-react'
 
+import { AudioPlayer } from '@/components/ui/audio-player'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,9 +39,24 @@ import {
 import { queryErrorMessage } from '@/lib/query-error'
 import { cn } from '@/lib/utils'
 import { getPreferredVoiceId, setPreferredLanguage, setPreferredVoiceId } from '@/lib/studio-preferences'
+import {
+  VoiceIntakeReviewDialog,
+  type VoiceIntakeDraft,
+  type VoiceIntakeSource,
+} from './VoiceIntakeReviewDialog'
+import { VoiceRecorder } from './VoiceRecorder'
 
 type VoiceFilter = 'all' | VoiceLanguage
-type ImportMode = 'upload' | 'local'
+type ImportMode = 'upload' | 'record' | 'local'
+type VoiceIntakeAnalysisRequest = {
+  source: VoiceIntakeSource
+  name: string
+  language: VoiceLanguage
+  referenceText: string
+  autoTranscribe: boolean
+  trimStartSeconds?: number
+  trimEndSeconds?: number
+}
 
 const VOICE_AUDIO_ACCEPT = '.wav,.mp3,.webm,.weba,.flac,.m4a,.ogg,.opus,audio/*'
 const VOICE_AUDIO_EXTENSIONS = new Set(['wav', 'mp3', 'webm', 'weba', 'flac', 'm4a', 'ogg', 'opus'])
@@ -60,6 +76,8 @@ export function VoicesView() {
   const [importMode, setImportMode] = useState<ImportMode>('upload')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadName, setUploadName] = useState('')
+  const [intakeDraft, setIntakeDraft] = useState<VoiceIntakeDraft | null>(null)
+  const [intakeError, setIntakeError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Voice | null>(null)
 
   const voicesQuery = useQuery({ queryKey: ['voices'], queryFn: api.voices })
@@ -80,72 +98,74 @@ export function VoicesView() {
     setPreferredLanguage(normalizeVoiceLanguage(voice.language))
   }
 
+  const analyzeVoiceMutation = useMutation({
+    mutationFn: async (analysis: VoiceIntakeAnalysisRequest) => {
+      const payload = {
+        language: analysis.language,
+        referenceText: analysis.referenceText || undefined,
+        autoTranscribe: analysis.autoTranscribe,
+        trimStartSeconds: analysis.trimStartSeconds,
+        trimEndSeconds: analysis.trimEndSeconds,
+      }
+      const report = analysis.source.kind === 'upload'
+        ? await api.analyzeVoice(analysis.source.file, payload)
+        : await api.analyzeVoiceCandidate(analysis.source.candidate.filename, payload)
+      return { analysis, report }
+    },
+    onSuccess: ({ analysis, report }) => {
+      setIntakeError(null)
+      setIntakeDraft({
+        source: analysis.source,
+        name: analysis.name,
+        language: analysis.language,
+        referenceText: report.reference_text || analysis.referenceText,
+        report,
+        trimStartSeconds: report.trim_start_seconds,
+        trimEndSeconds: report.trim_end_seconds,
+        acknowledged: false,
+        dirty: false,
+      })
+    },
+    onError: (error) => {
+      const message = queryErrorMessage(error, 'Unable to analyze this recording.')
+      setIntakeError(message)
+      toast({ title: 'Quality check failed', description: message, variant: 'danger' })
+    },
+  })
+
   const createVoiceMutation = useMutation({
-    mutationFn: ({
-      file,
-      name,
-      language,
-      referenceText,
-      autoTranscribe,
-    }: {
-      file: File
-      name: string
-      language: VoiceLanguage
-      referenceText?: string
-      autoTranscribe: boolean
-    }) => api.createVoice(file, { name, language, referenceText, autoTranscribe }),
+    mutationFn: (draft: VoiceIntakeDraft) => {
+      const payload = {
+        name: draft.name.trim(),
+        language: draft.language,
+        referenceText: draft.referenceText.trim(),
+        autoTranscribe: false,
+        trimStartSeconds: draft.trimStartSeconds,
+        trimEndSeconds: draft.trimEndSeconds,
+        reviewedSourceSha256: draft.report.source_sha256,
+        acknowledgeWarnings: draft.acknowledged,
+      }
+      return draft.source.kind === 'upload'
+        ? api.createVoice(draft.source.file, payload)
+        : api.importVoiceCandidate(draft.source.candidate.filename, payload)
+    },
     onSuccess: (voice) => {
       void queryClient.invalidateQueries({ queryKey: ['voices'] })
+      void queryClient.invalidateQueries({ queryKey: ['voice-import-candidates'] })
       rememberVoice(voice)
+      setIntakeDraft(null)
+      setIntakeError(null)
       setUploadFile(null)
       setUploadName('')
       setImportReferenceText('')
       toast({
         title: 'Voice profile ready',
-        description: `${voice.name} was created and selected for Generate.`,
+        description: `${voice.name} passed review and is selected for Generate.`,
         variant: 'success',
       })
     },
     onError: (error) => {
-      toast({
-        title: 'Upload failed',
-        description: error instanceof Error ? error.message : 'Unable to create voice profile.',
-        variant: 'danger',
-      })
-    },
-  })
-
-  const importVoiceMutation = useMutation({
-    mutationFn: ({
-      filename,
-      name,
-      language,
-      referenceText,
-      autoTranscribe,
-    }: {
-      filename: string
-      name: string
-      language: VoiceLanguage
-      referenceText?: string
-      autoTranscribe: boolean
-    }) => api.importVoiceCandidate(filename, { name, language, referenceText, autoTranscribe }),
-    onSuccess: (voice) => {
-      void queryClient.invalidateQueries({ queryKey: ['voices'] })
-      void queryClient.invalidateQueries({ queryKey: ['voice-import-candidates'] })
-      rememberVoice(voice)
-      setImportReferenceText('')
-      toast({
-        title: 'Voice profile ready',
-        description: `${voice.name} was imported and selected for Generate.`,
-        variant: 'success',
-      })
-    },
-    onError: (error) => {
-      toast({
-        title: 'Import failed',
-        description: error instanceof Error ? error.message : 'Unable to import voice.',
-        variant: 'danger',
-      })
+      setIntakeError(queryErrorMessage(error, 'Unable to create voice profile.'))
     },
   })
 
@@ -193,7 +213,7 @@ export function VoicesView() {
       setDeleteTarget(null)
       toast({
         title: 'Voice deleted',
-        description: `Removed profile ${result.voice_id}.`,
+        description: 'The voice profile was removed from this device.',
         variant: 'success',
       })
     },
@@ -213,12 +233,6 @@ export function VoicesView() {
     : null
   const candidatesError = importCandidatesQuery.isError
     ? queryErrorMessage(importCandidatesQuery.error, 'Unable to load import candidates.')
-    : null
-  const createVoiceError = createVoiceMutation.isError
-    ? queryErrorMessage(createVoiceMutation.error, 'Unable to create voice profile.')
-    : null
-  const importVoiceError = importVoiceMutation.isError
-    ? queryErrorMessage(importVoiceMutation.error, 'Unable to import voice profile.')
     : null
   const normalizedSearch = search.trim().toLowerCase()
   const filteredVoices = useMemo(
@@ -290,6 +304,7 @@ export function VoicesView() {
   }
 
   const handleUploadFile = (file: File | null) => {
+    setIntakeError(null)
     if (!file) {
       setUploadFile(null)
       setUploadName('')
@@ -312,10 +327,7 @@ export function VoicesView() {
     setUploadName(file.name.replace(/\.[^.]+$/, ''))
   }
 
-  const handleCreateVoice = () => {
-    if (!uploadFile || !uploadName.trim()) {
-      return
-    }
+  const beginIntakeReview = (source: VoiceIntakeSource, name: string) => {
     const referenceText = importReferenceText.trim()
     if (!referenceText && importRuntimeLanguageWarning) {
       toast({
@@ -325,12 +337,44 @@ export function VoicesView() {
       })
       return
     }
-    createVoiceMutation.mutate({
-      file: uploadFile,
-      name: uploadName.trim(),
+    setIntakeError(null)
+    analyzeVoiceMutation.mutate({
+      source,
+      name: name.trim(),
       language: importLanguage,
-      referenceText: referenceText || undefined,
+      referenceText,
       autoTranscribe: !referenceText,
+    })
+  }
+
+  const reanalyzeIntake = () => {
+    if (!intakeDraft) return
+    setIntakeError(null)
+    analyzeVoiceMutation.mutate({
+      source: intakeDraft.source,
+      name: intakeDraft.name,
+      language: intakeDraft.language,
+      referenceText: intakeDraft.referenceText.trim(),
+      autoTranscribe: false,
+      trimStartSeconds: intakeDraft.trimStartSeconds,
+      trimEndSeconds: intakeDraft.trimEndSeconds,
+    })
+  }
+
+  const reuseVoice = (voiceId: string) => {
+    const voice = voices.find((candidate) => candidate.voice_id === voiceId)
+    if (!voice) {
+      void voicesQuery.refetch()
+      setIntakeError('The existing profile could not be loaded. Refresh the library and try again.')
+      return
+    }
+    rememberVoice(voice)
+    setIntakeDraft(null)
+    setIntakeError(null)
+    toast({
+      title: 'Existing voice selected',
+      description: `${voice.name} is ready in Generate.`,
+      variant: 'success',
     })
   }
 
@@ -443,51 +487,64 @@ export function VoicesView() {
 
         <VoiceImportPanel
           mode={importMode}
-          onModeChange={setImportMode}
+          onModeChange={(nextMode) => {
+            if (nextMode !== importMode && nextMode !== 'local') {
+              handleUploadFile(null)
+            }
+            setImportMode(nextMode)
+          }}
           uploadFile={uploadFile}
           uploadName={uploadName}
-          uploadBusy={createVoiceMutation.isPending}
-          uploadError={createVoiceError}
+          uploadBusy={analyzeVoiceMutation.isPending && analyzeVoiceMutation.variables?.source.kind === 'upload'}
+          uploadError={!intakeDraft ? intakeError : null}
           onUploadFileChange={handleUploadFile}
           onUploadNameChange={setUploadName}
-          onCreateVoice={handleCreateVoice}
+          onReviewUpload={() => {
+            if (uploadFile && uploadName.trim()) {
+              beginIntakeReview({ kind: 'upload', file: uploadFile }, uploadName)
+            }
+          }}
           candidates={filteredCandidates}
           candidatesLoading={importCandidatesQuery.isLoading}
-          importingFilename={importVoiceMutation.variables?.filename}
-          importing={importVoiceMutation.isPending}
+          importingFilename={
+            analyzeVoiceMutation.variables?.source.kind === 'local'
+              ? analyzeVoiceMutation.variables.source.candidate.filename
+              : undefined
+          }
+          importing={analyzeVoiceMutation.isPending}
           language={importLanguage}
           referenceText={importReferenceText}
           runtimeLanguageWarning={importRuntimeLanguageWarning}
           error={candidatesError}
-          importError={importVoiceError}
+          importError={!intakeDraft ? intakeError : null}
           totalCandidates={candidates.length}
           onRetry={() => {
             void importCandidatesQuery.refetch()
           }}
           onLanguageChange={setImportLanguage}
           onReferenceTextChange={setImportReferenceText}
-          onImport={(candidate) =>
-            {
-              const referenceText = importReferenceText.trim()
-              if (!referenceText && importRuntimeLanguageWarning) {
-                toast({
-                  title: 'Reference text required',
-                  description: `${voiceLanguageLabel(importLanguage)} ASR is not configured. Paste a matching transcript or choose another language.`,
-                  variant: 'danger',
-                })
-                return
-              }
-              importVoiceMutation.mutate({
-                filename: candidate.filename,
-                name: candidate.name,
-                language: importLanguage,
-                referenceText: referenceText || undefined,
-                autoTranscribe: !referenceText,
-              })
-            }
-          }
+          onImport={(candidate) => beginIntakeReview({ kind: 'local', candidate }, candidate.name)}
         />
       </div>
+
+      {intakeDraft ? (
+        <VoiceIntakeReviewDialog
+          draft={intakeDraft}
+          analyzing={analyzeVoiceMutation.isPending}
+          creating={createVoiceMutation.isPending}
+          error={intakeError}
+          onChange={setIntakeDraft}
+          onReanalyze={reanalyzeIntake}
+          onCreate={() => createVoiceMutation.mutate(intakeDraft)}
+          onReuse={reuseVoice}
+          onClose={() => {
+            if (!createVoiceMutation.isPending) {
+              setIntakeDraft(null)
+              setIntakeError(null)
+            }
+          }}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
@@ -569,12 +626,6 @@ function VoiceCard({
               >
                 {voiceLanguageShortLabel(voice.language)}
               </span>
-              <div
-                className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-500"
-                title={voice.voice_id}
-              >
-                <code className="truncate font-mono text-[10px] text-slate-600">{shortVoiceId(voice.voice_id)}</code>
-              </div>
             </div>
           </div>
         </div>
@@ -642,7 +693,11 @@ function VoiceCard({
             <VoiceMeta label="Sample rate" value={formatSampleRate(voice.sample_rate)} />
           </div>
           {voice.reference_audio_url ? (
-            <audio className="mt-3 h-9 w-full" controls preload="metadata" src={voice.reference_audio_url} />
+            <AudioPlayer
+              className="mt-3"
+              src={voice.reference_audio_url}
+              label={`Preview ${voice.name}`}
+            />
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <Button className="min-w-32" size="sm" variant={selected ? 'secondary' : 'default'} onClick={onUse}>
@@ -670,13 +725,6 @@ function VoiceCard({
   )
 }
 
-function shortVoiceId(voiceId: string) {
-  if (voiceId.length <= 12) {
-    return voiceId
-  }
-  return `${voiceId.slice(0, 8)}...${voiceId.slice(-4)}`
-}
-
 function VoiceImportPanel({
   mode,
   onModeChange,
@@ -686,7 +734,7 @@ function VoiceImportPanel({
   uploadError,
   onUploadFileChange,
   onUploadNameChange,
-  onCreateVoice,
+  onReviewUpload,
   candidates,
   candidatesLoading,
   totalCandidates,
@@ -710,7 +758,7 @@ function VoiceImportPanel({
   uploadError: string | null
   onUploadFileChange: (file: File | null) => void
   onUploadNameChange: (value: string) => void
-  onCreateVoice: () => void
+  onReviewUpload: () => void
   candidates: ImportCandidate[]
   candidatesLoading: boolean
   totalCandidates: number
@@ -751,6 +799,7 @@ function VoiceImportPanel({
           className="w-full"
           options={[
             { value: 'upload', label: 'Upload audio', title: 'Upload a reference clip from this device' },
+            { value: 'record', label: 'Record', title: 'Capture a new microphone reference' },
             { value: 'local', label: 'Local files', title: 'Use audio already stored in the workspace' },
           ]}
           value={mode}
@@ -796,28 +845,33 @@ function VoiceImportPanel({
                 {uploadFile ? formatBytes(uploadFile.size) : 'WAV, MP3, WEBM, FLAC, M4A, OGG, or OPUS'}
               </span>
             </button>
-            {uploadFile ? (
-              <div className="flex items-end gap-2">
-                <label className="min-w-0 flex-1">
-                  <span className="mb-1.5 block text-xs font-semibold text-neutral-600">Profile name</span>
-                  <input
-                    className="h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    value={uploadName}
-                    onChange={(event) => onUploadNameChange(event.target.value)}
-                  />
-                </label>
-                <Button
-                  aria-label="Remove selected audio"
-                  title="Remove selected audio"
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => onUploadFileChange(null)}
-                >
-                  <X className="size-4" />
-                </Button>
-              </div>
-            ) : null}
           </>
+        ) : null}
+
+        {mode === 'record' ? (
+          <VoiceRecorder recording={uploadFile} onRecording={onUploadFileChange} />
+        ) : null}
+
+        {(mode === 'upload' || mode === 'record') && uploadFile ? (
+          <div className="flex items-end gap-2">
+            <label className="min-w-0 flex-1">
+              <span className="mb-1.5 block text-xs font-semibold text-neutral-600">Profile name</span>
+              <input
+                className="h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                value={uploadName}
+                onChange={(event) => onUploadNameChange(event.target.value)}
+              />
+            </label>
+            <Button
+              aria-label="Remove selected audio"
+              title="Remove selected audio"
+              size="icon"
+              variant="ghost"
+              onClick={() => onUploadFileChange(null)}
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
         ) : null}
 
         <VoiceProfileFields
@@ -828,7 +882,7 @@ function VoiceImportPanel({
           onReferenceTextChange={onReferenceTextChange}
         />
 
-        {mode === 'upload' ? (
+        {mode === 'upload' || mode === 'record' ? (
           <>
             {uploadError ? (
               <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
@@ -838,10 +892,10 @@ function VoiceImportPanel({
             <Button
               className="w-full"
               disabled={!uploadFile || !uploadName.trim() || transcriptRequired || uploadBusy}
-              onClick={onCreateVoice}
+              onClick={onReviewUpload}
             >
-              {uploadBusy ? <Loader2 className="size-4 animate-spin" /> : <Waves className="size-4" />}
-              {uploadBusy ? 'Creating profile' : 'Create voice profile'}
+              {uploadBusy ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
+              {uploadBusy ? 'Checking recording' : 'Review recording'}
             </Button>
           </>
         ) : candidatesLoading ? (
@@ -872,7 +926,11 @@ function VoiceImportPanel({
                     <Badge variant="muted">{formatBytes(candidate.size_bytes)}</Badge>
                   </div>
                   {candidate.audio_url ? (
-                    <audio className="mt-3 h-9 w-full" controls preload="metadata" src={candidate.audio_url} />
+                    <AudioPlayer
+                      className="mt-3"
+                      src={candidate.audio_url}
+                      label={`Preview ${candidate.name}`}
+                    />
                   ) : null}
                   <Button className="mt-3 w-full" disabled={importing || transcriptRequired} onClick={() => onImport(candidate)}>
                     {importing && importingFilename === candidate.filename ? (
@@ -880,7 +938,7 @@ function VoiceImportPanel({
                     ) : (
                       <FolderOpen className="size-4" />
                     )}
-                    {importing && importingFilename === candidate.filename ? 'Preparing profile' : 'Prepare profile'}
+                    {importing && importingFilename === candidate.filename ? 'Checking file' : 'Review file'}
                   </Button>
                 </div>
               ))
@@ -891,7 +949,7 @@ function VoiceImportPanel({
                 copy={
                   totalCandidates > 0
                     ? 'Adjust the search term to find another local file.'
-                    : 'No supported reference audio is waiting in data/voices.'
+                    : 'No local reference audio is available.'
                 }
               />
             )}
@@ -1002,5 +1060,5 @@ function getRuntimeLanguageWarning(
   const available = Array.from(configured)
     .map((language) => voiceLanguageLabel(language))
     .join(', ')
-  return `${voiceLanguageLabel(selectedLanguage)} ASR is not configured on this backend. Available runtime: ${available}.`
+  return `${voiceLanguageLabel(selectedLanguage)} ASR is not configured on this device. Available languages: ${available}.`
 }

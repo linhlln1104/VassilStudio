@@ -450,6 +450,100 @@
         "title": "AuthUser",
         "type": "object"
       },
+      "Body_analyze_voice_import_candidate_api_v1_voices_import_candidates__filename__analyze_post": {
+        "properties": {
+          "auto_transcribe": {
+            "default": false,
+            "title": "Auto Transcribe",
+            "type": "boolean"
+          },
+          "language": {
+            "default": "vi",
+            "title": "Language",
+            "type": "string"
+          },
+          "reference_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Text"
+          },
+          "trim_end_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trim End Seconds"
+          },
+          "trim_start_seconds": {
+            "default": 0.0,
+            "title": "Trim Start Seconds",
+            "type": "number"
+          }
+        },
+        "title": "Body_analyze_voice_import_candidate_api_v1_voices_import_candidates__filename__analyze_post",
+        "type": "object"
+      },
+      "Body_analyze_voice_upload_api_v1_voices_intake_analyze_post": {
+        "properties": {
+          "auto_transcribe": {
+            "default": false,
+            "title": "Auto Transcribe",
+            "type": "boolean"
+          },
+          "language": {
+            "default": "vi",
+            "title": "Language",
+            "type": "string"
+          },
+          "reference_audio": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Reference Audio",
+            "type": "string"
+          },
+          "reference_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Text"
+          },
+          "trim_end_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trim End Seconds"
+          },
+          "trim_start_seconds": {
+            "default": 0.0,
+            "title": "Trim Start Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "reference_audio"
+        ],
+        "title": "Body_analyze_voice_upload_api_v1_voices_intake_analyze_post",
+        "type": "object"
+      },
       "Body_create_asr_job_api_v1_asr_jobs_post": {
         "properties": {
           "audio": {
@@ -517,6 +611,11 @@
       },
       "Body_create_voice_api_v1_voices_post": {
         "properties": {
+          "acknowledge_warnings": {
+            "default": false,
+            "title": "Acknowledge Warnings",
+            "type": "boolean"
+          },
           "auto_transcribe": {
             "default": false,
             "title": "Auto Transcribe",
@@ -546,6 +645,33 @@
               }
             ],
             "title": "Reference Text"
+          },
+          "reviewed_source_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed Source Sha256"
+          },
+          "trim_end_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trim End Seconds"
+          },
+          "trim_start_seconds": {
+            "default": 0.0,
+            "title": "Trim Start Seconds",
+            "type": "number"
           }
         },
         "required": [
@@ -557,6 +683,11 @@
       },
       "Body_import_voice_api_v1_voices_import_post": {
         "properties": {
+          "acknowledge_warnings": {
+            "default": false,
+            "title": "Acknowledge Warnings",
+            "type": "boolean"
+          },
           "auto_transcribe": {
             "default": true,
             "title": "Auto Transcribe",
@@ -592,6 +723,33 @@
               }
             ],
             "title": "Reference Text"
+          },
+          "reviewed_source_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed Source Sha256"
+          },
+          "trim_end_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trim End Seconds"
+          },
+          "trim_start_seconds": {
+            "default": 0.0,
+            "title": "Trim Start Seconds",
+            "type": "number"
           }
         },
         "required": [
@@ -1652,6 +1810,193 @@
           "audio_url"
         ],
         "title": "VoiceImportCandidateResponse",
+        "type": "object"
+      },
+      "VoiceIntakeDuplicateResponse": {
+        "properties": {
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "voice_id": {
+            "title": "Voice Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "voice_id",
+          "name",
+          "language"
+        ],
+        "title": "VoiceIntakeDuplicateResponse",
+        "type": "object"
+      },
+      "VoiceIntakeIssueResponse": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "warning",
+              "blocking"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "VoiceIntakeIssueResponse",
+        "type": "object"
+      },
+      "VoiceIntakeReportResponse": {
+        "properties": {
+          "audio_sha256": {
+            "title": "Audio Sha256",
+            "type": "string"
+          },
+          "can_create": {
+            "title": "Can Create",
+            "type": "boolean"
+          },
+          "channels": {
+            "title": "Channels",
+            "type": "integer"
+          },
+          "clipping_ratio": {
+            "title": "Clipping Ratio",
+            "type": "number"
+          },
+          "duplicate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoiceIntakeDuplicateResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration_seconds": {
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/VoiceIntakeIssueResponse"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "leading_silence_seconds": {
+            "title": "Leading Silence Seconds",
+            "type": "number"
+          },
+          "peak_amplitude": {
+            "title": "Peak Amplitude",
+            "type": "number"
+          },
+          "reference_text": {
+            "title": "Reference Text",
+            "type": "string"
+          },
+          "reference_text_source": {
+            "enum": [
+              "user",
+              "asr",
+              "none"
+            ],
+            "title": "Reference Text Source",
+            "type": "string"
+          },
+          "source_duration_seconds": {
+            "title": "Source Duration Seconds",
+            "type": "number"
+          },
+          "source_sample_rate": {
+            "title": "Source Sample Rate",
+            "type": "integer"
+          },
+          "source_sha256": {
+            "title": "Source Sha256",
+            "type": "string"
+          },
+          "speech_coverage_ratio": {
+            "title": "Speech Coverage Ratio",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "review",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "suggested_trim_end_seconds": {
+            "title": "Suggested Trim End Seconds",
+            "type": "number"
+          },
+          "suggested_trim_start_seconds": {
+            "title": "Suggested Trim Start Seconds",
+            "type": "number"
+          },
+          "target_sample_rate": {
+            "title": "Target Sample Rate",
+            "type": "integer"
+          },
+          "trailing_silence_seconds": {
+            "title": "Trailing Silence Seconds",
+            "type": "number"
+          },
+          "trim_end_seconds": {
+            "title": "Trim End Seconds",
+            "type": "number"
+          },
+          "trim_start_seconds": {
+            "title": "Trim Start Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "status",
+          "can_create",
+          "source_sha256",
+          "audio_sha256",
+          "source_duration_seconds",
+          "duration_seconds",
+          "source_sample_rate",
+          "target_sample_rate",
+          "channels",
+          "trim_start_seconds",
+          "trim_end_seconds",
+          "suggested_trim_start_seconds",
+          "suggested_trim_end_seconds",
+          "leading_silence_seconds",
+          "trailing_silence_seconds",
+          "clipping_ratio",
+          "speech_coverage_ratio",
+          "peak_amplitude",
+          "reference_text",
+          "reference_text_source",
+          "issues",
+          "duplicate"
+        ],
+        "title": "VoiceIntakeReportResponse",
         "type": "object"
       },
       "VoiceResponse": {
@@ -2957,6 +3302,57 @@
         ]
       }
     },
+    "/api/v1/voices/import-candidates/{filename}/analyze": {
+      "post": {
+        "operationId": "analyze_voice_import_candidate_api_v1_voices_import_candidates__filename__analyze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "title": "Filename",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_analyze_voice_import_candidate_api_v1_voices_import_candidates__filename__analyze_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceIntakeReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Voice Import Candidate",
+        "tags": [
+          "voices"
+        ]
+      }
+    },
     "/api/v1/voices/import-candidates/{filename}/audio": {
       "get": {
         "operationId": "get_voice_import_candidate_audio_api_v1_voices_import_candidates__filename__audio_get",
@@ -2992,6 +3388,47 @@
           }
         },
         "summary": "Get Voice Import Candidate Audio",
+        "tags": [
+          "voices"
+        ]
+      }
+    },
+    "/api/v1/voices/intake/analyze": {
+      "post": {
+        "operationId": "analyze_voice_upload_api_v1_voices_intake_analyze_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_analyze_voice_upload_api_v1_voices_intake_analyze_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceIntakeReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Voice Upload",
         "tags": [
           "voices"
         ]

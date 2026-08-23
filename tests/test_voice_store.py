@@ -28,6 +28,8 @@ def test_voice_store_create_get_list_delete(tmp_path) -> None:
     assert metadata["audio_path"] == "reference.wav"
     assert metadata["language"] == "en"
     assert metadata["audio_size_bytes"] == len(b"RIFF....WAVE")
+    assert metadata["metadata_version"] == 4
+    assert metadata["audio_sha256"] == profile.audio_sha256
 
     updated = store.update(
         profile.voice_id,

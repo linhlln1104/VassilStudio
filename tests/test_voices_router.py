@@ -16,6 +16,8 @@ def test_voice_router_registers_reference_audio_route() -> None:
     assert "/{voice_id}/reference-audio" in paths
     assert "/import-candidates" in paths
     assert "/import-candidates/{filename}/audio" in paths
+    assert "/import-candidates/{filename}/analyze" in paths
+    assert "/intake/analyze" in paths
     assert "/import" in paths
     assert "PATCH" in voice_route_methods
 

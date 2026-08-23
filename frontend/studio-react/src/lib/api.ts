@@ -264,6 +264,57 @@ export type ImportCandidate = {
   audio_url: string
 }
 
+export type VoiceIntakeIssue = {
+  code: string
+  severity: 'warning' | 'blocking'
+  message: string
+}
+
+export type VoiceIntakeDuplicate = {
+  voice_id: string
+  name: string
+  language: string
+}
+
+export type VoiceIntakeReport = {
+  status: 'ready' | 'review' | 'blocked'
+  can_create: boolean
+  source_sha256: string
+  audio_sha256: string
+  source_duration_seconds: number
+  duration_seconds: number
+  source_sample_rate: number
+  target_sample_rate: number
+  channels: number
+  trim_start_seconds: number
+  trim_end_seconds: number
+  suggested_trim_start_seconds: number
+  suggested_trim_end_seconds: number
+  leading_silence_seconds: number
+  trailing_silence_seconds: number
+  clipping_ratio: number
+  speech_coverage_ratio: number
+  peak_amplitude: number
+  reference_text: string
+  reference_text_source: 'user' | 'asr' | 'none'
+  issues: VoiceIntakeIssue[]
+  duplicate: VoiceIntakeDuplicate | null
+}
+
+export type VoiceIntakePayload = {
+  language: string
+  referenceText?: string
+  autoTranscribe?: boolean
+  trimStartSeconds?: number
+  trimEndSeconds?: number
+}
+
+export type ReviewedVoicePayload = VoiceIntakePayload & {
+  name: string
+  reviewedSourceSha256?: string
+  acknowledgeWarnings?: boolean
+}
+
 export type TtsJob = {
   job_id: string
   status: JobStatus
@@ -632,7 +683,7 @@ export const api = {
   },
   createVoice: (
     file: File,
-    payload: { name: string; language: string; referenceText?: string; autoTranscribe?: boolean },
+    payload: ReviewedVoicePayload,
   ) => {
     const form = new FormData()
     form.set('reference_audio', file)
@@ -642,6 +693,7 @@ export const api = {
     if (payload.referenceText) {
       form.set('reference_text', payload.referenceText)
     }
+    appendVoiceIntakeFields(form, payload)
 
     return fetchJson<Voice>('/api/v1/voices', {
       method: 'POST',
@@ -650,7 +702,7 @@ export const api = {
   },
   importVoiceCandidate: (
     filename: string,
-    payload: { name?: string; language?: string; referenceText?: string; autoTranscribe?: boolean } = {},
+    payload: Partial<ReviewedVoicePayload> = {},
   ) => {
     const form = new URLSearchParams()
     form.set('filename', filename)
@@ -664,12 +716,29 @@ export const api = {
     if (payload.referenceText) {
       form.set('reference_text', payload.referenceText)
     }
+    appendVoiceIntakeFields(form, payload)
 
     return fetchJson<Voice>('/api/v1/voices/import', {
       method: 'POST',
       body: form,
     })
   },
+  analyzeVoice: (file: File, payload: VoiceIntakePayload) => {
+    const form = voiceIntakeForm(payload)
+    form.set('reference_audio', file)
+    return fetchJson<VoiceIntakeReport>('/api/v1/voices/intake/analyze', {
+      method: 'POST',
+      body: form,
+    })
+  },
+  analyzeVoiceCandidate: (filename: string, payload: VoiceIntakePayload) =>
+    fetchJson<VoiceIntakeReport>(
+      `/api/v1/voices/import-candidates/${encodeURIComponent(filename)}/analyze`,
+      {
+        method: 'POST',
+        body: voiceIntakeForm(payload),
+      },
+    ),
   updateVoice: (voiceId: string, payload: { name?: string; language?: string; referenceText?: string }) => {
     const form = new FormData()
     if (payload.name !== undefined) {
@@ -691,6 +760,40 @@ export const api = {
     fetchJson<VoiceDeleteResponse>(`/api/v1/voices/${encodeURIComponent(voiceId)}`, {
       method: 'DELETE',
     }),
+}
+
+function voiceIntakeForm(payload: VoiceIntakePayload): FormData {
+  const form = new FormData()
+  form.set('language', payload.language)
+  form.set('auto_transcribe', String(payload.autoTranscribe ?? false))
+  if (payload.referenceText) {
+    form.set('reference_text', payload.referenceText)
+  }
+  if (payload.trimStartSeconds !== undefined) {
+    form.set('trim_start_seconds', String(payload.trimStartSeconds))
+  }
+  if (payload.trimEndSeconds !== undefined) {
+    form.set('trim_end_seconds', String(payload.trimEndSeconds))
+  }
+  return form
+}
+
+function appendVoiceIntakeFields(
+  form: FormData | URLSearchParams,
+  payload: Partial<ReviewedVoicePayload>,
+) {
+  if (payload.trimStartSeconds !== undefined) {
+    form.set('trim_start_seconds', String(payload.trimStartSeconds))
+  }
+  if (payload.trimEndSeconds !== undefined) {
+    form.set('trim_end_seconds', String(payload.trimEndSeconds))
+  }
+  if (payload.reviewedSourceSha256) {
+    form.set('reviewed_source_sha256', payload.reviewedSourceSha256)
+  }
+  if (payload.acknowledgeWarnings !== undefined) {
+    form.set('acknowledge_warnings', String(payload.acknowledgeWarnings))
+  }
 }
 
 function cleanupPath(path: string, maxAgeSeconds?: number) {

@@ -12,13 +12,23 @@ from vvoice.core.errors import AudioError, PUBLIC_AUDIO_ERROR_MESSAGE
 
 
 def load_audio_bytes(data: bytes, target_sample_rate: int | None = None) -> tuple[np.ndarray, int]:
+    samples, sample_rate, _ = load_audio_bytes_with_metadata(data, target_sample_rate)
+    return samples, sample_rate
+
+
+def load_audio_bytes_with_metadata(
+    data: bytes,
+    target_sample_rate: int | None = None,
+) -> tuple[np.ndarray, int, int]:
     try:
-        samples, sample_rate = sf.read(BytesIO(data), dtype="float32", always_2d=False)
+        samples, sample_rate = sf.read(BytesIO(data), dtype="float32", always_2d=True)
     except Exception as soundfile_exc:  # pragma: no cover - depends on libsndfile codecs
         samples, sample_rate = _load_audio_bytes_with_ffmpeg(data, target_sample_rate, soundfile_exc)
 
-    if samples.ndim == 2:
-        samples = samples.mean(axis=1)
+    if samples.ndim != 2:
+        samples = np.atleast_2d(samples).T
+    channels = int(samples.shape[1])
+    samples = samples.mean(axis=1)
 
     samples = np.asarray(samples, dtype=np.float32)
     if samples.size == 0:
@@ -31,7 +41,7 @@ def load_audio_bytes(data: bytes, target_sample_rate: int | None = None) -> tupl
         samples = librosa.resample(samples, orig_sr=sample_rate, target_sr=target_sample_rate)
         sample_rate = target_sample_rate
 
-    return samples, int(sample_rate)
+    return samples, int(sample_rate), channels
 
 
 def encode_wav(samples: np.ndarray, sample_rate: int) -> bytes:
@@ -62,8 +72,6 @@ def _load_audio_bytes_with_ffmpeg(
         "error",
         "-i",
         "pipe:0",
-        "-ac",
-        "1",
     ]
     if target_sample_rate:
         command.extend(["-ar", str(target_sample_rate)])
@@ -80,7 +88,7 @@ def _load_audio_bytes_with_ffmpeg(
         samples, sample_rate = sf.read(
             BytesIO(completed.stdout),
             dtype="float32",
-            always_2d=False,
+            always_2d=True,
         )
     except Exception as exc:  # pragma: no cover - depends on ffmpeg codecs
         raise AudioError(PUBLIC_AUDIO_ERROR_MESSAGE) from exc

@@ -14,6 +14,7 @@
     "qa:landing": "node scripts/qa-landing.mjs",
     "qa:audio-workflows": "node scripts/qa-audio-workflows.mjs",
     "qa:jobs": "node scripts/qa-jobs.mjs",
+    "qa:voices": "node scripts/qa-voice-intake.mjs",
     "qa:transcripts": "node scripts/qa-transcript-review.mjs",
     "qa:settings": "node scripts/qa-settings.mjs"
   },

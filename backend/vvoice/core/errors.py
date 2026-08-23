@@ -33,6 +33,18 @@ class VoiceNotFoundError(VVoiceError):
     pass
 
 
+class VoiceDuplicateError(VVoiceError):
+    pass
+
+
+class VoiceIntakeConflictError(VVoiceError):
+    pass
+
+
+class VoiceIntakeRejectedError(VVoiceError):
+    pass
+
+
 class TtsJobNotFoundError(VVoiceError):
     pass
 

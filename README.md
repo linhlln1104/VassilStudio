@@ -376,31 +376,41 @@ candidate voice, auto-transcribes the reference audio, queues a TTS job, and wri
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_e2e_sample_voice.ps1
 ```
 
-Create a reusable voice profile:
+Review and create a reusable voice profile:
 
 ```powershell
+$review = Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:8000/api/v1/voices/intake/analyze `
+  -Form @{
+    language = "vi"
+    reference_text = "xin chào"
+    reference_audio = Get-Item ".\reference.wav"
+  }
+
+if ($review.status -eq "blocked") {
+  throw ($review.issues.message -join " ")
+}
+
 Invoke-WebRequest `
   -Method Post `
   -Uri http://127.0.0.1:8000/api/v1/voices `
   -Form @{
     name = "demo"
-    reference_text = "xin chao"
+    language = "vi"
+    reference_text = "xin chào"
+    trim_start_seconds = $review.trim_start_seconds
+    trim_end_seconds = $review.trim_end_seconds
+    reviewed_source_sha256 = $review.source_sha256
+    acknowledge_warnings = ($review.status -eq "review").ToString().ToLowerInvariant()
     reference_audio = Get-Item ".\reference.wav"
   }
 ```
 
-Create a voice profile and let VassilStudio transcribe the reference audio:
-
-```powershell
-Invoke-WebRequest `
-  -Method Post `
-  -Uri http://127.0.0.1:8000/api/v1/voices `
-  -Form @{
-    name = "demo-auto"
-    auto_transcribe = "true"
-    reference_audio = Get-Item ".\reference.wav"
-  }
-```
+Set `auto_transcribe = "true"` on the analyze request when the configured ASR runtime should draft
+the transcript. Review the returned `reference_text`, then send the corrected text during commit.
+The analyze response is `ready`, `review`, or `blocked`; a matching canonical audio hash includes the
+existing profile in `duplicate` and commit returns `409` instead of creating another profile.
 
 Synthesize with a saved voice:
 
