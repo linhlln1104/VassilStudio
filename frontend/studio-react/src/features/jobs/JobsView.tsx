@@ -4,11 +4,13 @@ import {
   AlertTriangle,
   Captions,
   CheckCircle2,
+  ChevronUp,
   Clock3,
   Eraser,
   FileAudio,
   Loader2,
   PanelRightOpen,
+  Play,
   RefreshCw,
   RotateCcw,
   Search,
@@ -18,6 +20,7 @@ import {
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { AudioPlayer } from '@/components/ui/audio-player'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -56,6 +59,7 @@ export function JobsView() {
   const [visibleLimit, setVisibleLimit] = useState(30)
   const [deleteTarget, setDeleteTarget] = useState<StudioJob | null>(null)
   const [selectedJobKey, setSelectedJobKey] = useState<string | null>(null)
+  const [expandedAudioJobKey, setExpandedAudioJobKey] = useState<string | null>(null)
   const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false)
   const ttsJobsQuery = useQuery({
     queryKey: ['tts-jobs'],
@@ -81,6 +85,7 @@ export function JobsView() {
         durationSeconds: job.duration_seconds,
         sampleRate: job.sample_rate,
         audioUrl: job.audio_url,
+        audioFilename: `vassil-render-${compactId(job.job_id)}.wav`,
         attempt: job.attempt,
         maxAttempts: job.max_attempts,
         cancelRequested: job.cancel_requested,
@@ -106,6 +111,7 @@ export function JobsView() {
         durationSeconds: job.duration_seconds,
         sampleRate: job.sample_rate,
         audioUrl: job.audio_url,
+        audioFilename: `vassil-source-${compactId(job.job_id)}.wav`,
         attempt: job.attempt,
         maxAttempts: job.max_attempts,
         cancelRequested: job.cancel_requested,
@@ -434,6 +440,11 @@ export function JobsView() {
                 onCancel={() => cancelJobMutation.mutate(job)}
                 onDelete={() => setDeleteTarget(job)}
                 onInspect={() => setSelectedJobKey(jobKey(job))}
+                audioExpanded={expandedAudioJobKey === jobKey(job)}
+                onToggleAudio={() => {
+                  const key = jobKey(job)
+                  setExpandedAudioJobKey((current) => current === key ? null : key)
+                }}
                 onReuse={() => reuseJob(job)}
               />
             ))}
@@ -513,6 +524,8 @@ function JobRow({
   onCancel,
   onDelete,
   onInspect,
+  audioExpanded,
+  onToggleAudio,
   onReuse,
 }: {
   job: StudioJob
@@ -521,12 +534,15 @@ function JobRow({
   onCancel: () => void
   onDelete: () => void
   onInspect: () => void
+  audioExpanded: boolean
+  onToggleAudio: () => void
   onReuse: () => void
 }) {
   const failed = job.status === 'failed'
   const terminal = isTerminalStatus(job.status)
   const canCancel = job.status === 'queued' || job.status === 'running'
   const canReuse = Boolean(job.reusableText.trim())
+  const hasAudio = Boolean(job.audioUrl)
 
   return (
     <article
@@ -574,6 +590,18 @@ function JobRow({
           >
             <PanelRightOpen className="size-4" />
           </Button>
+          {hasAudio ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              aria-expanded={audioExpanded}
+              aria-controls={`job-audio-${job.id}`}
+              onClick={onToggleAudio}
+            >
+              {audioExpanded ? <ChevronUp className="size-4" /> : <Play className="size-4" />}
+              {audioExpanded ? 'Hide player' : 'Listen'}
+            </Button>
+          ) : null}
           {canCancel ? (
             <Button size="sm" variant="secondary" disabled={cancelling} onClick={onCancel}>
               {cancelling ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
@@ -602,6 +630,19 @@ function JobRow({
           ) : null}
         </div>
       </div>
+      {audioExpanded && job.audioUrl ? (
+        <div
+          id={`job-audio-${job.id}`}
+          className="min-w-0 border-t border-slate-100 pt-3 lg:col-span-2"
+        >
+          <AudioPlayer
+            src={job.audioUrl}
+            label={`${job.type} job ${compactId(job.id)} audio`}
+            downloadName={job.audioFilename}
+            autoPlay
+          />
+        </div>
+      ) : null}
     </article>
   )
 }

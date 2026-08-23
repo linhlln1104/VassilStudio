@@ -3,7 +3,6 @@ import {
   CheckCircle2,
   Clock3,
   Copy,
-  Download,
   FileAudio,
   FileText,
   Gauge,
@@ -18,6 +17,7 @@ import {
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { AudioPlayer } from '@/components/ui/audio-player'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import type { JobStatus } from '@/lib/api'
@@ -36,6 +36,7 @@ export type StudioJob = {
   durationSeconds: number | null
   sampleRate: number | null
   audioUrl: string | null
+  audioFilename: string
   attempt: number
   maxAttempts: number
   cancelRequested: boolean
@@ -232,17 +233,11 @@ export function JobInspector({
 
             {job.audioUrl ? (
               <InspectorSection title={job.type === 'TTS' ? 'Output audio' : 'Input audio'} icon={Volume2}>
-                <audio className="h-10 w-full" controls preload="metadata" src={job.audioUrl}>
-                  Your browser does not support audio playback.
-                </audio>
-                <div className="mt-2 flex justify-end">
-                  <Button asChild size="sm" variant="secondary">
-                    <a href={job.audioUrl} download target="_blank" rel="noreferrer">
-                      <Download className="size-4" />
-                      Download
-                    </a>
-                  </Button>
-                </div>
+                <AudioPlayer
+                  src={job.audioUrl}
+                  label={`${job.type} job ${job.id} audio`}
+                  downloadName={job.audioFilename}
+                />
               </InspectorSection>
             ) : null}
           </div>

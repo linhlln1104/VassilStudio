@@ -8,6 +8,7 @@
 - P0 remediation status: **RESOLVED AND VERIFIED on 2026-08-24**
 - Diagnostics privacy P1 status: **RESOLVED AND VERIFIED on 2026-08-24**
 - Browser security P1 status: **RESOLVED AND VERIFIED on 2026-08-24**
+- Jobs playback P1 status: **RESOLVED AND VERIFIED on 2026-08-24**
 
 ## P0 remediation update
 
@@ -297,6 +298,24 @@ The documented one-command gate can fail on a valid Node installation, while a p
 
 Resolve `node.exe`, prepend its parent for npm child processes, and emit an actionable PATH diagnostic. Add a fast authenticated browser smoke to the normal gate and keep real model/browser E2E as an explicit release task.
 
+### VS-QA-013 - P1 - Completed audio is hidden in Jobs and direct media bypasses API-key auth
+
+**Status: RESOLVED on 2026-08-24.**
+
+The queue row exposed only an unlabeled details icon, while playback was nested inside the inspector.
+The inspector used a direct media URL, which works for anonymous or cookie sessions but cannot attach
+the API-key header required by temporary automation access.
+
+**Resolution**
+
+- Every job with retained audio now exposes a visible `Listen` action directly in the queue.
+- The inline and inspector players fetch through the authenticated API client, use a revocable
+  `blob:` URL, and provide loading, error, retry, playback, and deterministic WAV download states.
+- Playwright exercises playback and download at desktop/mobile sizes and asserts that media requests
+  carry the API-key header without putting the key in the URL.
+- The repository quality gate passes with `148` pytest cases plus frontend lint/typecheck/build,
+  OpenAPI export, auth/product smoke, and Docker Compose validation.
+
 ## Workflow completeness
 
 | Workflow | What works | Missing for a small complete product |
@@ -307,7 +326,7 @@ Resolve `node.exe`, prepend its parent for npm child processes, and emit an acti
 | Voices | Upload/local import, metadata edit, audio preview, search/filter, delete | Review-before-import, duplicate detection, trim/silence/clipping checks, replace source audio, tags/backup/export |
 | Transcribe | File staging/preview, VI/EN selection, queue, result copy/download, Generate handoff | Timed segments, editing, completed-source playback in context, SRT/VTT, multi-file batch |
 | Realtime | Real WebSocket smoke, mocked browser capture, language selection, segments, copy/download, stop/finalize | Microphone selector, pause/resume, reconnect behavior, saved session history, live permission/device diagnostics |
-| Jobs | Search/filter, status summaries, inspector, retry/reuse, cleanup/delete confirmation | Server pagination/sort, batch actions, real progress, prompt cancellation, retention policy visibility |
+| Jobs | Search/filter, status summaries, inline authenticated playback/download, inspector, retry/reuse, cleanup/delete confirmation | Titles/favorites, take comparison, server pagination/sort, batch actions, real progress, prompt cancellation, retention policy visibility |
 | Settings | Readiness, warmup, storage inventory, auth/account, cleanup, diagnostics | Safe paths, model install/update/unload, editable runtime controls, log viewer, backup/restore, open-data-folder action |
 
 ## Verification results

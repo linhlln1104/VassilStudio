@@ -180,6 +180,27 @@ def test_browser_api_key_source_avoids_persistent_storage() -> None:
     assert "@license lucide v1.23.0 - ISC" in legacy_icons.read_text(encoding="utf-8")[:200]
 
 
+def test_jobs_use_authenticated_audio_playback() -> None:
+    audio_player = REPOSITORY_ROOT.joinpath(
+        "frontend", "studio-react", "src", "components", "ui", "audio-player.tsx"
+    ).read_text(encoding="utf-8")
+    jobs_view = REPOSITORY_ROOT.joinpath(
+        "frontend", "studio-react", "src", "features", "jobs", "JobsView.tsx"
+    ).read_text(encoding="utf-8")
+    job_inspector = REPOSITORY_ROOT.joinpath(
+        "frontend", "studio-react", "src", "features", "jobs", "JobInspector.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert "fetchBlob(src" in audio_player
+    assert "URL.createObjectURL" in audio_player
+    assert "URL.revokeObjectURL" in audio_player
+    assert "Download WAV" in audio_player
+    assert "Listen" in jobs_view
+    assert "audioExpanded" in jobs_view
+    assert "<AudioPlayer" in job_inspector
+    assert "<audio" not in job_inspector
+
+
 def test_studio_dir_prefers_vassil_env(tmp_path, monkeypatch) -> None:
     studio_dir = tmp_path / "studio"
     studio_dir.mkdir()

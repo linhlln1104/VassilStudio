@@ -136,7 +136,15 @@ function jobFixture() {
     },
   ]
 
-  return { ttsJobs, asrJobs, ttsCreates: [], asrCreates: [], audioReads: [] }
+  return {
+    ttsJobs,
+    asrJobs,
+    ttsCreates: [],
+    asrCreates: [],
+    audioReads: [],
+    audioApiKeys: [],
+    audioFailuresRemaining: 1,
+  }
 }
 
 async function installApiFixture(page, fixture) {
@@ -197,6 +205,11 @@ async function installApiFixture(page, fixture) {
     }
     if (/^\/api\/v1\/(tts|asr)\/jobs\/[^/]+\/audio$/.test(url.pathname) && method === 'GET') {
       fixture.audioReads.push(url.pathname)
+      fixture.audioApiKeys.push(request.headers()['x-vassil-api-key'] || null)
+      if (url.pathname.includes('tts-20260823-success-abcdef12') && fixture.audioFailuresRemaining > 0) {
+        fixture.audioFailuresRemaining -= 1
+        return json({ detail: 'Audio temporarily unavailable.' }, 503)
+      }
       return route.fulfill({ status: 200, contentType: 'audio/wav', body: wave })
     }
 
@@ -260,6 +273,9 @@ try {
       colorScheme: 'light',
       reducedMotion: 'reduce',
     })
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('vassil.sessionApiKey', 'jobs-qa-api-key')
+    })
     const fixture = jobFixture()
     const browserErrors = captureBrowserErrors(page)
     await installApiFixture(page, fixture)
@@ -315,10 +331,45 @@ try {
     }
 
     await page.getByRole('button', { name: 'Done', exact: true }).click()
+    const succeededTtsRow = page.locator('article').filter({
+      hasText: 'VassilStudio keeps every voice render inside your local workspace.',
+    })
+    await succeededTtsRow.getByRole('button', { name: 'Listen', exact: true }).click()
+    await succeededTtsRow.locator('[id^="job-audio-"]').waitFor({ state: 'visible' })
+    await succeededTtsRow.getByText('Audio temporarily unavailable.', { exact: true }).waitFor({ state: 'visible' })
+    await succeededTtsRow.getByRole('button', { name: 'Retry audio', exact: true }).click()
+    const inlineAudio = succeededTtsRow.getByLabel(/TTS job .* audio/)
+    await inlineAudio.waitFor({ state: 'attached' })
+    await page.waitForFunction(() => {
+      const audio = document.querySelector('article audio')
+      return audio && audio.readyState >= HTMLMediaElement.HAVE_METADATA
+    })
+    const inlineSource = await inlineAudio.getAttribute('src')
+    if (!inlineSource?.startsWith('blob:')) {
+      throw new Error(`${viewport.name}: inline job audio did not use an authenticated blob URL`)
+    }
+    await page.waitForFunction(() => {
+      const audio = document.querySelector('article audio')
+      return audio && (audio.currentTime > 0 || audio.ended)
+    })
+    const playbackScreenshot = path.join(outputDir, `jobs-playback-${viewport.name}.png`)
+    await page.screenshot({ path: playbackScreenshot, fullPage: true })
+    const downloadPromise = page.waitForEvent('download')
+    await succeededTtsRow.getByRole('button', { name: 'Download WAV', exact: true }).click()
+    const download = await downloadPromise
+    if (download.suggestedFilename() !== 'vassil-render-tts-2026.wav') {
+      throw new Error(`${viewport.name}: job audio download filename was not stable`)
+    }
+    await succeededTtsRow.getByRole('button', { name: 'Hide player', exact: true }).click()
+
     await page.getByRole('button', { name: /Inspect TTS job/ }).click()
     dialog = page.getByRole('dialog')
     await dialog.getByRole('heading', { name: 'Output audio' }).waitFor({ state: 'visible' })
-    await dialog.locator('audio').waitFor({ state: 'visible' })
+    await dialog.locator('audio').waitFor({ state: 'attached' })
+    const inspectorSource = await dialog.locator('audio').getAttribute('src')
+    if (!inspectorSource?.startsWith('blob:')) {
+      throw new Error(`${viewport.name}: inspector audio did not use an authenticated blob URL`)
+    }
     await dialog.getByText('24,000 Hz', { exact: true }).waitFor({ state: 'visible' })
     await dialog.getByRole('button', { name: 'Close job details' }).click()
 
@@ -345,13 +396,19 @@ try {
     if (!fixture.audioReads.some((value) => value.includes('asr-20260823-success-1234abcd'))) {
       throw new Error(`${viewport.name}: ASR recovery did not read the original input audio`)
     }
+    if (fixture.audioApiKeys.some((value) => value !== 'jobs-qa-api-key')) {
+      throw new Error(`${viewport.name}: one or more job audio requests omitted the API key header`)
+    }
 
     const layout = await layoutMetrics(page)
     if (layout.horizontalOverflow > 1) {
       throw new Error(`${viewport.name}: Jobs overflowed horizontally by ${layout.horizontalOverflow}px`)
     }
-    if (browserErrors.length > 0) {
-      throw new Error(`${viewport.name}: browser errors: ${browserErrors.join(' | ')}`)
+    const unexpectedBrowserErrors = browserErrors.filter(
+      (message) => !message.includes('503 (Service Unavailable)'),
+    )
+    if (unexpectedBrowserErrors.length > 0) {
+      throw new Error(`${viewport.name}: browser errors: ${unexpectedBrowserErrors.join(' | ')}`)
     }
 
     const queueScreenshot = path.join(outputDir, `jobs-queue-${viewport.name}.png`)
@@ -363,6 +420,7 @@ try {
       ttsRecoveryRequests: fixture.ttsCreates.length,
       asrRecoveryRequests: fixture.asrCreates.length,
       audioReads: fixture.audioReads,
+      playbackScreenshot,
       layout,
       failedScreenshot,
       queueScreenshot,

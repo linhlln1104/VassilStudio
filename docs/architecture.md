@@ -121,6 +121,11 @@ session is active. Browser-entered keys live in module memory by default, can be
 current tab with `sessionStorage`, and are cleared on logout. Startup code removes retired
 `localStorage` key entries instead of migrating them.
 
+Protected audio is not bound directly to a media URL when Jobs renders playback. The React media
+component fetches through the same authenticated client as JSON requests, creates a revocable
+`blob:` URL, and uses that local URL for playback and download. This keeps temporary API keys in
+request headers and avoids query credentials or unauthenticated native-media requests.
+
 The HTTP middleware applies a restrictive Content Security Policy and standard browser protections
 to every response. Studio HTML receives a cryptographically random nonce per response; the React
 entry point passes it to Radix's runtime style helper so dynamic modal styles remain CSP-authorized

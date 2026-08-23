@@ -43,6 +43,10 @@ All notable VassilStudio productionization changes are tracked here.
 - Proof-led landing experience with a crisp product hero and interactive Generate, Transcribe, Realtime, and Voices previews.
 - Repeatable Playwright landing QA for desktop, tablet, and mobile layout, image, overflow, and browser-error checks.
 - Brand-specific acoustic sculpture hero with first-viewport product proof and documented generation provenance.
+- Jobs history now exposes inline authenticated playback, stable WAV downloads, and shared
+  loading/error/retry media states in both queue rows and the job inspector.
+- Evidence-backed product completeness research defines the local-first scope and prioritizes
+  runtime integrity, transcript review/export, voice intake, realtime sessions, and model operations.
 
 ### Hardened
 
@@ -81,6 +85,10 @@ All notable VassilStudio productionization changes are tracked here.
 - Doctor rejects model runtime version drift, including mismatched Torch and TorchAudio builds.
 
 ### Verified
+
+- Jobs playback passed authenticated media-header, blob-source, failure/retry, auto-play,
+  WAV-download, inspector, recovery-action, and responsive Playwright checks at desktop and mobile
+  viewports; the repository gate passed with `148` backend tests.
 
 - Browser Security P1 passed `147` backend tests, frontend lint/build, Settings Playwright credential
   regression QA at desktop and mobile viewports, and live CSP/security-header probes.

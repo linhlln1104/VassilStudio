@@ -9,6 +9,7 @@ The upstream runtime foundation is cloned locally at `foundation/sherpa-onnx` fo
 See `CHANGELOG.md` for productionization milestones.
 See `docs/operations.md` for install, model layout, auth, smoke, Docker, backup, and troubleshooting.
 See `docs/releasing.md` for the release gate and source artifact contract.
+See `docs/product-completeness-research.md` for the evidence-backed feature backlog and product boundary.
 
 ## Current Shape
 
@@ -142,6 +143,10 @@ Jobs support cooperative cancellation and retry metadata. Queued jobs cancel imm
 move through `cancelling` and stop at the next safe point around decode/model/output work. Retry is
 disabled by default with one attempt; raise `asr_max_attempts` or `tts_max_attempts` only after testing
 latency and CPU pressure on the target machine.
+
+Retained TTS outputs and ASR source audio can be played directly from Jobs and downloaded as WAV.
+The Studio fetches job media through the authenticated API client and plays a temporary `blob:` URL,
+so temporary API keys are sent as headers instead of being exposed in media URLs.
 
 Use Settings -> Warm models or call `/warmup` to load all configured ASR/TTS languages before a
 session. Set `runtime.warmup_on_startup` to `true` only when slower startup is acceptable and you want
