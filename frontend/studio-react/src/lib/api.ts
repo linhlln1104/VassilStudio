@@ -59,6 +59,8 @@ export type ModelStatusResponse = {
     log_level: string
     provider: string
     num_threads: number
+    asr_num_threads: number
+    tts_num_threads: number
     debug: boolean
     warmup_on_startup: boolean
     asr_job_workers: number

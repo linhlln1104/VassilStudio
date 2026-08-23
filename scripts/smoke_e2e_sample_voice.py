@@ -116,8 +116,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--num-steps",
         type=int,
-        default=int(env_value("VASSIL_E2E_NUM_STEPS", "VVOICE_E2E_NUM_STEPS", "16")),
-        help="ZipVoice generation steps. Defaults to 16 for intelligible ZipVoice output.",
+        default=int(env_value("VASSIL_E2E_NUM_STEPS", "VVOICE_E2E_NUM_STEPS", "8")),
+        help="ZipVoice generation steps. Defaults to the 8-step quality profile.",
     )
     parser.add_argument(
         "--speed",

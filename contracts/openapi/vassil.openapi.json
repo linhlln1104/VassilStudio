@@ -961,6 +961,10 @@
             "title": "Asr Loaded Languages",
             "type": "array"
           },
+          "asr_num_threads": {
+            "title": "Asr Num Threads",
+            "type": "integer"
+          },
           "debug": {
             "title": "Debug",
             "type": "boolean"
@@ -1011,6 +1015,10 @@
             "title": "Tts Loaded Languages",
             "type": "array"
           },
+          "tts_num_threads": {
+            "title": "Tts Num Threads",
+            "type": "integer"
+          },
           "warmup_on_startup": {
             "title": "Warmup On Startup",
             "type": "boolean"
@@ -1021,6 +1029,8 @@
           "log_level",
           "provider",
           "num_threads",
+          "asr_num_threads",
+          "tts_num_threads",
           "debug",
           "warmup_on_startup",
           "asr_job_workers",

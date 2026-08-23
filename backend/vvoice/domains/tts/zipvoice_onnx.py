@@ -47,8 +47,8 @@ class ZipVoiceOnnxRuntime:
         import torchaudio
 
         session_options = ort.SessionOptions()
-        session_options.inter_op_num_threads = self._runtime.num_threads
-        session_options.intra_op_num_threads = self._runtime.num_threads
+        session_options.inter_op_num_threads = self._runtime.effective_tts_num_threads
+        session_options.intra_op_num_threads = self._runtime.effective_tts_num_threads
 
         providers = ["CPUExecutionProvider"]
         self._text_encoder = ort.InferenceSession(

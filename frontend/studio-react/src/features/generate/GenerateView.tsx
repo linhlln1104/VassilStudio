@@ -24,6 +24,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { api, type TtsJob, type Voice } from '@/lib/api'
 import { BRAND_NAME } from '@/lib/brand'
 import { compactId, formatDuration } from '@/lib/format'
+import { jobRefetchInterval } from '@/lib/job-polling'
 import {
   VOICE_LANGUAGES,
   hasVietnameseDiacritics,
@@ -61,13 +62,13 @@ type RenderMode = 'preview' | 'production'
 const renderProfiles: Record<RenderMode, { label: string; numSteps: number; helper: string }> = {
   preview: {
     label: 'Preview',
-    numSteps: 8,
-    helper: 'Faster draft render for checking voice, pacing, and copy.',
+    numSteps: 4,
+    helper: 'Fast draft render for checking voice, pacing, and copy.',
   },
   production: {
     label: 'Production',
-    numSteps: 16,
-    helper: 'Full default render for final review and export.',
+    numSteps: 8,
+    helper: 'Quality render for final review and export.',
   },
 }
 
@@ -87,7 +88,7 @@ export function GenerateView() {
   const ttsJobsQuery = useQuery({
     queryKey: ['tts-jobs'],
     queryFn: api.ttsJobs,
-    refetchInterval: 8000,
+    refetchInterval: (query) => jobRefetchInterval(query.state.data),
   })
   const modelStatusQuery = useQuery({
     queryKey: ['model-status'],

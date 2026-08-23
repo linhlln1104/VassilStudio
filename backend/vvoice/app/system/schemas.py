@@ -49,6 +49,8 @@ class RuntimeStatus(BaseModel):
     log_level: str
     provider: str
     num_threads: int
+    asr_num_threads: int
+    tts_num_threads: int
     debug: bool
     warmup_on_startup: bool
     asr_job_workers: int

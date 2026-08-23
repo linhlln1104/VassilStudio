@@ -77,7 +77,7 @@ class AsrService:
                     decoder=str(model_settings.decoder),
                     joiner=str(model_settings.joiner),
                     tokens=str(model_settings.tokens),
-                    num_threads=self._runtime.num_threads,
+                    num_threads=self._runtime.effective_asr_num_threads,
                     sample_rate=model_settings.sample_rate,
                     feature_dim=model_settings.feature_dim,
                     decoding_method=model_settings.decoding_method,

@@ -104,7 +104,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--num-steps",
         type=int,
-        default=int(env_value("VASSIL_LANGUAGE_MATRIX_NUM_STEPS", "VVOICE_LANGUAGE_MATRIX_NUM_STEPS", "16")),
+        default=int(env_value("VASSIL_LANGUAGE_MATRIX_NUM_STEPS", "VVOICE_LANGUAGE_MATRIX_NUM_STEPS", "8")),
         help="ZipVoice generation steps.",
     )
     parser.add_argument(

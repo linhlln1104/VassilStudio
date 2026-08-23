@@ -9,6 +9,8 @@
     "log_level": "INFO",
     "provider": "cpu",
     "num_threads": 2,
+    "asr_num_threads": 2,
+    "tts_num_threads": 8,
     "debug": false,
     "warmup_on_startup": false
   },
@@ -37,7 +39,7 @@
     "enabled": true,
     "sample_rate": 24000,
     "default_language": "vi",
-    "default_num_steps": 16,
+    "default_num_steps": 8,
     "default_speed": 1.0,
     "min_char_in_sentence": 30,
     "models": {

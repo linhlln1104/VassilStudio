@@ -219,6 +219,8 @@ def _runtime_status(container, settings) -> dict:
         "log_level": settings.runtime.log_level,
         "provider": settings.runtime.provider,
         "num_threads": settings.runtime.num_threads,
+        "asr_num_threads": settings.runtime.effective_asr_num_threads,
+        "tts_num_threads": settings.runtime.effective_tts_num_threads,
         "debug": settings.runtime.debug,
         "warmup_on_startup": settings.runtime.warmup_on_startup,
         "asr_job_workers": settings.jobs.asr_max_workers,

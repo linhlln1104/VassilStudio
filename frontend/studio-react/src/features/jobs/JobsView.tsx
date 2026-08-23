@@ -24,6 +24,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/components/ui/use-toast'
 import { api, fetchBlob, type JobStatus } from '@/lib/api'
 import { compactId, formatDuration } from '@/lib/format'
+import { jobRefetchInterval } from '@/lib/job-polling'
 import { normalizeVoiceLanguage, voiceLanguageShortLabel } from '@/lib/language'
 import { setPendingScript, setPreferredLanguage } from '@/lib/studio-preferences'
 import { cn } from '@/lib/utils'
@@ -59,12 +60,12 @@ export function JobsView() {
   const ttsJobsQuery = useQuery({
     queryKey: ['tts-jobs'],
     queryFn: api.ttsJobs,
-    refetchInterval: 8000,
+    refetchInterval: (query) => jobRefetchInterval(query.state.data),
   })
   const asrJobsQuery = useQuery({
     queryKey: ['asr-jobs'],
     queryFn: api.asrJobs,
-    refetchInterval: 8000,
+    refetchInterval: (query) => jobRefetchInterval(query.state.data),
   })
 
   const jobs = useMemo<StudioJob[]>(() => {

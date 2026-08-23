@@ -41,6 +41,8 @@ def test_model_status_reports_job_workers(tmp_path) -> None:
     assert runtime["asr_job_max_attempts"] == 2
     assert runtime["tts_job_max_attempts"] == 2
     assert runtime["job_retry_backoff_seconds"] == 0.01
+    assert runtime["asr_num_threads"] == 2
+    assert runtime["tts_num_threads"] == 8
     assert runtime["warmup_on_startup"] is True
     assert runtime["environment"] == "local"
     assert runtime["log_level"] == "INFO"
@@ -185,6 +187,8 @@ def make_app(tmp_path):
             log_level="INFO",
             provider="cpu",
             num_threads=2,
+            effective_asr_num_threads=2,
+            effective_tts_num_threads=8,
             debug=False,
             warmup_on_startup=True,
         ),

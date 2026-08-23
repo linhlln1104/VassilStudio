@@ -45,6 +45,16 @@ class RuntimeSettings:
     num_threads: int
     debug: bool
     warmup_on_startup: bool
+    asr_num_threads: int | None = None
+    tts_num_threads: int | None = None
+
+    @property
+    def effective_asr_num_threads(self) -> int:
+        return self.asr_num_threads or self.num_threads
+
+    @property
+    def effective_tts_num_threads(self) -> int:
+        return self.tts_num_threads or self.num_threads
 
 
 @dataclass(frozen=True)
@@ -372,15 +382,26 @@ def _parse_runtime_settings(raw: dict[str, Any]) -> RuntimeSettings:
         allowed=LOG_LEVELS,
         uppercase=True,
     )
+    num_threads = _positive_int(raw.get("num_threads", 1), "runtime.num_threads")
     return RuntimeSettings(
         environment=environment,
         log_level=log_level,
         provider=str(raw.get("provider", "cpu")),
-        num_threads=_positive_int(raw.get("num_threads", 1), "runtime.num_threads"),
+        num_threads=num_threads,
         debug=debug,
         warmup_on_startup=_parse_bool(
             first_env("VASSIL_WARMUP_ON_STARTUP", "VVOICE_WARMUP_ON_STARTUP"),
             bool(raw.get("warmup_on_startup", False)),
+        ),
+        asr_num_threads=_positive_int(
+            first_env("VASSIL_ASR_NUM_THREADS", "VVOICE_ASR_NUM_THREADS")
+            or raw.get("asr_num_threads", num_threads),
+            "runtime.asr_num_threads",
+        ),
+        tts_num_threads=_positive_int(
+            first_env("VASSIL_TTS_NUM_THREADS", "VVOICE_TTS_NUM_THREADS")
+            or raw.get("tts_num_threads", num_threads),
+            "runtime.tts_num_threads",
         ),
     )
 
@@ -562,7 +583,7 @@ def _parse_tts_settings(raw: dict[str, Any], root: Path) -> TtsSettings:
     default_sample_rate = int(raw.get("sample_rate", 24000))
     defaults = {
         "sample_rate": default_sample_rate,
-        "default_num_steps": int(raw.get("default_num_steps", 16)),
+        "default_num_steps": int(raw.get("default_num_steps", 8)),
         "default_speed": float(raw.get("default_speed", 1.0)),
         "min_char_in_sentence": int(raw.get("min_char_in_sentence", 30)),
     }

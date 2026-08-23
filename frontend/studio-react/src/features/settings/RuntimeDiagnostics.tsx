@@ -154,7 +154,7 @@ export function RuntimeDiagnostics({
             icon={Cpu}
             label="Model assets"
             value={modelAssetsReady ? 'Complete' : model ? 'Incomplete' : 'Checking'}
-            detail={runtime ? `${runtime.provider.toUpperCase()} / ${runtime.num_threads} threads` : 'Runtime metadata pending'}
+            detail={runtime ? `${runtime.provider.toUpperCase()} / ASR ${runtime.asr_num_threads} / TTS ${runtime.tts_num_threads}` : 'Runtime metadata pending'}
             state={modelAssetsReady ? 'success' : model ? 'warning' : 'neutral'}
           />
         </div>
@@ -367,7 +367,8 @@ function RuntimeConfiguration({
   const values = [
     ['Version', version],
     ['Environment', runtime?.environment ?? 'unknown'],
-    ['Provider', runtime ? `${runtime.provider.toUpperCase()} / ${runtime.num_threads} threads` : 'unknown'],
+    ['Provider', runtime?.provider.toUpperCase() ?? 'unknown'],
+    ['Model threads', runtime ? `ASR ${runtime.asr_num_threads} / TTS ${runtime.tts_num_threads}` : 'unknown'],
     ['ASR queue', runtime ? `${runtime.asr_job_workers} workers / ${runtime.asr_job_max_attempts} attempts` : 'unknown'],
     ['TTS queue', runtime ? `${runtime.tts_job_workers} workers / ${runtime.tts_job_max_attempts} attempts` : 'unknown'],
     ['Retry backoff', runtime ? `${runtime.job_retry_backoff_seconds}s` : 'unknown'],

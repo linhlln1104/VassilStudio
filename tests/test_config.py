@@ -112,6 +112,8 @@ def test_parse_settings_resolves_paths() -> None:
     )
 
     assert settings.runtime.num_threads == 2
+    assert settings.runtime.effective_asr_num_threads == 2
+    assert settings.runtime.effective_tts_num_threads == 2
     assert settings.runtime.environment == "local"
     assert settings.runtime.log_level == "INFO"
     assert settings.runtime.warmup_on_startup is False
@@ -304,12 +306,16 @@ def test_parse_settings_applies_runtime_environment_overrides(tmp_path, monkeypa
 
     monkeypatch.setenv("VASSIL_ENV", "docker")
     monkeypatch.setenv("VASSIL_LOG_LEVEL", "warning")
+    monkeypatch.setenv("VASSIL_ASR_NUM_THREADS", "3")
+    monkeypatch.setenv("VASSIL_TTS_NUM_THREADS", "7")
     monkeypatch.setenv("VASSIL_WARMUP_ON_STARTUP", "true")
 
     settings = parse_settings(raw, tmp_path)
 
     assert settings.runtime.environment == "docker"
     assert settings.runtime.log_level == "WARNING"
+    assert settings.runtime.effective_asr_num_threads == 3
+    assert settings.runtime.effective_tts_num_threads == 7
     assert settings.runtime.warmup_on_startup is True
 
 

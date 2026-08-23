@@ -46,6 +46,7 @@ All notable VassilStudio productionization changes are tracked here.
 
 ### Hardened
 
+- Split ASR/TTS CPU thread tuning, measured 4/8-step render profiles, and active queue polling reduce local render wait without weakening the quality smoke gate.
 - Request IDs, structured HTTP/job logs, liveness/readiness split, request upload limits, and path-safe Studio static serving.
 - Local auth login and password change attempts are rate-limited with `429` and `Retry-After`.
 - New local account passwords use scrypt hashes while legacy PBKDF2 hashes remain verifiable.

@@ -80,7 +80,7 @@ def synthesize_with_voice(voice_id: str) -> None:
         headers=HEADERS,
         data={
             "text": "xin chào, đây là bản kiểm tra tiếng việt",
-            "num_steps": "16",
+            "num_steps": "8",
         },
         timeout=180,
     )

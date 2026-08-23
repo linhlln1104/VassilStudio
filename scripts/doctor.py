@@ -138,6 +138,16 @@ def model_checks(config_path: str | None) -> list[Check]:
         Check("runtime.environment", True, settings.runtime.environment),
         Check("runtime.log_level", True, settings.runtime.log_level),
         Check("runtime.num_threads", settings.runtime.num_threads > 0, str(settings.runtime.num_threads)),
+        Check(
+            "runtime.asr_num_threads",
+            settings.runtime.effective_asr_num_threads > 0,
+            str(settings.runtime.effective_asr_num_threads),
+        ),
+        Check(
+            "runtime.tts_num_threads",
+            settings.runtime.effective_tts_num_threads > 0,
+            str(settings.runtime.effective_tts_num_threads),
+        ),
         Check("runtime.warmup_on_startup", True, "enabled" if settings.runtime.warmup_on_startup else "disabled"),
         Check("jobs.asr_max_workers", settings.jobs.asr_max_workers > 0, str(settings.jobs.asr_max_workers)),
         Check("jobs.tts_max_workers", settings.jobs.tts_max_workers > 0, str(settings.jobs.tts_max_workers)),

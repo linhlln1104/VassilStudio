@@ -61,7 +61,7 @@ def create_job(voice_id: str) -> str:
     response = requests.post(
         f"{BASE_URL}/api/v1/tts/jobs/voices/{voice_id}",
         headers=HEADERS,
-        data={"text": SMOKE_TEXT, "language": "vi", "num_steps": "16"},
+        data={"text": SMOKE_TEXT, "language": "vi", "num_steps": "8"},
         timeout=30,
     )
     response.raise_for_status()

@@ -113,6 +113,8 @@ hardware, increase the worker limits in `config/vassil.example.json`:
   "log_level": "INFO",
   "provider": "cpu",
   "num_threads": 2,
+  "asr_num_threads": 2,
+  "tts_num_threads": 8,
   "debug": false,
   "warmup_on_startup": false
 },
@@ -132,6 +134,8 @@ hardware, increase the worker limits in `config/vassil.example.json`:
 }
 ```
 
+`num_threads` remains the compatibility fallback. `asr_num_threads` and `tts_num_threads` tune each
+engine independently; the defaults preserve low-latency ASR while giving ZipVoice more CPU capacity.
 Model inference still uses per-language locks, so increasing workers mostly improves queue handling
 around IO and mixed ASR/TTS work. Test with `scripts/check.ps1 -RunLanguageMatrix` after changing it.
 Jobs support cooperative cancellation and retry metadata. Queued jobs cancel immediately; running jobs
@@ -143,8 +147,8 @@ Use Settings -> Warm models or call `/warmup` to load all configured ASR/TTS lan
 session. Set `runtime.warmup_on_startup` to `true` only when slower startup is acceptable and you want
 the first ASR/TTS request to avoid model-load latency.
 
-The Generate view includes Preview and Production render modes; Preview uses fewer ZipVoice steps for
-faster drafts, while Production uses the configured default-quality path. API callers can pass
+The Generate view uses a measured 4-step Preview and the upstream 8-step default for Production.
+Active jobs refresh every second, then return to an 8-second idle interval. API callers can pass
 `num_steps` from `1` to `64` and `speed` from `0.5` to `2.0`.
 
 ## Health And Observability
@@ -360,7 +364,7 @@ Synthesize with a saved voice:
 Invoke-WebRequest `
   -Method Post `
   -Uri http://127.0.0.1:8000/api/v1/tts/synthesize/voices/<voice_id> `
-  -Form @{ text = "xin chao, day la VassilStudio"; num_steps = 16 } `
+  -Form @{ text = "xin chao, day la VassilStudio"; num_steps = 8 } `
   -OutFile generated.wav
 ```
 
@@ -370,7 +374,7 @@ Queue an asynchronous TTS job with a saved voice:
 $job = Invoke-RestMethod `
   -Method Post `
   -Uri http://127.0.0.1:8000/api/v1/tts/jobs/voices/<voice_id> `
-  -Form @{ text = "xin chao, day la VassilStudio"; language = "vi"; num_steps = 16 }
+  -Form @{ text = "xin chao, day la VassilStudio"; language = "vi"; num_steps = 8 }
 
 Invoke-RestMethod http://127.0.0.1:8000/api/v1/tts/jobs/$($job.job_id)
 Invoke-WebRequest `

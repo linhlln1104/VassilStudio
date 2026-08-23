@@ -22,6 +22,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/components/ui/use-toast'
 import { api, type AsrJob } from '@/lib/api'
 import { compactId, formatBytes, formatDuration } from '@/lib/format'
+import { jobRefetchInterval } from '@/lib/job-polling'
 import {
   VOICE_LANGUAGES,
   normalizeVoiceLanguage,
@@ -51,7 +52,7 @@ export function TranscribeView() {
   const asrJobsQuery = useQuery({
     queryKey: ['asr-jobs'],
     queryFn: api.asrJobs,
-    refetchInterval: 8000,
+    refetchInterval: (query) => jobRefetchInterval(query.state.data),
   })
   const modelStatusQuery = useQuery({
     queryKey: ['model-status'],
