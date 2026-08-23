@@ -16,6 +16,8 @@ from vvoice.core.errors import (
     AsrJobNotFoundError,
     IdempotencyConflictError,
     ModelConfigurationError,
+    TranscriptNotReadyError,
+    TranscriptRevisionConflictError,
     TtsJobNotFoundError,
     UnsupportedAudioFormatError,
     VVoiceError,
@@ -169,6 +171,26 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=409,
             content=_error_content("idempotency_conflict", str(exc)),
+        )
+
+    @app.exception_handler(TranscriptRevisionConflictError)
+    async def transcript_revision_conflict_handler(
+        _: Request,
+        exc: TranscriptRevisionConflictError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content=_error_content("transcript_revision_conflict", str(exc)),
+        )
+
+    @app.exception_handler(TranscriptNotReadyError)
+    async def transcript_not_ready_handler(
+        _: Request,
+        exc: TranscriptNotReadyError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content=_error_content("transcript_not_ready", str(exc)),
         )
 
     @app.exception_handler(VVoiceError)
