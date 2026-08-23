@@ -23,8 +23,11 @@ class DiagnosticsStorageItem(BaseModel):
     path: str
     exists: bool
     is_dir: bool
+    writable: bool
     size_bytes: int
     file_count: int
+    capacity_bytes: int | None
+    free_bytes: int | None
 
 
 class DiagnosticsSecurity(BaseModel):

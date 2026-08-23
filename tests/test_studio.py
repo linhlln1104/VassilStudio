@@ -64,7 +64,11 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "PATCH" in script
     assert "DELETE" in script
     assert "/model-status" in script
+    assert "/livez" in script
+    assert "/readyz" in script
     assert "/warmup" in script
+    assert "/warmup/asr" in script
+    assert "/warmup/tts" in script
     assert "/studio/brand/vassil-logo.png" in script
     assert "voiceprint-canvas" in script
     assert "/studio/brand/vassil-voice-sculpture.jpg" not in script
@@ -104,7 +108,12 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "Delete voice profile?" in script
     assert "Voice selected" in script
     assert "Run diagnostics" in script
-    assert "Download diagnostics" in script
+    assert "Download bundle" in script
+    assert "Workspace readiness" in script
+    assert "Speech recognition" in script
+    assert "Troubleshooting" in script
+    assert "Disk free" in script
+    assert "Storage needs attention" in script
     assert "Workspace settings" in script
     assert "Confirm password" in script
     assert "Passwords do not match" in script
@@ -118,7 +127,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "belong here" not in script
     assert "Change password" in script
     assert "Changelog" in script
-    assert "Warm models" in script
+    assert "Warm all models" in script
     assert "Render mode" in script
     assert "First output checklist" in script
     assert "Production" in script
@@ -128,7 +137,6 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "The actual workspace, not a mockup" in script
     assert "No cloud account required" in script
     assert "2 voice profiles" not in script
-    assert "Workspace readiness" not in script
     assert "color-scheme:light" in style
     assert "vvoice-soft-grid" not in style
 

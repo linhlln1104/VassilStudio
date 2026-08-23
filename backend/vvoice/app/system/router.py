@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import io
 import json
+import os
 from pathlib import Path
 import platform
+import shutil
 import sys
 import zipfile
 
@@ -171,9 +173,9 @@ def _diagnostics_payload(container, settings) -> dict:
     response_model=WarmupResponse,
     dependencies=[Depends(require_api_key)],
 )
-async def warmup_asr(request: Request):
+async def warmup_asr(request: Request, language: str | None = None):
     container = request.app.state.container
-    await run_in_threadpool(container.asr.warmup)
+    await run_in_threadpool(container.asr.warmup, language)
     return {
         "loaded": container.asr.is_loaded,
         "loaded_languages": list(container.asr.loaded_languages),
@@ -185,9 +187,9 @@ async def warmup_asr(request: Request):
     response_model=WarmupResponse,
     dependencies=[Depends(require_api_key)],
 )
-async def warmup_tts(request: Request):
+async def warmup_tts(request: Request, language: str | None = None):
     container = request.app.state.container
-    await run_in_threadpool(container.tts.warmup)
+    await run_in_threadpool(container.tts.warmup, language)
     return {
         "loaded": container.tts.is_loaded,
         "loaded_languages": list(container.tts.loaded_languages),
@@ -248,16 +250,22 @@ def _diagnostic_storage_items(settings) -> list[dict[str, object]]:
         "logs": storage.logs_dir,
         "auth_db": getattr(settings.security, "auth_db_path", storage.data_dir / "auth.sqlite3"),
     }
-    return [
-        {
-            "name": name,
-            "path": str(path),
-            "exists": path.exists(),
-            "is_dir": path.is_dir(),
-            **_path_usage(path),
-        }
-        for name, path in paths.items()
-    ]
+    items: list[dict[str, object]] = []
+    for name, path in paths.items():
+        capacity_bytes, free_bytes = _volume_usage(path)
+        items.append(
+            {
+                "name": name,
+                "path": str(path),
+                "exists": path.exists(),
+                "is_dir": path.is_dir(),
+                "writable": _path_writable(path),
+                "capacity_bytes": capacity_bytes,
+                "free_bytes": free_bytes,
+                **_path_usage(path),
+            }
+        )
+    return items
 
 
 def _path_usage(path: Path) -> dict[str, int]:
@@ -277,6 +285,34 @@ def _path_usage(path: Path) -> dict[str, int]:
         except OSError:
             continue
     return {"size_bytes": size_bytes, "file_count": file_count}
+
+
+def _path_writable(path: Path) -> bool:
+    if path.exists():
+        return os.access(path, os.W_OK)
+    anchor = _existing_path(path.parent)
+    return bool(anchor and os.access(anchor, os.W_OK))
+
+
+def _volume_usage(path: Path) -> tuple[int | None, int | None]:
+    anchor = _existing_path(path if path.is_dir() else path.parent)
+    if anchor is None:
+        return None, None
+    try:
+        usage = shutil.disk_usage(anchor)
+    except OSError:
+        return None, None
+    return usage.total, usage.free
+
+
+def _existing_path(path: Path) -> Path | None:
+    candidate = path
+    while not candidate.exists():
+        parent = candidate.parent
+        if parent == candidate:
+            return None
+        candidate = parent
+    return candidate
 
 
 def _json_bytes(payload: object) -> bytes:
@@ -324,4 +360,7 @@ def _storage_checks(settings) -> dict[str, bool]:
         "storage_outputs_dir": storage.outputs_dir,
         "storage_logs_dir": storage.logs_dir,
     }
-    return {name: path.exists() and path.is_dir() for name, path in paths.items()}
+    return {
+        name: path.exists() and path.is_dir() and os.access(path, os.W_OK)
+        for name, path in paths.items()
+    }

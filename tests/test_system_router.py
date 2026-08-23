@@ -17,8 +17,9 @@ class FakeRuntimeService:
         self.is_loaded = False
         self.warmup_all_called = False
 
-    def warmup(self) -> None:
-        self.loaded_languages = self.configured_languages[:1]
+    def warmup(self, language: str | None = None) -> None:
+        target = language or self.configured_languages[0]
+        self.loaded_languages = tuple(dict.fromkeys((*self.loaded_languages, target)))
         self.is_loaded = True
 
     def warmup_all(self) -> None:
@@ -78,6 +79,8 @@ def test_diagnostics_reports_redacted_operations_metadata(tmp_path) -> None:
     storage = {item["name"]: item for item in payload["storage"]}
     assert storage["voices"]["size_bytes"] == 4
     assert storage["voices"]["file_count"] == 1
+    assert storage["voices"]["writable"] is True
+    assert storage["voices"]["capacity_bytes"] >= storage["voices"]["free_bytes"] > 0
     assert storage["auth_db"]["size_bytes"] == 4
     assert storage["auth_db"]["file_count"] == 1
 
@@ -156,6 +159,21 @@ def test_warmup_loads_all_languages(tmp_path) -> None:
     }
     assert asr.warmup_all_called
     assert tts.warmup_all_called
+
+
+def test_warmup_can_target_an_engine_language(tmp_path) -> None:
+    app, asr, tts = make_app(tmp_path)
+    client = TestClient(app)
+
+    asr_response = client.post("/warmup/asr?language=vi")
+    tts_response = client.post("/warmup/tts?language=en")
+
+    assert asr_response.status_code == 200
+    assert asr_response.json() == {"loaded": True, "loaded_languages": ["vi"]}
+    assert tts_response.status_code == 200
+    assert tts_response.json() == {"loaded": True, "loaded_languages": ["en"]}
+    assert asr.loaded_languages == ("vi",)
+    assert tts.loaded_languages == ("en",)
 
 
 def make_app(tmp_path):

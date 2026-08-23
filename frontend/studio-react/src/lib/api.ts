@@ -46,6 +46,11 @@ export type HealthResponse = {
   tts_loaded: boolean
 }
 
+export type ProbeResponse = {
+  status: 'ok' | 'ready' | 'not_ready'
+  checks: Record<string, boolean>
+}
+
 export type ModelStatusResponse = {
   ready: boolean
   checks: Record<string, boolean>
@@ -70,6 +75,18 @@ export type ModelStatusResponse = {
   }
 }
 
+export type DiagnosticsStorageItem = {
+  name: string
+  path: string
+  exists: boolean
+  is_dir: boolean
+  writable: boolean
+  size_bytes: number
+  file_count: number
+  capacity_bytes: number | null
+  free_bytes: number | null
+}
+
 export type DiagnosticsResponse = {
   generated_at: string
   version: string
@@ -81,14 +98,7 @@ export type DiagnosticsResponse = {
     session_ttl_seconds: number
     secure_cookies: boolean
   }
-  storage: Array<{
-    name: string
-    path: string
-    exists: boolean
-    is_dir: boolean
-    size_bytes: number
-    file_count: number
-  }>
+  storage: DiagnosticsStorageItem[]
   license: {
     status: string
     plan: string
@@ -101,6 +111,11 @@ export type WarmupAllResponse = {
   tts_loaded: boolean
   asr_loaded_languages: string[]
   tts_loaded_languages: string[]
+}
+
+export type WarmupResponse = {
+  loaded: boolean
+  loaded_languages: string[]
 }
 
 export type Voice = {
@@ -232,6 +247,14 @@ export async function fetchBlob(path: string, init?: RequestInit): Promise<Blob>
   return response.blob()
 }
 
+async function fetchProbe(path: string): Promise<ProbeResponse> {
+  const response = await fetchWithAuth(path)
+  if (!response.ok && response.status !== 503) {
+    throw new Error(await readErrorMessage(response))
+  }
+  return response.json() as Promise<ProbeResponse>
+}
+
 function fetchWithAuth(path: string, init?: RequestInit): Promise<Response> {
   const apiKey = getStoredApiKey()
   return fetch(`${API_BASE_URL}${path}`, {
@@ -331,10 +354,20 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
     }),
   health: () => fetchJson<HealthResponse>('/health'),
+  liveness: () => fetchProbe('/livez'),
+  readiness: () => fetchProbe('/readyz'),
   modelStatus: () => fetchJson<ModelStatusResponse>('/model-status'),
   diagnostics: () => fetchJson<DiagnosticsResponse>('/diagnostics'),
   diagnosticsBundle: () => fetchBlob('/diagnostics/bundle'),
   warmup: () => fetchJson<WarmupAllResponse>('/warmup', { method: 'POST' }),
+  warmupAsr: (language?: string) =>
+    fetchJson<WarmupResponse>(`/warmup/asr${language ? `?language=${encodeURIComponent(language)}` : ''}`, {
+      method: 'POST',
+    }),
+  warmupTts: (language?: string) =>
+    fetchJson<WarmupResponse>(`/warmup/tts${language ? `?language=${encodeURIComponent(language)}` : ''}`, {
+      method: 'POST',
+    }),
   voices: () => fetchJson<Voice[]>('/api/v1/voices'),
   importCandidates: () => fetchJson<ImportCandidate[]>('/api/v1/voices/import-candidates'),
   ttsJobs: () => fetchJson<TtsJob[]>('/api/v1/tts/jobs'),

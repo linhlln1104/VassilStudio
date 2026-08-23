@@ -766,6 +766,17 @@
       },
       "DiagnosticsStorageItem": {
         "properties": {
+          "capacity_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity Bytes"
+          },
           "exists": {
             "title": "Exists",
             "type": "boolean"
@@ -773,6 +784,17 @@
           "file_count": {
             "title": "File Count",
             "type": "integer"
+          },
+          "free_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Bytes"
           },
           "is_dir": {
             "title": "Is Dir",
@@ -789,6 +811,10 @@
           "size_bytes": {
             "title": "Size Bytes",
             "type": "integer"
+          },
+          "writable": {
+            "title": "Writable",
+            "type": "boolean"
           }
         },
         "required": [
@@ -796,8 +822,11 @@
           "path",
           "exists",
           "is_dir",
+          "writable",
           "size_bytes",
-          "file_count"
+          "file_count",
+          "capacity_bytes",
+          "free_bytes"
         ],
         "title": "DiagnosticsStorageItem",
         "type": "object"
@@ -2837,6 +2866,24 @@
     "/warmup/asr": {
       "post": {
         "operationId": "warmup_asr_warmup_asr_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2847,6 +2894,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Warmup Asr",
@@ -2858,6 +2915,24 @@
     "/warmup/tts": {
       "post": {
         "operationId": "warmup_tts_warmup_tts_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2868,6 +2943,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Warmup Tts",

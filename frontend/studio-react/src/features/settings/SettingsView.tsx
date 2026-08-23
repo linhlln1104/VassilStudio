@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronDown,
@@ -6,7 +6,6 @@ import {
   BadgeCheck,
   Copy,
   Database,
-  Download,
   Eraser,
   Eye,
   EyeOff,
@@ -17,20 +16,25 @@ import {
   LockKeyhole,
   LogOut,
   RefreshCw,
-  ShieldCheck,
   Trash2,
   UserRound,
-  XCircle,
 } from 'lucide-react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/components/ui/use-toast'
-import { api, getStoredApiKey, setStoredApiKey } from '@/lib/api'
+import {
+  api,
+  getStoredApiKey,
+  setStoredApiKey,
+  type DiagnosticsStorageItem,
+} from '@/lib/api'
 import { API_BRAND_NAME } from '@/lib/brand'
 import { formatBytes } from '@/lib/format'
+import { RuntimeDiagnostics, type WarmupTarget } from './RuntimeDiagnostics'
 
 const storageRows = [
   { label: 'Source models', value: 'models/source', description: 'Original checkpoints and research assets.' },
@@ -42,6 +46,8 @@ const storageRows = [
 
 const endpointRows = [
   { label: 'Backend health', href: '/health' },
+  { label: 'Liveness probe', href: '/livez' },
+  { label: 'Readiness probe', href: '/readyz' },
   { label: 'Model status', href: '/model-status' },
   { label: 'OpenAPI JSON', href: '/openapi.json' },
   { label: 'FastAPI docs', href: '/docs' },
@@ -103,6 +109,16 @@ export function SettingsView() {
     queryFn: api.health,
     refetchInterval: 10000,
   })
+  const livenessQuery = useQuery({
+    queryKey: ['liveness'],
+    queryFn: api.liveness,
+    refetchInterval: 10000,
+  })
+  const readinessQuery = useQuery({
+    queryKey: ['readiness'],
+    queryFn: api.readiness,
+    refetchInterval: 10000,
+  })
   const modelQuery = useQuery({
     queryKey: ['model-status'],
     queryFn: api.modelStatus,
@@ -118,15 +134,32 @@ export function SettingsView() {
     queryFn: api.diagnostics,
     refetchInterval: 30000,
   })
-  const warmupMutation = useMutation({
-    mutationFn: api.warmup,
-    onSuccess: () => {
+  const warmupMutation = useMutation<unknown, Error, WarmupTarget>({
+    mutationFn: (target: WarmupTarget) => {
+      if (target.engine === 'all') {
+        return api.warmup()
+      }
+      return target.engine === 'asr' ? api.warmupAsr(target.language) : api.warmupTts(target.language)
+    },
+    onSuccess: (_, target) => {
       void queryClient.invalidateQueries({ queryKey: ['health'] })
+      void queryClient.invalidateQueries({ queryKey: ['readiness'] })
       void queryClient.invalidateQueries({ queryKey: ['model-status'] })
+      void queryClient.invalidateQueries({ queryKey: ['diagnostics'] })
+      const targetLabel = target.engine === 'all'
+        ? 'All configured models'
+        : `${target.language.toUpperCase()} ${target.engine.toUpperCase()}`
       toast({
-        title: 'Models warmed',
-        description: 'Configured runtimes are ready for the next request.',
+        title: 'Warmup complete',
+        description: `${targetLabel} loaded successfully.`,
         variant: 'success',
+      })
+    },
+    onError: (error) => {
+      toast({
+        title: 'Warmup failed',
+        description: error instanceof Error ? error.message : 'Unable to load the selected runtime.',
+        variant: 'danger',
       })
     },
   })
@@ -193,13 +226,44 @@ export function SettingsView() {
     },
   })
 
-  const health = healthQuery.data
-  const model = modelQuery.data
-  const checks = useMemo(() => Object.entries(model?.checks ?? {}), [model?.checks])
-  const passedChecks = checks.filter(([, passed]) => passed).length
-  const diagnosticsRunning = healthQuery.isFetching || modelQuery.isFetching || diagnosticsQuery.isFetching
-  const backendOffline = healthQuery.isError || modelQuery.isError
-  const runtimeReady = !backendOffline && Boolean(model?.ready)
+  const diagnosticsRunning =
+    healthQuery.isFetching ||
+    livenessQuery.isFetching ||
+    readinessQuery.isFetching ||
+    modelQuery.isFetching ||
+    diagnosticsQuery.isFetching
+  const runtimeQueryErrors = [
+    queryError('Health', healthQuery.error),
+    queryError('Liveness', livenessQuery.error),
+    queryError('Readiness', readinessQuery.error),
+    queryError('Model status', modelQuery.error),
+    queryError('Diagnostics', diagnosticsQuery.error),
+  ].filter((item): item is { source: string; message: string } => Boolean(item))
+  const lastCheckedAt = Math.max(
+    healthQuery.dataUpdatedAt,
+    livenessQuery.dataUpdatedAt,
+    readinessQuery.dataUpdatedAt,
+    modelQuery.dataUpdatedAt,
+    diagnosticsQuery.dataUpdatedAt,
+  )
+
+  const runDiagnostics = async () => {
+    const results = await Promise.all([
+      healthQuery.refetch(),
+      livenessQuery.refetch(),
+      readinessQuery.refetch(),
+      modelQuery.refetch(),
+      diagnosticsQuery.refetch(),
+    ])
+    const failed = results.filter((result) => result.isError).length
+    toast({
+      title: failed ? 'Diagnostics incomplete' : 'Diagnostics complete',
+      description: failed
+        ? `${failed} checks could not be refreshed.`
+        : 'Runtime, model, and storage signals are current.',
+      variant: failed ? 'danger' : 'success',
+    })
+  }
 
   const handleApiKeySave = () => {
     const normalized = apiKeyDraft.trim()
@@ -267,39 +331,30 @@ export function SettingsView() {
 
       {activeTab === 'runtime' ? (
         <>
-          <SystemDiagnosticsCard
-        backendOffline={backendOffline}
-        loading={healthQuery.isLoading || modelQuery.isLoading}
-        runtimeReady={runtimeReady}
-        version={health?.version ?? diagnosticsQuery.data?.version ?? 'unknown'}
-        environment={model?.runtime.environment ?? diagnosticsQuery.data?.runtime.environment ?? 'unknown'}
-        logLevel={model?.runtime.log_level ?? diagnosticsQuery.data?.runtime.log_level ?? 'unknown'}
-        provider={model?.runtime.provider ?? health?.provider ?? 'unknown'}
-        threads={String(model?.runtime.num_threads ?? 'unknown')}
-        ttsLoaded={Boolean(health?.tts_loaded)}
-        asrLoaded={Boolean(health?.asr_loaded)}
-        ttsLanguages={model?.runtime.tts_configured_languages ?? []}
-        asrLanguages={model?.runtime.asr_configured_languages ?? []}
-        asrWorkers={model?.runtime.asr_job_workers ?? 1}
-        ttsWorkers={model?.runtime.tts_job_workers ?? 1}
-        startupWarmup={Boolean(model?.runtime.warmup_on_startup)}
-        passedChecks={passedChecks}
-        totalChecks={checks.length}
-        checks={checks}
-        diagnosticsRunning={diagnosticsRunning}
-        warmupRunning={warmupMutation.isPending}
-        bundleRunning={diagnosticsBundleMutation.isPending}
-        warmupError={warmupMutation.error instanceof Error ? warmupMutation.error.message : null}
-        bundleError={
-          diagnosticsBundleMutation.error instanceof Error ? diagnosticsBundleMutation.error.message : null
-        }
-        onRunDiagnostics={() => {
-          void healthQuery.refetch()
-          void modelQuery.refetch()
-          void diagnosticsQuery.refetch()
-        }}
-        onWarmup={() => warmupMutation.mutate()}
-        onDownloadBundle={() => diagnosticsBundleMutation.mutate()}
+          <RuntimeDiagnostics
+            health={healthQuery.data}
+            liveness={livenessQuery.data}
+            readiness={readinessQuery.data}
+            model={modelQuery.data}
+            diagnostics={diagnosticsQuery.data}
+            loading={
+              healthQuery.isLoading ||
+              livenessQuery.isLoading ||
+              readinessQuery.isLoading ||
+              modelQuery.isLoading
+            }
+            refreshing={diagnosticsRunning}
+            lastCheckedAt={lastCheckedAt}
+            queryErrors={runtimeQueryErrors}
+            warmingTarget={warmupMutation.isPending ? warmupMutation.variables : null}
+            bundleRunning={diagnosticsBundleMutation.isPending}
+            warmupError={warmupMutation.error instanceof Error ? warmupMutation.error.message : null}
+            bundleError={
+              diagnosticsBundleMutation.error instanceof Error ? diagnosticsBundleMutation.error.message : null
+            }
+            onRunDiagnostics={() => { void runDiagnostics() }}
+            onWarmup={(target) => warmupMutation.mutate(target)}
+            onDownloadBundle={() => diagnosticsBundleMutation.mutate()}
           />
           <AdvancedSettings />
         </>
@@ -365,8 +420,10 @@ export function SettingsView() {
         <StorageManagementCard
           storageItems={diagnosticsQuery.data?.storage ?? []}
           loading={diagnosticsQuery.isLoading}
+          refreshing={diagnosticsQuery.isFetching}
+          error={diagnosticsQuery.error instanceof Error ? diagnosticsQuery.error.message : null}
+          generatedAt={diagnosticsQuery.data?.generated_at ?? null}
           cleanupRunning={cleanupJobsMutation.isPending}
-          cleanupOptionId={cleanupJobsMutation.variables?.id ?? null}
           cleanupResult={cleanupResult}
           cleanupError={cleanupJobsMutation.error instanceof Error ? cleanupJobsMutation.error.message : null}
           onRefresh={() => {
@@ -731,29 +788,27 @@ function LicenseCard({
 function StorageManagementCard({
   storageItems,
   loading,
+  refreshing,
+  error,
+  generatedAt,
   cleanupRunning,
-  cleanupOptionId,
   cleanupResult,
   cleanupError,
   onRefresh,
   onRequestCleanup,
 }: {
-  storageItems: Array<{
-    name: string
-    path: string
-    exists: boolean
-    is_dir: boolean
-    size_bytes: number
-    file_count: number
-  }>
+  storageItems: DiagnosticsStorageItem[]
   loading: boolean
+  refreshing: boolean
+  error: string | null
+  generatedAt: string | null
   cleanupRunning: boolean
-  cleanupOptionId: string | null
   cleanupResult: string | null
   cleanupError: string | null
   onRefresh: () => void
   onRequestCleanup: (option: RetentionOption) => void
 }) {
+  const [retentionId, setRetentionId] = useState('30d')
   const dataRoot = storageItems.find((item) => item.name === 'data')
   const jobStorage = storageItems.filter((item) => item.name === 'asr_jobs' || item.name === 'tts_jobs')
   const jobBytes = jobStorage.reduce((sum, item) => sum + item.size_bytes, 0)
@@ -761,44 +816,97 @@ function StorageManagementCard({
   const visibleStorage = storageItems.filter((item) =>
     ['voices', 'asr_jobs', 'tts_jobs', 'uploads', 'outputs', 'logs', 'auth_db'].includes(item.name),
   )
+  const readinessStorage = storageItems.filter((item) =>
+    ['data', 'voices', 'asr_jobs', 'tts_jobs', 'uploads', 'outputs', 'logs'].includes(item.name),
+  )
+  const healthyStorage = readinessStorage.filter((item) => item.exists && item.is_dir && item.writable)
+  const storageIssues = readinessStorage.filter((item) => !item.exists || !item.is_dir || !item.writable)
+  const selectedRetention = retentionOptions.find((option) => option.id === retentionId) ?? retentionOptions[1]
+  const diskUsagePercent = dataRoot?.capacity_bytes && dataRoot.free_bytes !== null
+    ? ((dataRoot.capacity_bytes - dataRoot.free_bytes) / dataRoot.capacity_bytes) * 100
+    : null
+  const lowDiskSpace = diskUsagePercent !== null && diskUsagePercent >= 90
 
   return (
-    <Card>
-      <CardHeader>
+    <section>
+      <div className="flex flex-col gap-2 border-b border-slate-200 px-1 pb-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="text-sm font-semibold text-slate-950">Storage and retention</div>
           <div className="mt-1 text-xs text-slate-600">
-            Local workspace usage and terminal job cleanup.
+            Local workspace inventory, disk headroom, and terminal job cleanup.
           </div>
         </div>
-        <Database className="size-5 text-slate-500" />
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-2 md:grid-cols-3">
-          <SettingsMetric label="Data root" value={formatBytes(dataRoot?.size_bytes ?? 0)} />
-          <SettingsMetric label="Job files" value={`${formatBytes(jobBytes)} / ${jobFiles} files`} />
-          <SettingsMetric label="Tracked paths" value={`${visibleStorage.length} paths`} />
+        <Button
+          className="w-9 px-0"
+          variant="secondary"
+          disabled={refreshing}
+          aria-label="Refresh storage usage"
+          title="Refresh storage usage"
+          onClick={onRefresh}
+        >
+          {refreshing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+        </Button>
+      </div>
+
+      <div className="grid gap-2 py-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SettingsMetric label="Local data" value={formatBytes(dataRoot?.size_bytes ?? 0)} />
+        <SettingsMetric
+          label="Disk free"
+          value={dataRoot?.free_bytes === null || dataRoot?.free_bytes === undefined ? 'Unavailable' : formatBytes(dataRoot.free_bytes)}
+        />
+        <SettingsMetric label="Job storage" value={`${formatBytes(jobBytes)} / ${jobFiles} files`} />
+        <SettingsMetric label="Path health" value={`${healthyStorage.length}/${readinessStorage.length || 0} ready`} />
+      </div>
+
+      {lowDiskSpace ? (
+        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-900" role="alert">
+          Disk usage is {diskUsagePercent?.toFixed(1)}%. Free space before importing voices or rendering long outputs.
         </div>
+      ) : null}
 
-        {loading ? (
-          <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="h-24 animate-pulse rounded-md bg-slate-100" />
+      {storageIssues.length ? (
+        <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-3" role="alert">
+          <div className="text-xs font-semibold text-red-900">Storage needs attention</div>
+          <div className="mt-1 space-y-1 text-xs leading-5 text-red-800">
+            {storageIssues.map((item) => (
+              <div key={item.name}>
+                <span className="font-semibold">{storageLabel(item.name)}:</span>{' '}
+                {!item.exists ? 'path is missing' : !item.is_dir ? 'expected a directory' : 'path is not writable'}
+                <code className="ml-1 break-all">{item.path}</code>
+              </div>
             ))}
           </div>
-        ) : visibleStorage.length > 0 ? (
-          <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-4">
-            {visibleStorage.map((item) => (
-              <StoragePathRow key={item.name} item={item} />
-            ))}
-          </div>
-        ) : (
-          <div className="mt-3 rounded-md border border-dashed border-slate-300 bg-white p-4 text-center text-xs text-slate-600">
-            Storage diagnostics are unavailable.
-          </div>
-        )}
+        </div>
+      ) : null}
 
-        <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
+      {error ? (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-center">
+          <div className="text-sm font-semibold text-red-950">Storage diagnostics unavailable</div>
+          <p className="mt-1 text-xs leading-5 text-red-800">{error}</p>
+          <Button className="mt-3" size="sm" variant="secondary" onClick={onRefresh}>
+            <RefreshCw className="size-4" />
+            Retry
+          </Button>
+        </div>
+      ) : loading ? (
+        <div className="grid gap-2 lg:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="h-16 animate-pulse rounded-md bg-slate-100" />
+          ))}
+        </div>
+      ) : visibleStorage.length > 0 ? (
+        <div className="divide-y divide-slate-100 rounded-md border border-slate-200 bg-white">
+          {visibleStorage.map((item) => (
+            <StoragePathRow key={item.name} item={item} />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed border-slate-300 bg-white p-4 text-center text-xs text-slate-600">
+          No storage inventory was returned.
+        </div>
+      )}
+
+        <div className="mt-3 border-y border-slate-200 py-3">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="text-xs font-semibold text-slate-950">Terminal job retention</div>
@@ -806,26 +914,22 @@ function StorageManagementCard({
                 Cleanup removes succeeded, failed, and cancelled ASR/TTS jobs only.
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={onRefresh}>
-                <RefreshCw className="size-4" />
-                Refresh usage
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <SegmentedControl
+                equalWidth
+                className="w-full sm:w-[260px]"
+                options={retentionOptions.map((option) => ({ value: option.id, label: option.label }))}
+                value={retentionId}
+                onChange={setRetentionId}
+              />
+              <Button
+                variant={selectedRetention.id === 'all' ? 'destructive' : 'secondary'}
+                disabled={cleanupRunning}
+                onClick={() => onRequestCleanup(selectedRetention)}
+              >
+                {cleanupRunning ? <Loader2 className="size-4 animate-spin" /> : <Eraser className="size-4" />}
+                {cleanupRunning ? 'Cleaning' : 'Clean jobs'}
               </Button>
-              {retentionOptions.map((option) => (
-                <Button
-                  key={option.id}
-                  variant="secondary"
-                  disabled={cleanupRunning}
-                  onClick={() => onRequestCleanup(option)}
-                >
-                  {cleanupRunning && cleanupOptionId === option.id ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Eraser className="size-4" />
-                  )}
-                  {option.label}
-                </Button>
-              ))}
             </div>
           </div>
           {cleanupResult ? (
@@ -839,47 +943,50 @@ function StorageManagementCard({
             </div>
           ) : null}
         </div>
-      </CardContent>
-    </Card>
+        <div className="mt-2 px-1 text-xs font-medium text-slate-500">
+          {generatedAt ? `Inventory scanned ${formatDiagnosticTime(generatedAt)}` : 'Inventory has not been scanned.'}
+        </div>
+    </section>
   )
 }
 
-function StoragePathRow({
-  item,
-}: {
-  item: {
-    name: string
-    path: string
-    exists: boolean
-    is_dir: boolean
-    size_bytes: number
-    file_count: number
-  }
-}) {
+function StoragePathRow({ item }: { item: DiagnosticsStorageItem }) {
+  const accountStorePending = item.name === 'auth_db' && !item.exists
+  const healthy = item.exists && item.writable && (item.is_dir || item.name === 'auth_db')
+  const status = accountStorePending ? 'Not created' : !item.exists ? 'Missing' : !item.writable ? 'Read only' : 'Ready'
+
   return (
-    <div className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
-      <div className="flex items-center justify-between gap-2">
+    <div className="grid gap-2 px-3 py-2.5 sm:grid-cols-[150px_130px_minmax(0,1fr)_auto] sm:items-center">
+      <div className="min-w-0">
         <div className="truncate text-xs font-semibold text-slate-950">{storageLabel(item.name)}</div>
-        <div
-          className={
-            item.exists
-              ? 'rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700'
-              : 'rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700'
-          }
-        >
-          {item.exists ? (item.is_dir ? 'dir' : 'file') : 'missing'}
-        </div>
+        <div className="mt-0.5 text-xs text-slate-500">{item.is_dir ? 'Directory' : item.exists ? 'File' : 'Expected path'}</div>
       </div>
-      <div className="mt-2 text-xs font-semibold text-slate-800">{formatBytes(item.size_bytes)}</div>
-      <div className="mt-1 text-xs font-medium text-slate-500">{item.file_count} files</div>
-      <div className="mt-2 truncate text-xs text-slate-500" title={item.path}>
-        {item.path}
+      <div className="text-xs text-slate-600">
+        <span className="font-semibold text-slate-900">{formatBytes(item.size_bytes)}</span>
+        <span className="ml-1">/ {item.file_count} files</span>
+      </div>
+      <code className="min-w-0 truncate text-xs text-slate-500" title={item.path}>{item.path}</code>
+      <div className="flex justify-start sm:justify-end">
+        <Badge variant={healthy ? 'success' : accountStorePending ? 'muted' : 'danger'}>{status}</Badge>
       </div>
     </div>
   )
 }
 
 function storageLabel(name: string) {
+  const labels: Record<string, string> = {
+    data: 'Data root',
+    voices: 'Voice profiles',
+    asr_jobs: 'ASR jobs',
+    tts_jobs: 'TTS jobs',
+    uploads: 'Uploads',
+    outputs: 'Outputs',
+    logs: 'Logs',
+    auth_db: 'Account database',
+  }
+  if (labels[name]) {
+    return labels[name]
+  }
   return name
     .split('_')
     .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
@@ -893,218 +1000,6 @@ function SettingsMetric({ label, value }: { label: string; value: string }) {
       <div className="mt-1 truncate text-xs font-semibold text-slate-950">{value}</div>
     </div>
   )
-}
-
-function SystemDiagnosticsCard({
-  backendOffline,
-  loading,
-  runtimeReady,
-  version,
-  environment,
-  logLevel,
-  provider,
-  threads,
-  ttsLoaded,
-  asrLoaded,
-  ttsLanguages,
-  asrLanguages,
-  asrWorkers,
-  ttsWorkers,
-  startupWarmup,
-  passedChecks,
-  totalChecks,
-  checks,
-  diagnosticsRunning,
-  warmupRunning,
-  bundleRunning,
-  warmupError,
-  bundleError,
-  onRunDiagnostics,
-  onWarmup,
-  onDownloadBundle,
-}: {
-  backendOffline: boolean
-  loading: boolean
-  runtimeReady: boolean
-  version: string
-  environment: string
-  logLevel: string
-  provider: string
-  threads: string
-  ttsLoaded: boolean
-  asrLoaded: boolean
-  ttsLanguages: string[]
-  asrLanguages: string[]
-  asrWorkers: number
-  ttsWorkers: number
-  startupWarmup: boolean
-  passedChecks: number
-  totalChecks: number
-  checks: Array<[string, boolean]>
-  diagnosticsRunning: boolean
-  warmupRunning: boolean
-  bundleRunning: boolean
-  warmupError: string | null
-  bundleError: string | null
-  onRunDiagnostics: () => void
-  onWarmup: () => void
-  onDownloadBundle: () => void
-}) {
-  const healthy = !backendOffline && runtimeReady && passedChecks === totalChecks && totalChecks > 0
-  const headline = loading ? 'Checking runtime' : healthy ? 'Runtime available' : 'Runtime needs attention'
-
-  return (
-    <section>
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-xs font-medium text-blue-700">
-            <span className="grid size-7 place-items-center rounded-md border border-sky-200 bg-white">
-              <ShieldCheck className="size-4" />
-            </span>
-            Runtime pulse
-          </div>
-          <div className="mt-3 text-sm font-semibold text-slate-950">{headline}</div>
-          <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-600">
-            Backend, model readiness, and inference checks stay visible without turning Settings into a control room.
-          </p>
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[560px]">
-          <SignalRow
-            label="Backend"
-            value={loading ? 'Checking' : backendOffline ? 'Offline' : 'Online'}
-            good={!loading && !backendOffline}
-          />
-          <SignalRow
-            label="Models"
-            value={loading ? 'Checking' : runtimeReady ? 'Ready' : 'Setup'}
-            good={!loading && runtimeReady}
-          />
-          <SignalRow
-            label="Checks"
-            value={totalChecks > 0 ? `${passedChecks}/${totalChecks}` : 'Waiting'}
-            good={totalChecks > 0 && passedChecks === totalChecks}
-          />
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap justify-start gap-2">
-        <Button variant="secondary" disabled={diagnosticsRunning} onClick={onRunDiagnostics}>
-          {diagnosticsRunning ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <ShieldCheck className="size-4" />
-          )}
-          {diagnosticsRunning ? 'Checking' : 'Run diagnostics'}
-        </Button>
-        <Button variant="secondary" disabled={warmupRunning || backendOffline} onClick={onWarmup}>
-          {warmupRunning ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <CheckCircle2 className="size-4" />
-          )}
-          {warmupRunning ? 'Warming' : 'Warm models'}
-        </Button>
-        <Button variant="secondary" disabled={bundleRunning || backendOffline} onClick={onDownloadBundle}>
-          {bundleRunning ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Download className="size-4" />
-          )}
-          {bundleRunning ? 'Preparing' : 'Download diagnostics'}
-        </Button>
-      </div>
-      {warmupError ? (
-        <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
-          {warmupError}
-        </div>
-      ) : null}
-      {bundleError ? (
-        <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
-          {bundleError}
-        </div>
-      ) : null}
-
-      <details className="group mt-3 rounded-md border border-slate-200 bg-white">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-slate-700">
-          Advanced diagnostics
-          <ChevronDown className="size-4 text-slate-500 transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="border-t border-slate-200 p-3">
-          <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-4 xl:grid-cols-9">
-            <SignalMeta label="Version" value={version} />
-            <SignalMeta label="Environment" value={environment} />
-            <SignalMeta label="Log level" value={logLevel} />
-            <SignalMeta label="Provider" value={provider} />
-            <SignalMeta label="Threads" value={threads} />
-            <SignalMeta label="Workers" value={`ASR ${asrWorkers} / TTS ${ttsWorkers}`} />
-            <SignalMeta label="Startup" value={startupWarmup ? 'warmup on' : 'manual warmup'} />
-            <SignalMeta label="TTS" value={formatRuntimeMeta(ttsLoaded, ttsLanguages)} />
-            <SignalMeta label="ASR" value={formatRuntimeMeta(asrLoaded, asrLanguages)} />
-          </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {checks.length > 0 ? (
-              checks.map(([name, passed]) => <CheckRow key={name} label={name} passed={passed} />)
-            ) : (
-              <div className="rounded-md border border-dashed border-slate-300 bg-white p-4 text-center text-xs text-slate-600 md:col-span-2">
-                Waiting for model status.
-              </div>
-            )}
-          </div>
-        </div>
-      </details>
-    </section>
-  )
-}
-
-function SignalMeta({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
-      <div className="text-xs font-medium text-slate-600">{label}</div>
-      <div className="mt-1 truncate font-semibold text-slate-950">{value}</div>
-    </div>
-  )
-}
-
-function SignalRow({ label, value, good }: { label: string; value: string; good: boolean }) {
-  return (
-    <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
-      <div className="flex items-center gap-2">
-        {good ? (
-          <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
-        ) : (
-          <XCircle className="size-4 shrink-0 text-amber-700" />
-        )}
-        <div className="min-w-0">
-          <div className="text-xs font-medium text-slate-600">{label}</div>
-          <div className="mt-0.5 truncate text-xs font-semibold text-slate-950">{value}</div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function CheckRow({ label, passed }: { label: string; passed: boolean }) {
-  return (
-    <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2">
-      {passed ? (
-        <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
-      ) : (
-        <XCircle className="size-4 shrink-0 text-amber-700" />
-      )}
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate text-xs font-semibold text-slate-800">{label}</span>
-      </div>
-    </div>
-  )
-}
-
-function formatRuntimeMeta(loaded: boolean, languages: string[]) {
-  const state = loaded ? 'loaded' : 'cold'
-  if (!languages.length) {
-    return state
-  }
-  return `${state} / ${languages.map((language) => language.toUpperCase()).join(', ')}`
 }
 
 function formatSeconds(seconds: number) {
@@ -1139,6 +1034,16 @@ function downloadBlob(blob: Blob, filename: string) {
   anchor.click()
   anchor.remove()
   URL.revokeObjectURL(url)
+}
+
+function queryError(source: string, error: unknown) {
+  if (!error) {
+    return null
+  }
+  return {
+    source,
+    message: error instanceof Error && error.message ? error.message : 'Request failed.',
+  }
 }
 
 function AdvancedSettings() {
