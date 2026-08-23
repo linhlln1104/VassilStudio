@@ -94,6 +94,11 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "No realtime transcript" in script
     assert "Queue activity" in script
     assert "Search ID, text, language, or status" in script
+    assert "Job details" in script
+    assert "Lifecycle" in script
+    assert "Failure details" in script
+    assert "Output audio" in script
+    assert "Run again" in script
     assert "Create voice profile" in script
     assert "reference_audio" in script
     assert "Delete voice profile?" in script

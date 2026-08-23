@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
-  ArrowRight,
   Captions,
   CheckCircle2,
   Clock3,
   Eraser,
   FileAudio,
   Loader2,
+  PanelRightOpen,
   RefreshCw,
   RotateCcw,
   Search,
@@ -22,29 +22,12 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/components/ui/use-toast'
-import { api, type JobStatus } from '@/lib/api'
+import { api, fetchBlob, type JobStatus } from '@/lib/api'
 import { compactId, formatDuration } from '@/lib/format'
 import { normalizeVoiceLanguage, voiceLanguageShortLabel } from '@/lib/language'
 import { setPendingScript, setPreferredLanguage } from '@/lib/studio-preferences'
 import { cn } from '@/lib/utils'
-
-type StudioJob = {
-  id: string
-  type: 'TTS' | 'ASR'
-  status: JobStatus
-  language: string
-  createdAt: string
-  completedAt: string | null
-  durationSeconds: number | null
-  audioUrl: string | null
-  attempt: number
-  maxAttempts: number
-  cancelRequested: boolean
-  failedReason: string | null
-  summary: string
-  reusableText: string
-  error: string | null
-}
+import { JobInspector, type StudioJob } from './JobInspector'
 
 type JobFilter = 'all' | 'active' | 'succeeded' | 'failed' | 'cancelled'
 type JobTypeFilter = 'all' | 'TTS' | 'ASR'
@@ -71,6 +54,7 @@ export function JobsView() {
   const [search, setSearch] = useState('')
   const [visibleLimit, setVisibleLimit] = useState(30)
   const [deleteTarget, setDeleteTarget] = useState<StudioJob | null>(null)
+  const [selectedJobKey, setSelectedJobKey] = useState<string | null>(null)
   const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false)
   const ttsJobsQuery = useQuery({
     queryKey: ['tts-jobs'],
@@ -91,8 +75,10 @@ export function JobsView() {
         status: job.status,
         language: job.language,
         createdAt: job.created_at,
+        startedAt: job.started_at,
         completedAt: job.completed_at,
         durationSeconds: job.duration_seconds,
+        sampleRate: job.sample_rate,
         audioUrl: job.audio_url,
         attempt: job.attempt,
         maxAttempts: job.max_attempts,
@@ -101,6 +87,10 @@ export function JobsView() {
         summary: job.text,
         reusableText: job.text,
         error: job.error,
+        voiceId: job.voice_id,
+        numSteps: job.num_steps,
+        speed: job.speed,
+        filename: null,
       })) ?? []
 
     const asrJobs =
@@ -110,8 +100,10 @@ export function JobsView() {
         status: job.status,
         language: job.language,
         createdAt: job.created_at,
+        startedAt: job.started_at,
         completedAt: job.completed_at,
         durationSeconds: job.duration_seconds,
+        sampleRate: job.sample_rate,
         audioUrl: job.audio_url,
         attempt: job.attempt,
         maxAttempts: job.max_attempts,
@@ -120,6 +112,10 @@ export function JobsView() {
         summary: job.text || job.filename,
         reusableText: job.text || '',
         error: job.error,
+        voiceId: null,
+        numSteps: null,
+        speed: null,
+        filename: job.filename,
       })) ?? []
 
     return [...ttsJobs, ...asrJobs].sort((a, b) => {
@@ -130,6 +126,10 @@ export function JobsView() {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     })
   }, [asrJobsQuery.data, ttsJobsQuery.data])
+
+  const selectedJob = selectedJobKey
+    ? jobs.find((job) => jobKey(job) === selectedJobKey) ?? null
+    : null
 
   const activeCount = jobs.filter((job) => isActiveStatus(job.status)).length
   const failedCount = jobs.filter((job) => job.status === 'failed').length
@@ -237,6 +237,48 @@ export function JobsView() {
       toast({
         title: 'Cleanup failed',
         description: errorMessage(error, 'Unable to clean the queue.'),
+        variant: 'danger',
+      })
+    },
+  })
+
+  const runAgainMutation = useMutation({
+    mutationFn: async (job: StudioJob) => {
+      if (job.type === 'TTS') {
+        if (!job.voiceId || !job.reusableText.trim()) {
+          throw new Error('The original voice profile or script is unavailable.')
+        }
+        return api.createTtsJobWithVoice(job.voiceId, {
+          text: job.reusableText,
+          language: job.language,
+          numSteps: job.numSteps ?? undefined,
+          speed: job.speed ?? undefined,
+        })
+      }
+
+      if (!job.audioUrl) {
+        throw new Error('The original input audio is unavailable.')
+      }
+      const blob = await fetchBlob(job.audioUrl)
+      const source = new File([blob], job.filename || `${job.id}-input.wav`, {
+        type: blob.type || 'audio/wav',
+      })
+      return api.createAsrJob(source, { language: job.language })
+    },
+    onSuccess: (createdJob, sourceJob) => {
+      void queryClient.invalidateQueries({ queryKey: ['tts-jobs'] })
+      void queryClient.invalidateQueries({ queryKey: ['asr-jobs'] })
+      setSelectedJobKey(null)
+      toast({
+        title: 'New job queued',
+        description: `${sourceJob.type} job ${compactId(createdJob.job_id)} was created from ${compactId(sourceJob.id)}.`,
+        variant: 'success',
+      })
+    },
+    onError: (error) => {
+      toast({
+        title: 'Run again failed',
+        description: errorMessage(error, 'Unable to create a new job from this source.'),
         variant: 'danger',
       })
     },
@@ -390,6 +432,7 @@ export function JobsView() {
                 cancelling={cancelJobMutation.isPending && cancelJobMutation.variables?.id === job.id}
                 onCancel={() => cancelJobMutation.mutate(job)}
                 onDelete={() => setDeleteTarget(job)}
+                onInspect={() => setSelectedJobKey(jobKey(job))}
                 onReuse={() => reuseJob(job)}
               />
             ))}
@@ -405,6 +448,25 @@ export function JobsView() {
           <EmptyQueue hasJobs={jobs.length > 0} />
         )}
       </section>
+
+      <JobInspector
+        job={selectedJob}
+        cancelling={cancelJobMutation.isPending && cancelJobMutation.variables?.id === selectedJob?.id}
+        deleting={deleteJobMutation.isPending && deleteTarget?.id === selectedJob?.id}
+        runningAgain={runAgainMutation.isPending && runAgainMutation.variables?.id === selectedJob?.id}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedJobKey(null)
+          }
+        }}
+        onCancel={(job) => cancelJobMutation.mutate(job)}
+        onDelete={(job) => {
+          setSelectedJobKey(null)
+          setDeleteTarget(job)
+        }}
+        onReuse={reuseJob}
+        onRunAgain={(job) => runAgainMutation.mutate(job)}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
@@ -449,6 +511,7 @@ function JobRow({
   cancelling,
   onCancel,
   onDelete,
+  onInspect,
   onReuse,
 }: {
   job: StudioJob
@@ -456,6 +519,7 @@ function JobRow({
   cancelling: boolean
   onCancel: () => void
   onDelete: () => void
+  onInspect: () => void
   onReuse: () => void
 }) {
   const failed = job.status === 'failed'
@@ -498,18 +562,17 @@ function JobRow({
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-        {job.audioUrl ? (
-          <a
-            className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-900 transition-colors hover:bg-slate-50"
-            href={job.audioUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {job.type === 'ASR' ? 'Input' : 'Audio'}
-            <ArrowRight className="size-4" />
-          </a>
-        ) : null}
         <div className="flex flex-wrap gap-1.5">
+          <Button
+            size="sm"
+            variant="secondary"
+            className="w-8 px-0"
+            onClick={onInspect}
+            aria-label={`Inspect ${job.type} job ${compactId(job.id)}`}
+            title="Job details"
+          >
+            <PanelRightOpen className="size-4" />
+          </Button>
           {canCancel ? (
             <Button size="sm" variant="secondary" disabled={cancelling} onClick={onCancel}>
               {cancelling ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
@@ -702,4 +765,8 @@ function formatDate(value: string) {
 
 function formatReason(value: string) {
   return value.replaceAll('_', ' ')
+}
+
+function jobKey(job: StudioJob) {
+  return `${job.type}:${job.id}`
 }

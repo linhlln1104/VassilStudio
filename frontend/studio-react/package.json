@@ -12,7 +12,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "qa:landing": "node scripts/qa-landing.mjs",
-    "qa:audio-workflows": "node scripts/qa-audio-workflows.mjs"
+    "qa:audio-workflows": "node scripts/qa-audio-workflows.mjs",
+    "qa:jobs": "node scripts/qa-jobs.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.18",
