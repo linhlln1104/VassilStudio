@@ -228,15 +228,16 @@ class TtsJobService:
                 raise VVoiceError(f"Cannot cancel TTS job while it is {job.status}")
 
             if job.status == "queued":
+                completed_at = _now()
                 cancelled = _replace_job(
                     job,
                     status="cancelled",
-                    completed_at=_now(),
+                    completed_at=completed_at,
                     error="Job was cancelled before it started",
                     cancel_requested=True,
                     failed_reason="cancelled",
                     progress_stage="cancelled",
-                    stage_started_at=_now(),
+                    stage_started_at=completed_at,
                 )
                 self._save(cancelled)
                 logger.info(
@@ -348,15 +349,16 @@ class TtsJobService:
         for job in self.list():
             if job.status in TERMINAL_STATUSES:
                 continue
+            completed_at = _now()
             self._save(
                 _replace_job(
                     job,
                     status="failed",
-                    completed_at=_now(),
+                    completed_at=completed_at,
                     error="Job was interrupted by server restart",
                     failed_reason="interrupted",
                     progress_stage="failed",
-                    stage_started_at=_now(),
+                    stage_started_at=completed_at,
                 )
             )
 
@@ -418,16 +420,17 @@ class TtsJobService:
             if job.status in TERMINAL_STATUSES:
                 return None
             if job.cancel_requested or job.status == "cancelling":
+                completed_at = _now()
                 self._save(
                     _replace_job(
                         job,
                         status="cancelled",
-                        completed_at=_now(),
+                        completed_at=completed_at,
                         error="Job was cancelled before the next attempt",
                         cancel_requested=True,
                         failed_reason="cancelled",
                         progress_stage="cancelled",
-                        stage_started_at=_now(),
+                        stage_started_at=completed_at,
                     )
                 )
                 return None
@@ -462,15 +465,16 @@ class TtsJobService:
             if job.status in TERMINAL_STATUSES:
                 return
 
+            completed_at = _now()
             cancelled = _replace_job(
                 job,
                 status="cancelled",
-                completed_at=_now(),
+                completed_at=completed_at,
                 error=message,
                 cancel_requested=True,
                 failed_reason="cancelled",
                 progress_stage="cancelled",
-                stage_started_at=_now(),
+                stage_started_at=completed_at,
             )
             if cancelled.output_path and cancelled.output_path.exists():
                 cancelled.output_path.unlink()
@@ -531,15 +535,16 @@ class TtsJobService:
                 self._mark_cancelled(job_id, "Job was cancelled")
                 return
 
+            completed_at = _now()
             self._save(
                 _replace_job(
                     job,
                     status="failed",
-                    completed_at=_now(),
+                    completed_at=completed_at,
                     error=public_error_message(exc),
                     failed_reason=_failed_reason_for(exc),
                     progress_stage="failed",
-                    stage_started_at=_now(),
+                    stage_started_at=completed_at,
                 )
             )
         logger.exception(
@@ -577,14 +582,15 @@ class TtsJobService:
                 if job.cancel_requested or job.status == "cancelling":
                     raise _JobCancelled("Job was cancelled")
                 temporary_output_path.replace(output_path)
+                completed_at = _now()
                 completed = _replace_job(
                     job,
                     status="succeeded",
-                    completed_at=_now(),
+                    completed_at=completed_at,
                     error=None,
                     failed_reason=None,
                     progress_stage="succeeded",
-                    stage_started_at=_now(),
+                    stage_started_at=completed_at,
                     output_path=output_path,
                     sample_rate=sample_rate,
                     duration_seconds=duration_seconds,
