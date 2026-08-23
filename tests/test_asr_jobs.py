@@ -1,5 +1,6 @@
-import time
+import logging
 import threading
+import time
 
 import numpy as np
 
@@ -57,7 +58,8 @@ class BlockingAsr(FakeAsr):
         return Transcription(text="released", sample_rate=sample_rate)
 
 
-def test_asr_job_service_runs_job_from_audio(tmp_path) -> None:
+def test_asr_job_service_runs_job_from_audio(tmp_path, caplog) -> None:
+    caplog.set_level(logging.INFO, logger="vvoice.jobs.asr")
     jobs = AsrJobService(
         tmp_path / "asr-jobs",
         FakeAsr(),
@@ -80,6 +82,8 @@ def test_asr_job_service_runs_job_from_audio(tmp_path) -> None:
         assert completed.sample_rate == 16000
         assert completed.duration_seconds == 0.1
         assert jobs.list()[0].job_id == job.job_id
+        created_record = next(record for record in caplog.records if record.message == "asr_job_created")
+        assert created_record.source_filename == "input.wav"
 
         assert jobs.cleanup(max_age_seconds=999999) == []
         assert jobs.cleanup() == [job.job_id]

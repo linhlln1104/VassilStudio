@@ -109,7 +109,7 @@ class AsrJobService:
             extra={
                 "job_id": job_id,
                 "language": normalized_language,
-                "filename": job.filename,
+                "source_filename": job.filename,
                 "duration_seconds": job.duration_seconds,
             },
         )
