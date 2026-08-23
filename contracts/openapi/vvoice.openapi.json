@@ -693,6 +693,31 @@
         "title": "DiagnosticsLicense",
         "type": "object"
       },
+      "DiagnosticsPrivacy": {
+        "properties": {
+          "host_metadata_included": {
+            "title": "Host Metadata Included",
+            "type": "boolean"
+          },
+          "storage_metrics": {
+            "const": "bucketed",
+            "title": "Storage Metrics",
+            "type": "string"
+          },
+          "storage_paths": {
+            "const": "logical_aliases",
+            "title": "Storage Paths",
+            "type": "string"
+          }
+        },
+        "required": [
+          "storage_paths",
+          "storage_metrics",
+          "host_metadata_included"
+        ],
+        "title": "DiagnosticsPrivacy",
+        "type": "object"
+      },
       "DiagnosticsResponse": {
         "properties": {
           "generated_at": {
@@ -701,6 +726,9 @@
           },
           "license": {
             "$ref": "#/components/schemas/DiagnosticsLicense"
+          },
+          "privacy": {
+            "$ref": "#/components/schemas/DiagnosticsPrivacy"
           },
           "runtime": {
             "$ref": "#/components/schemas/RuntimeStatus"
@@ -723,6 +751,7 @@
         "required": [
           "generated_at",
           "version",
+          "privacy",
           "runtime",
           "security",
           "storage",
@@ -766,35 +795,58 @@
       },
       "DiagnosticsStorageItem": {
         "properties": {
-          "capacity_bytes": {
+          "capacity_bucket": {
             "anyOf": [
               {
-                "type": "integer"
+                "enum": [
+                  "under_10_gb",
+                  "10_to_49_gb",
+                  "50_to_99_gb",
+                  "100_to_499_gb",
+                  "500_to_999_gb",
+                  "1_tb_or_more"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Capacity Bytes"
+            "title": "Capacity Bucket"
           },
           "exists": {
             "title": "Exists",
             "type": "boolean"
           },
-          "file_count": {
-            "title": "File Count",
-            "type": "integer"
+          "file_count_bucket": {
+            "enum": [
+              "none",
+              "1_to_9",
+              "10_to_99",
+              "100_to_999",
+              "1000_or_more"
+            ],
+            "title": "File Count Bucket",
+            "type": "string"
           },
-          "free_bytes": {
+          "free_space_bucket": {
             "anyOf": [
               {
-                "type": "integer"
+                "enum": [
+                  "under_10_gb",
+                  "10_to_49_gb",
+                  "50_to_99_gb",
+                  "100_to_499_gb",
+                  "500_to_999_gb",
+                  "1_tb_or_more"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Free Bytes"
+            "title": "Free Space Bucket"
           },
           "is_dir": {
             "title": "Is Dir",
@@ -804,13 +856,32 @@
             "title": "Name",
             "type": "string"
           },
-          "path": {
-            "title": "Path",
+          "path_alias": {
+            "title": "Path Alias",
             "type": "string"
           },
-          "size_bytes": {
-            "title": "Size Bytes",
-            "type": "integer"
+          "storage_pressure": {
+            "enum": [
+              "normal",
+              "low",
+              "critical",
+              "unknown"
+            ],
+            "title": "Storage Pressure",
+            "type": "string"
+          },
+          "usage_bucket": {
+            "enum": [
+              "empty",
+              "under_1_mb",
+              "1_to_99_mb",
+              "100_to_999_mb",
+              "1_to_9_gb",
+              "10_to_99_gb",
+              "100_gb_or_more"
+            ],
+            "title": "Usage Bucket",
+            "type": "string"
           },
           "writable": {
             "title": "Writable",
@@ -819,14 +890,15 @@
         },
         "required": [
           "name",
-          "path",
+          "path_alias",
           "exists",
           "is_dir",
           "writable",
-          "size_bytes",
-          "file_count",
-          "capacity_bytes",
-          "free_bytes"
+          "usage_bucket",
+          "file_count_bucket",
+          "capacity_bucket",
+          "free_space_bucket",
+          "storage_pressure"
         ],
         "title": "DiagnosticsStorageItem",
         "type": "object"
@@ -2747,6 +2819,20 @@
     "/diagnostics/bundle": {
       "get": {
         "operationId": "diagnostics_bundle_diagnostics_bundle_get",
+        "parameters": [
+          {
+            "description": "Include coarse Python, operating-system, and architecture metadata.",
+            "in": "query",
+            "name": "include_host_metadata",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include coarse Python, operating-system, and architecture metadata.",
+              "title": "Include Host Metadata",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2755,6 +2841,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Diagnostics Bundle",

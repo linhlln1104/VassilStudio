@@ -151,7 +151,7 @@ Studio local auth is disabled by default for developer convenience. When enabled
 - Settings can change the owner password and revoke other active sessions.
 - Repeated failed login or password change attempts return `429` with `Retry-After`.
 - API key auth remains available for scripts and integrations.
-- Runtime profile, effective log level, and cookie security are visible in redacted diagnostics.
+- Runtime profile, effective log level, and cookie security are visible in privacy-filtered diagnostics.
 
 If the owner password is lost, stop the app, back up `data/auth.sqlite3`, then remove or replace the
 auth database and run `/setup` again. This resets local accounts and sessions only; voice profiles and
@@ -165,14 +165,25 @@ jobs remain under `data/`.
 | `/readyz` | App readiness | Public |
 | `/health` | Runtime feature health | Public |
 | `/model-status` | Model/runtime readiness detail | Session or API key when auth is required |
-| `/diagnostics` | Redacted runtime/security/storage/license metadata | Session or API key when auth is required |
-| `/diagnostics/bundle` | Redacted support zip | Session or API key when auth is required |
+| `/diagnostics` | Privacy-filtered runtime/security/storage/license metadata | Session or API key when auth is required |
+| `/diagnostics/bundle` | Privacy-filtered support zip | Session or API key when auth is required |
 
 Download a support bundle:
 
 ```powershell
 Invoke-WebRequest http://127.0.0.1:8000/diagnostics/bundle -OutFile diagnostics.zip
 ```
+
+Storage locations are logical aliases and storage values are bucketed. Python, OS, and architecture
+metadata are excluded by default. Include those coarse host details only for a support case that
+requires them:
+
+```powershell
+Invoke-WebRequest "http://127.0.0.1:8000/diagnostics/bundle?include_host_metadata=true" -OutFile diagnostics-with-host.zip
+```
+
+The archive excludes configured secrets and private audio/text content by design, but operators must
+still review every file before sharing it.
 
 ## Quality Gates
 
@@ -325,7 +336,7 @@ To restore, copy the same paths into a fresh checkout, run `scripts/setup_storag
 | Startup rejects session configuration | `VASSIL_AUTH_REQUIRED`, `VASSIL_SESSION_SECRET`, runtime profile | Generate a random 32+ character secret; for `production`, also enable secure cookies and HTTPS |
 | Startup rejects a non-loopback bind | `VASSIL_BIND_ADDRESS`, owner setup, API keys | Return to `127.0.0.1`, complete owner setup, then enable LAN access with auth or an API key |
 | Docker smoke cannot start | Docker daemon | Start Docker Desktop/service, then rerun `scripts/smoke_docker.ps1` |
-| Diagnostics bundle is needed | `/diagnostics/bundle` | Attach the zip to support; it is redacted by default |
+| Diagnostics bundle is needed | `/diagnostics/bundle` | Download the privacy-filtered archive, review every file, then attach only what the support case needs |
 
 ## Release Checklist
 

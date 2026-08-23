@@ -6,6 +6,7 @@
 - Surfaces: public product pages, first-run setup, authentication, Studio workflows, REST/WebSocket APIs, responsive layouts, and quality gates
 - Audit-time release decision: **NO-GO for Docker or any non-loopback exposure; usable for controlled localhost development**
 - P0 remediation status: **RESOLVED AND VERIFIED on 2026-08-24**
+- Diagnostics privacy P1 status: **RESOLVED AND VERIFIED on 2026-08-24**
 
 ## P0 remediation update
 
@@ -21,14 +22,26 @@
   auth smoke, Compose validation), a clean Docker image/runtime smoke on `127.0.0.1:8024`, and a
   live invalid-upload probe returning stable HTTP `415` with no workspace or FFmpeg detail.
 
-The remaining P1/P2 findings still require follow-up before a broader production release. This
-update closes only the Security Boundary P0 gate.
+The remaining P1/P2 findings still require follow-up before a broader production release. The P0
+section above closes only the Security Boundary gate; the focused P1 closure follows below.
+
+## P1 diagnostics privacy remediation update
+
+- `/diagnostics` now returns fixed logical storage aliases, bucketed usage/file-count/disk values,
+  and storage pressure instead of host paths or exact inventory.
+- Support bundles exclude Python/OS/architecture metadata by default. The Settings control and API
+  query require an explicit opt-in for each bundle that includes coarse host metadata.
+- Bundle and public product copy now require review before sharing and no longer claim unconditional
+  sharing safety.
+- Regression coverage scans the default archive for workspace paths and host fields. Verification
+  passed with `scripts/check.ps1` (`143 passed`, Ruff, React lint/build, OpenAPI, auth smoke, Compose
+  validation), live default/opt-in archive probes, and Settings Playwright QA at desktop/mobile.
 
 ## Executive summary
 
 The main workflows work: a local owner can sign in, manage a voice profile, render speech, transcribe audio, inspect jobs, use realtime ASR, and inspect runtime health. The visual system is consistent and responsive, and the automated baseline is healthy.
 
-The current release is not safe to expose beyond localhost. Docker publishes the service on all host interfaces while authentication defaults to disabled. Several responses then disclose host-specific paths, including a full FFmpeg executable command on invalid audio. The UI also describes a diagnostics archive as safe to share even though it includes absolute paths, platform details, and disk metadata.
+The P0 remote-exposure and response-disclosure boundaries plus the P1 diagnostics privacy contract are now remediated. The release remains limited to controlled localhost use until the other P1 reliability, browser-security, access-control, and workflow findings below are resolved.
 
 The largest product gaps are not cosmetic. Running TTS cancellation is delayed until inference returns, Generate can enqueue duplicates after the POST completes, Local files creates a voice immediately behind an ambiguous action, and Transcribe promises timestamps that the API does not provide.
 
@@ -83,6 +96,8 @@ Responses disclose the Windows username, repository layout, virtual environment,
 Return stable user-facing audio errors and log technical exceptions only with `request_id`. Remove `audio_path` from the public voice schema. Validate extension, declared MIME type, and decoded media signature before invoking FFmpeg.
 
 ### VS-QA-003 - P1 - The “redacted” support bundle is not safe to share as claimed
+
+**Remediation status: RESOLVED**
 
 **Evidence**
 
@@ -288,9 +303,9 @@ Resolve `node.exe`, prepend its parent for npm child processes, and emit an acti
 
 ## Recommended implementation order
 
-1. **Security boundary:** secure Docker defaults, sanitize errors, remove absolute paths from API/support bundle, protect detailed docs/readiness, add response security headers.
+1. **Security boundary:** protect detailed docs/readiness and finish browser response security headers; loopback defaults, response sanitization, and diagnostics path filtering are resolved.
 2. **Runtime control:** make cancellation truthful/effective, add idempotency, lock duplicate Generate actions, and derive UI state from server jobs.
 3. **Voice/ASR product closure:** add voice import review/quality checks and either implement timed transcripts or remove the timestamp promise.
-4. **Account/privacy:** replace browser-persisted API keys, preserve deep links, scope/clear local drafts, and make diagnostics sharing explicit.
+4. **Account/privacy:** replace browser-persisted API keys, preserve deep links, and scope/clear local drafts; diagnostics sharing is now explicit.
 5. **Product completeness:** VI/EN UI localization, output naming/formats, realtime device selection, model management, backup/restore, and log workflow.
 6. **QA gate:** portable Node invocation, Axe checks, authenticated real-browser smoke, and a later opt-in Docker/language matrix release pass.

@@ -10,7 +10,7 @@ All notable VassilStudio productionization changes are tracked here.
 - Local owner setup, login, logout, HttpOnly session cookies, and protected Studio routing.
 - Local owner password change from Settings with other-session revocation.
 - API key compatibility for automation when Studio auth is required.
-- Settings account/session surface, open-source license metadata, diagnostics metadata, and redacted diagnostics bundle.
+- Settings account/session surface, open-source license metadata, diagnostics metadata, and privacy-filtered diagnostics bundle.
 - First output onboarding checklist in Generate.
 - Storage usage and terminal job retention controls in Settings.
 - Auth/product smoke in `scripts/check.ps1`.
@@ -46,6 +46,8 @@ All notable VassilStudio productionization changes are tracked here.
 
 ### Hardened
 
+- Diagnostics now expose logical storage aliases and bucketed inventory/disk values; support bundles
+  exclude host fingerprints by default and require an explicit per-download opt-in to include them.
 - Docker Compose and native launchers bind to loopback by default; direct images fail closed, and
   anonymous non-loopback startup plus remote first-owner setup are rejected.
 - Audio uploads now require a supported extension, declared media type, and matching container
@@ -68,6 +70,8 @@ All notable VassilStudio productionization changes are tracked here.
 
 ### Verified
 
+- Diagnostics Privacy P1 passed `143` backend tests, frontend lint/build, OpenAPI/auth/Compose gates,
+  live default/opt-in archive scans, and Settings Playwright QA at desktop and mobile viewports.
 - Security Boundary P0 passed `142` backend tests, frontend lint/build, OpenAPI/auth/Compose gates,
   live disclosure probes, and a clean Docker build/runtime smoke on loopback.
 - `scripts/check.ps1` passes with ruff, pytest, React lint/build, OpenAPI export, auth/product smoke, and Docker Compose config validation.

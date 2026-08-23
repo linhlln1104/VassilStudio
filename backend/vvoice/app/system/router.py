@@ -10,7 +10,7 @@ import shutil
 import sys
 import zipfile
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
@@ -27,6 +27,20 @@ from vvoice.shared.security.auth import require_api_key
 
 
 router = APIRouter()
+
+_MEBIBYTE = 1024**2
+_GIBIBYTE = 1024**3
+_TEBIBYTE = 1024**4
+_STORAGE_PATH_ALIASES = {
+    "data": "DATA_ROOT",
+    "voices": "DATA_ROOT/voices",
+    "asr_jobs": "DATA_ROOT/jobs/asr",
+    "tts_jobs": "DATA_ROOT/jobs/tts",
+    "uploads": "DATA_ROOT/uploads",
+    "outputs": "DATA_ROOT/outputs",
+    "logs": "LOGS_ROOT",
+    "auth_db": "DATA_ROOT/auth.sqlite3",
+}
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -87,9 +101,10 @@ async def model_status(request: Request):
     response_model=DiagnosticsResponse,
     dependencies=[Depends(require_api_key)],
 )
-async def diagnostics(request: Request):
+async def diagnostics(request: Request, response: Response):
     container = request.app.state.container
     settings = request.app.state.container.settings
+    response.headers["Cache-Control"] = "no-store"
     return _diagnostics_payload(container, settings)
 
 
@@ -97,10 +112,20 @@ async def diagnostics(request: Request):
     "/diagnostics/bundle",
     dependencies=[Depends(require_api_key)],
 )
-async def diagnostics_bundle(request: Request):
+async def diagnostics_bundle(
+    request: Request,
+    include_host_metadata: bool = Query(
+        default=False,
+        description="Include coarse Python, operating-system, and architecture metadata.",
+    ),
+):
     container = request.app.state.container
     settings = request.app.state.container.settings
-    payload = _diagnostics_payload(container, settings)
+    payload = _diagnostics_payload(
+        container,
+        settings,
+        host_metadata_included=include_host_metadata,
+    )
     readiness_checks = {
         **_model_file_checks(settings),
         **_storage_checks(settings),
@@ -121,20 +146,11 @@ async def diagnostics_bundle(request: Request):
         )
         bundle.writestr(
             "environment.json",
-            _json_bytes(
-                {
-                    "python": sys.version.split()[0],
-                    "platform": platform.platform(),
-                }
-            ),
+            _json_bytes(_environment_payload(include_host_metadata)),
         )
         bundle.writestr(
             "README.txt",
-            (
-                "VassilStudio diagnostics bundle\n"
-                "This bundle contains redacted runtime, readiness, storage, and environment metadata.\n"
-                "It does not include API keys, session secrets, cookies, transcripts, or audio files.\n"
-            ),
+            _bundle_readme(include_host_metadata),
         )
 
     archive.seek(0)
@@ -143,14 +159,26 @@ async def diagnostics_bundle(request: Request):
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="vassilstudio-diagnostics-{generated_at}.zip"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
         },
     )
 
 
-def _diagnostics_payload(container, settings) -> dict:
+def _diagnostics_payload(
+    container,
+    settings,
+    *,
+    host_metadata_included: bool = False,
+) -> dict:
     return {
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "version": __version__,
+        "privacy": {
+            "storage_paths": "logical_aliases",
+            "storage_metrics": "bucketed",
+            "host_metadata_included": host_metadata_included,
+        },
         "runtime": _runtime_status(container, settings),
         "security": {
             "auth_required": getattr(settings.security, "auth_required", False),
@@ -255,26 +283,29 @@ def _diagnostic_storage_items(settings) -> list[dict[str, object]]:
     items: list[dict[str, object]] = []
     for name, path in paths.items():
         capacity_bytes, free_bytes = _volume_usage(path)
+        size_bytes, file_count = _path_usage(path)
         items.append(
             {
                 "name": name,
-                "path": str(path),
+                "path_alias": _STORAGE_PATH_ALIASES[name],
                 "exists": path.exists(),
                 "is_dir": path.is_dir(),
                 "writable": _path_writable(path),
-                "capacity_bytes": capacity_bytes,
-                "free_bytes": free_bytes,
-                **_path_usage(path),
+                "usage_bucket": _usage_bucket(size_bytes),
+                "file_count_bucket": _file_count_bucket(file_count),
+                "capacity_bucket": _capacity_bucket(capacity_bytes),
+                "free_space_bucket": _capacity_bucket(free_bytes),
+                "storage_pressure": _storage_pressure(capacity_bytes, free_bytes),
             }
         )
     return items
 
 
-def _path_usage(path: Path) -> dict[str, int]:
+def _path_usage(path: Path) -> tuple[int, int]:
     if path.is_file():
-        return {"size_bytes": path.stat().st_size, "file_count": 1}
+        return path.stat().st_size, 1
     if not path.is_dir():
-        return {"size_bytes": 0, "file_count": 0}
+        return 0, 0
 
     size_bytes = 0
     file_count = 0
@@ -286,7 +317,62 @@ def _path_usage(path: Path) -> dict[str, int]:
             file_count += 1
         except OSError:
             continue
-    return {"size_bytes": size_bytes, "file_count": file_count}
+    return size_bytes, file_count
+
+
+def _usage_bucket(size_bytes: int) -> str:
+    if size_bytes <= 0:
+        return "empty"
+    if size_bytes < _MEBIBYTE:
+        return "under_1_mb"
+    if size_bytes < 100 * _MEBIBYTE:
+        return "1_to_99_mb"
+    if size_bytes < _GIBIBYTE:
+        return "100_to_999_mb"
+    if size_bytes < 10 * _GIBIBYTE:
+        return "1_to_9_gb"
+    if size_bytes < 100 * _GIBIBYTE:
+        return "10_to_99_gb"
+    return "100_gb_or_more"
+
+
+def _file_count_bucket(file_count: int) -> str:
+    if file_count <= 0:
+        return "none"
+    if file_count < 10:
+        return "1_to_9"
+    if file_count < 100:
+        return "10_to_99"
+    if file_count < 1000:
+        return "100_to_999"
+    return "1000_or_more"
+
+
+def _capacity_bucket(size_bytes: int | None) -> str | None:
+    if size_bytes is None:
+        return None
+    if size_bytes < 10 * _GIBIBYTE:
+        return "under_10_gb"
+    if size_bytes < 50 * _GIBIBYTE:
+        return "10_to_49_gb"
+    if size_bytes < 100 * _GIBIBYTE:
+        return "50_to_99_gb"
+    if size_bytes < 500 * _GIBIBYTE:
+        return "100_to_499_gb"
+    if size_bytes < _TEBIBYTE:
+        return "500_to_999_gb"
+    return "1_tb_or_more"
+
+
+def _storage_pressure(capacity_bytes: int | None, free_bytes: int | None) -> str:
+    if capacity_bytes is None or free_bytes is None or capacity_bytes <= 0:
+        return "unknown"
+    free_ratio = free_bytes / capacity_bytes
+    if free_bytes < _GIBIBYTE or free_ratio < 0.05:
+        return "critical"
+    if free_bytes < 5 * _GIBIBYTE or free_ratio < 0.15:
+        return "low"
+    return "normal"
 
 
 def _path_writable(path: Path) -> bool:
@@ -319,6 +405,29 @@ def _existing_path(path: Path) -> Path | None:
 
 def _json_bytes(payload: object) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
+
+
+def _environment_payload(include_host_metadata: bool) -> dict[str, object]:
+    if not include_host_metadata:
+        return {"included": False}
+    return {
+        "included": True,
+        "python_version": sys.version.split()[0],
+        "operating_system": platform.system(),
+        "operating_system_release": platform.release(),
+        "architecture": platform.machine(),
+    }
+
+
+def _bundle_readme(include_host_metadata: bool) -> str:
+    host_status = "included by explicit request" if include_host_metadata else "excluded"
+    return (
+        "VassilStudio diagnostics bundle\n"
+        "Storage locations use logical aliases; usage, file counts, and disk values are bucketed.\n"
+        f"Host metadata: {host_status}.\n"
+        "API keys, session secrets, cookies, transcripts, and audio files are not included.\n"
+        "Review every file before sharing this archive.\n"
+    )
 
 
 def _model_file_checks(settings) -> dict[str, bool]:

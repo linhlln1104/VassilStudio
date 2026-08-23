@@ -311,7 +311,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1 -RunDock
 | Model docs | Lists required ASR/TTS files per language |
 | Windows docs | Warns about native DLL/model paths and spaces |
 | Logs | Structured JSON, request/job IDs, no secrets |
-| Diagnostics | Creates redacted support bundle |
+| Diagnostics | Creates privacy-filtered support bundle |
 | Backup | Documents `data/voices`, `data/jobs`, account/settings DB |
 | Cleanup | Terminal jobs/output cleanup configurable |
 
@@ -360,10 +360,10 @@ Các bước tiếp theo nên là hardening ngoài phạm vi MVP nhỏ:
 | Date | Slice | Status | Evidence |
 | --- | --- | --- | --- |
 | 2026-07-08 | Product Shell + Local Auth Foundation | Done | `.env.example`, `/api/v1/auth/*`, local SQLite account/session store, `/` product shell, `/setup`, `/login`, protected `/studio`, auth/API key compatibility tests, `scripts/check.ps1` pass |
-| 2026-07-08 | Settings Account, License, Diagnostics | Done | `/diagnostics` redacted metadata endpoint, Settings account/session surface, open-source license metadata, `scripts/check.ps1` pass |
+| 2026-07-08 | Settings Account, License, Diagnostics | Done | `/diagnostics` privacy-filtered metadata endpoint, Settings account/session surface, open-source license metadata, `scripts/check.ps1` pass |
 | 2026-07-08 | First Output Onboarding | Done | Generate first-run checklist for runtime readiness, voice profile, script, queued render, playable output, and `scripts/check.ps1` pass |
-| 2026-07-08 | Redacted Diagnostics Bundle | Done | `/diagnostics/bundle` zip endpoint, Settings download action, redaction tests, and `scripts/check.ps1` pass |
-| 2026-07-08 | Storage Usage And Retention | Done | `/diagnostics` storage byte/file counts, Settings terminal job retention cleanup controls, and `scripts/check.ps1` pass |
+| 2026-07-08 | Privacy-filtered Diagnostics Bundle | Done | `/diagnostics/bundle` zip endpoint, Settings download action, privacy regression tests, and `scripts/check.ps1` pass |
+| 2026-07-08 | Storage Usage And Retention | Done | `/diagnostics` bucketed storage inventory, Settings terminal job retention cleanup controls, and `scripts/check.ps1` pass |
 | 2026-07-08 | Auth Product Smoke | Done | `scripts/smoke_auth.py` isolated first-run setup/login/logout/protected Studio/API key smoke in `scripts/check.ps1` |
 | 2026-07-08 | Latency Benchmark Scripts | Done | `benchmark_tts_latency`, `benchmark_asr_latency`, and `benchmark_realtime_chunking` scripts with JSON summaries; `scripts/check.ps1` pass |
 | 2026-07-08 | Changelog And Release Hygiene | Done | Public `/changelog` route, repository `CHANGELOG.md`, and `scripts/check.ps1` pass |
@@ -378,3 +378,4 @@ Các bước tiếp theo nên là hardening ngoài phạm vi MVP nhỏ:
 | 2026-07-10 | Automated Quality Gate | Done | Pinned read-only GitHub Actions workflow, Windows/Python 3.12/Node 24 baseline, `scripts/check.ps1 -CI`, clean npm install, generated OpenAPI drift test, and workflow contract tests |
 | 2026-07-10 | Reproducible Phonemizer Install | Done | Removed the unavailable Windows `piper_phonemize` index dependency; ZipVoice now uses `phonemizer-fork` with bundled `espeakng-loader`, stable VI/EN output tests, and fresh-install CI coverage |
 | 2026-08-11 | Frontend Dependency Audit | Done | Patched PostCSS/Nanoid transitive advisories and made high-severity npm audit failures block `scripts/check.ps1 -CI` |
+| 2026-08-24 | Diagnostics Privacy P1 | Done | Logical storage aliases, bucketed metrics, per-download host metadata opt-in, privacy regression tests, desktop/mobile Playwright QA, live archive scan, and `scripts/check.ps1` with 143 tests |

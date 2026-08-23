@@ -79,19 +79,39 @@ export type ModelStatusResponse = {
 
 export type DiagnosticsStorageItem = {
   name: string
-  path: string
+  path_alias: string
   exists: boolean
   is_dir: boolean
   writable: boolean
-  size_bytes: number
-  file_count: number
-  capacity_bytes: number | null
-  free_bytes: number | null
+  usage_bucket:
+    | 'empty'
+    | 'under_1_mb'
+    | '1_to_99_mb'
+    | '100_to_999_mb'
+    | '1_to_9_gb'
+    | '10_to_99_gb'
+    | '100_gb_or_more'
+  file_count_bucket: 'none' | '1_to_9' | '10_to_99' | '100_to_999' | '1000_or_more'
+  capacity_bucket:
+    | 'under_10_gb'
+    | '10_to_49_gb'
+    | '50_to_99_gb'
+    | '100_to_499_gb'
+    | '500_to_999_gb'
+    | '1_tb_or_more'
+    | null
+  free_space_bucket: DiagnosticsStorageItem['capacity_bucket']
+  storage_pressure: 'normal' | 'low' | 'critical' | 'unknown'
 }
 
 export type DiagnosticsResponse = {
   generated_at: string
   version: string
+  privacy: {
+    storage_paths: 'logical_aliases'
+    storage_metrics: 'bucketed'
+    host_metadata_included: boolean
+  }
   runtime: ModelStatusResponse['runtime']
   security: {
     auth_required: boolean
@@ -359,7 +379,8 @@ export const api = {
   readiness: () => fetchProbe('/readyz'),
   modelStatus: () => fetchJson<ModelStatusResponse>('/model-status'),
   diagnostics: () => fetchJson<DiagnosticsResponse>('/diagnostics'),
-  diagnosticsBundle: () => fetchBlob('/diagnostics/bundle'),
+  diagnosticsBundle: (includeHostMetadata = false) =>
+    fetchBlob(`/diagnostics/bundle${includeHostMetadata ? '?include_host_metadata=true' : ''}`),
   warmup: () => fetchJson<WarmupAllResponse>('/warmup', { method: 'POST' }),
   warmupAsr: (language?: string) =>
     fetchJson<WarmupResponse>(`/warmup/asr${language ? `?language=${encodeURIComponent(language)}` : ''}`, {

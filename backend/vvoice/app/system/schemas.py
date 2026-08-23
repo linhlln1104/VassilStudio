@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -20,14 +22,43 @@ class ProbeResponse(BaseModel):
 
 class DiagnosticsStorageItem(BaseModel):
     name: str
-    path: str
+    path_alias: str
     exists: bool
     is_dir: bool
     writable: bool
-    size_bytes: int
-    file_count: int
-    capacity_bytes: int | None
-    free_bytes: int | None
+    usage_bucket: Literal[
+        "empty",
+        "under_1_mb",
+        "1_to_99_mb",
+        "100_to_999_mb",
+        "1_to_9_gb",
+        "10_to_99_gb",
+        "100_gb_or_more",
+    ]
+    file_count_bucket: Literal["none", "1_to_9", "10_to_99", "100_to_999", "1000_or_more"]
+    capacity_bucket: Literal[
+        "under_10_gb",
+        "10_to_49_gb",
+        "50_to_99_gb",
+        "100_to_499_gb",
+        "500_to_999_gb",
+        "1_tb_or_more",
+    ] | None
+    free_space_bucket: Literal[
+        "under_10_gb",
+        "10_to_49_gb",
+        "50_to_99_gb",
+        "100_to_499_gb",
+        "500_to_999_gb",
+        "1_tb_or_more",
+    ] | None
+    storage_pressure: Literal["normal", "low", "critical", "unknown"]
+
+
+class DiagnosticsPrivacy(BaseModel):
+    storage_paths: Literal["logical_aliases"]
+    storage_metrics: Literal["bucketed"]
+    host_metadata_included: bool
 
 
 class DiagnosticsSecurity(BaseModel):
@@ -75,6 +106,7 @@ class ModelStatusResponse(BaseModel):
 class DiagnosticsResponse(BaseModel):
     generated_at: str
     version: str
+    privacy: DiagnosticsPrivacy
     runtime: RuntimeStatus
     security: DiagnosticsSecurity
     storage: list[DiagnosticsStorageItem]

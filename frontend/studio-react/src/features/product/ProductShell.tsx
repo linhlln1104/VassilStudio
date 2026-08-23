@@ -140,7 +140,7 @@ const infoPages: Record<InfoPageId, InfoPageContent> = {
       },
       {
         label: 'Diagnostics',
-        value: 'Support bundles redact API keys, session secrets, cookies, transcripts, and private audio.',
+        value: 'Support bundles omit secrets and private content, use logical storage aliases, and exclude host details unless selected.',
       },
     ],
     primaryAction: { label: 'Open Studio', href: '/studio' },
@@ -167,7 +167,7 @@ const infoPages: Record<InfoPageId, InfoPageContent> = {
   },
   support: {
     title: 'Support',
-    summary: 'Start with readiness, logs, and a redacted diagnostics bundle before reporting an issue.',
+    summary: 'Start with readiness, logs, and a privacy-filtered diagnostics bundle before reporting an issue.',
     rows: [
       {
         label: 'Readiness',
@@ -175,7 +175,7 @@ const infoPages: Record<InfoPageId, InfoPageContent> = {
       },
       {
         label: 'Bundle',
-        value: 'Download /diagnostics/bundle after reproducing the issue. It is designed for safe sharing.',
+        value: 'Download /diagnostics/bundle after reproducing the issue. Review the archive before sharing; host details are opt-in.',
       },
       {
         label: 'Quality gate',

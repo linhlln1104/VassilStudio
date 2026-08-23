@@ -16,8 +16,6 @@ const viewports = [
   { name: 'mobile', width: 390, height: 844 },
 ]
 
-const gibibyte = 1024 ** 3
-
 function settingsFixture() {
   const modelChecks = {
     asr_vi_encoder: true,
@@ -46,6 +44,8 @@ function settingsFixture() {
     log_level: 'INFO',
     provider: 'cpu',
     num_threads: 4,
+    asr_num_threads: 4,
+    tts_num_threads: 8,
     debug: false,
     warmup_on_startup: false,
     asr_job_workers: 1,
@@ -61,14 +61,14 @@ function settingsFixture() {
     tts_loaded_languages: [],
   }
   const storage = [
-    storageItem('data', 'C:\\VassilStudio\\data', true, true, 1.4 * gibibyte, 180),
-    storageItem('voices', 'C:\\VassilStudio\\data\\voices', true, true, 320 * 1024 ** 2, 12),
-    storageItem('asr_jobs', 'C:\\VassilStudio\\data\\jobs\\asr', true, true, 180 * 1024 ** 2, 48),
-    storageItem('tts_jobs', 'C:\\VassilStudio\\data\\jobs\\tts', true, true, 420 * 1024 ** 2, 72),
-    storageItem('uploads', 'C:\\VassilStudio\\data\\uploads', true, true, 80 * 1024 ** 2, 16),
-    storageItem('outputs', 'C:\\VassilStudio\\data\\outputs', true, true, 500 * 1024 ** 2, 32),
-    storageItem('logs', 'C:\\VassilStudio\\logs', false, true, 0, 0),
-    { ...storageItem('auth_db', 'C:\\VassilStudio\\data\\auth.sqlite3', false, true, 0, 0), is_dir: false },
+    storageItem('data', 'DATA_ROOT', true, true, '1_to_9_gb', '100_to_999'),
+    storageItem('voices', 'DATA_ROOT/voices', true, true, '100_to_999_mb', '10_to_99'),
+    storageItem('asr_jobs', 'DATA_ROOT/jobs/asr', true, true, '100_to_999_mb', '10_to_99'),
+    storageItem('tts_jobs', 'DATA_ROOT/jobs/tts', true, true, '100_to_999_mb', '10_to_99'),
+    storageItem('uploads', 'DATA_ROOT/uploads', true, true, '1_to_99_mb', '10_to_99'),
+    storageItem('outputs', 'DATA_ROOT/outputs', true, true, '100_to_999_mb', '10_to_99'),
+    storageItem('logs', 'LOGS_ROOT', false, true, 'empty', 'none'),
+    { ...storageItem('auth_db', 'DATA_ROOT/auth.sqlite3', false, true, 'empty', 'none'), is_dir: false },
   ]
   const readinessChecks = {
     ...modelChecks,
@@ -85,6 +85,11 @@ function settingsFixture() {
     health: {
       status: 'ok',
       version: '0.9.0-qa',
+      privacy: {
+        storage_paths: 'logical_aliases',
+        storage_metrics: 'bucketed',
+        host_metadata_included: false,
+      },
       asr_enabled: true,
       tts_enabled: true,
       provider: 'cpu',
@@ -108,21 +113,22 @@ function settingsFixture() {
       storage,
       license: { status: 'open-source', plan: 'GPL-3.0-or-later', billing_enabled: false },
     },
-    calls: { ready: 0, diagnostics: 0, warmup: [], cleanup: [], bundles: 0 },
+    calls: { ready: 0, diagnostics: 0, warmup: [], cleanup: [], bundles: [] },
   }
 }
 
-function storageItem(name, itemPath, exists, writable, sizeBytes, fileCount) {
+function storageItem(name, pathAlias, exists, writable, usageBucket, fileCountBucket) {
   return {
     name,
-    path: itemPath,
+    path_alias: pathAlias,
     exists,
     is_dir: true,
     writable,
-    size_bytes: Math.round(sizeBytes),
-    file_count: fileCount,
-    capacity_bytes: 100 * gibibyte,
-    free_bytes: 24 * gibibyte,
+    usage_bucket: usageBucket,
+    file_count_bucket: fileCountBucket,
+    capacity_bucket: '100_to_499_gb',
+    free_space_bucket: '10_to_49_gb',
+    storage_pressure: 'normal',
   }
 }
 
@@ -164,7 +170,7 @@ async function installApiFixture(page, fixture) {
       return json(fixture.diagnostics)
     }
     if (url.pathname === '/diagnostics/bundle' && method === 'GET') {
-      fixture.calls.bundles += 1
+      fixture.calls.bundles.push(url.searchParams.get('include_host_metadata') === 'true')
       return route.fulfill({
         status: 200,
         contentType: 'application/zip',
@@ -298,8 +304,18 @@ try {
     if (!download.suggestedFilename().startsWith('vassilstudio-diagnostics-')) {
       throw new Error(`${viewport.name}: diagnostics download filename is not productized`)
     }
-    if (fixture.calls.bundles !== 1) {
-      throw new Error(`${viewport.name}: support bundle endpoint was not called`)
+    if (fixture.calls.bundles.length !== 1 || fixture.calls.bundles[0] !== false) {
+      throw new Error(`${viewport.name}: privacy-filtered support bundle was not requested by default`)
+    }
+    await page.getByRole('checkbox', { name: 'Host details' }).check()
+    const hostDownloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Download bundle', exact: true }).click()
+    await hostDownloadPromise
+    if (fixture.calls.bundles.length !== 2 || fixture.calls.bundles[1] !== true) {
+      throw new Error(`${viewport.name}: host metadata was not an explicit bundle opt-in`)
+    }
+    if (await page.getByRole('checkbox', { name: 'Host details' }).isChecked()) {
+      throw new Error(`${viewport.name}: host metadata opt-in was not reset after download`)
     }
     await dismissNotifications(page)
 
@@ -310,8 +326,17 @@ try {
     const runtimeScreenshot = path.join(outputDir, `settings-runtime-${viewport.name}.png`)
     await page.screenshot({ path: runtimeScreenshot, fullPage: true })
 
+    await page.getByRole('button', { name: 'Account', exact: true }).click()
+    await page.getByText('DATA_ROOT/auth.sqlite3', { exact: true }).waitFor({ state: 'visible' })
+    const accountLayout = await layoutMetrics(page)
+    if (accountLayout.horizontalOverflow > 1) {
+      throw new Error(`${viewport.name}: Account settings overflowed by ${accountLayout.horizontalOverflow}px`)
+    }
+    const accountScreenshot = path.join(outputDir, `settings-account-${viewport.name}.png`)
+    await page.screenshot({ path: accountScreenshot, fullPage: true })
+
     await page.getByRole('button', { name: 'Storage', exact: true }).click()
-    await page.getByText('24.0 GB', { exact: true }).waitFor({ state: 'visible' })
+    await page.getByText('10-49 GB', { exact: true }).waitFor({ state: 'visible' })
     await page.getByText('Storage needs attention', { exact: true }).waitFor({ state: 'visible' })
     await page.getByText('6/7 ready', { exact: true }).waitFor({ state: 'visible' })
 
@@ -345,10 +370,13 @@ try {
       warmupCalls: fixture.calls.warmup,
       readinessCalls: fixture.calls.ready,
       cleanupCalls: fixture.calls.cleanup,
-      bundleDownloads: fixture.calls.bundles,
+      bundleDownloads: fixture.calls.bundles.length,
+      bundleHostMetadataChoices: fixture.calls.bundles,
       runtimeLayout,
+      accountLayout,
       storageLayout,
       runtimeScreenshot,
+      accountScreenshot,
       storageScreenshot,
     })
     await page.close()

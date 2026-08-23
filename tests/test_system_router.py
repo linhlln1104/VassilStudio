@@ -58,7 +58,12 @@ def test_health_reports_release_version(tmp_path) -> None:
     assert response.json()["version"] == __version__
 
 
-def test_diagnostics_reports_redacted_operations_metadata(tmp_path) -> None:
+def test_diagnostics_reports_privacy_filtered_operations_metadata(tmp_path, monkeypatch) -> None:
+    gibibyte = 1024**3
+    monkeypatch.setattr(
+        "vvoice.app.system.router.shutil.disk_usage",
+        lambda _: SimpleNamespace(total=200 * gibibyte, free=48 * gibibyte),
+    )
     app, _, _ = make_app(tmp_path)
     (tmp_path / "voices" / "sample.wav").write_bytes(b"1234")
     (tmp_path / "auth.sqlite3").write_bytes(b"auth")
@@ -69,6 +74,11 @@ def test_diagnostics_reports_redacted_operations_metadata(tmp_path) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["version"] == __version__
+    assert payload["privacy"] == {
+        "storage_paths": "logical_aliases",
+        "storage_metrics": "bucketed",
+        "host_metadata_included": False,
+    }
     assert payload["license"] == {
         "status": "open-source",
         "plan": "GPL-3.0-or-later",
@@ -79,15 +89,25 @@ def test_diagnostics_reports_redacted_operations_metadata(tmp_path) -> None:
     assert "api_keys" not in payload["security"]
     assert "session_secret" not in payload["security"]
     storage = {item["name"]: item for item in payload["storage"]}
-    assert storage["voices"]["size_bytes"] == 4
-    assert storage["voices"]["file_count"] == 1
+    assert storage["voices"]["path_alias"] == "DATA_ROOT/voices"
+    assert storage["voices"]["usage_bucket"] == "under_1_mb"
+    assert storage["voices"]["file_count_bucket"] == "1_to_9"
     assert storage["voices"]["writable"] is True
-    assert storage["voices"]["capacity_bytes"] >= storage["voices"]["free_bytes"] > 0
-    assert storage["auth_db"]["size_bytes"] == 4
-    assert storage["auth_db"]["file_count"] == 1
+    assert storage["voices"]["capacity_bucket"] == "100_to_499_gb"
+    assert storage["voices"]["free_space_bucket"] == "10_to_49_gb"
+    assert storage["voices"]["storage_pressure"] == "normal"
+    assert storage["auth_db"]["path_alias"] == "DATA_ROOT/auth.sqlite3"
+    assert storage["auth_db"]["usage_bucket"] == "under_1_mb"
+    assert storage["auth_db"]["file_count_bucket"] == "1_to_9"
+
+    serialized = json.dumps(payload).replace("\\\\", "\\")
+    assert str(tmp_path) not in serialized
+    for private_field in ("path", "size_bytes", "file_count", "capacity_bytes", "free_bytes"):
+        assert all(private_field not in item for item in payload["storage"])
+    assert response.headers["cache-control"] == "no-store"
 
 
-def test_diagnostics_bundle_is_redacted_zip(tmp_path) -> None:
+def test_diagnostics_bundle_excludes_host_metadata_and_private_paths_by_default(tmp_path) -> None:
     app, _, _ = make_app(tmp_path)
     client = TestClient(app)
 
@@ -102,11 +122,46 @@ def test_diagnostics_bundle_is_redacted_zip(tmp_path) -> None:
             "environment.json",
             "readiness.json",
         ]
-        diagnostics = json.loads(bundle.read("diagnostics.json"))
+        files = {name: bundle.read(name).decode("utf-8") for name in bundle.namelist()}
+        diagnostics = json.loads(files["diagnostics.json"])
+        environment = json.loads(files["environment.json"])
 
     assert diagnostics["security"]["auth_required"] is False
     assert "api_keys" not in diagnostics["security"]
     assert "session_secret" not in diagnostics["security"]
+    assert diagnostics["privacy"]["host_metadata_included"] is False
+    assert environment == {"included": False}
+    assert "Review every file before sharing" in files["README.txt"]
+    bundle_text = "\n".join(files.values()).replace("\\\\", "\\")
+    assert str(tmp_path) not in bundle_text
+    assert "python_version" not in bundle_text
+    assert "operating_system_release" not in bundle_text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_diagnostics_bundle_includes_coarse_host_metadata_only_when_requested(tmp_path) -> None:
+    app, _, _ = make_app(tmp_path)
+    client = TestClient(app)
+
+    response = client.get("/diagnostics/bundle?include_host_metadata=true")
+
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.content)) as bundle:
+        diagnostics = json.loads(bundle.read("diagnostics.json"))
+        environment = json.loads(bundle.read("environment.json"))
+        readme = bundle.read("README.txt").decode("utf-8")
+
+    assert diagnostics["privacy"]["host_metadata_included"] is True
+    assert environment["included"] is True
+    assert set(environment) == {
+        "included",
+        "python_version",
+        "operating_system",
+        "operating_system_release",
+        "architecture",
+    }
+    assert "Host metadata: included by explicit request." in readme
 
 
 def test_liveness_probe_is_process_only(tmp_path) -> None:

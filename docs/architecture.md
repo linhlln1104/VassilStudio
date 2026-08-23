@@ -134,12 +134,14 @@ server generate one. The app logger emits structured JSON for HTTP request compl
 ASR/TTS job lifecycle events. Request logging records the path without query strings so API keys are
 not written by the app middleware.
 
-`GET /diagnostics` returns redacted operations metadata for the Studio Settings surface and support
-workflows: runtime configuration, auth mode, storage paths with file counts/byte sizes, and local
-open-source license metadata.
-`GET /diagnostics/bundle` packages the same metadata with readiness and environment JSON into a zip
-for support. These diagnostics do not return API keys, session secrets, cookies, transcripts, or
-audio content.
+`GET /diagnostics` returns privacy-filtered operations metadata for the Studio Settings surface and
+support workflows: runtime configuration, auth mode, logical storage aliases with bucketed inventory
+and disk values, and local open-source license metadata.
+`GET /diagnostics/bundle` packages the same metadata with readiness JSON and an environment manifest.
+Host metadata is excluded unless the caller explicitly sets `include_host_metadata=true`; even then,
+only the Python version, OS family/release, and architecture are added. Diagnostics do not return API
+keys, session secrets, cookies, transcripts, or audio content, and archives must be reviewed before
+sharing.
 
 ## Current Use Cases
 
@@ -160,8 +162,8 @@ audio content.
   `VASSIL_AUTH_REQUIRED` is set.
 - Preload lazy ASR/TTS runtimes with `/warmup`, `/warmup/asr`, and `/warmup/tts`.
 - Check process liveness with `/livez` and model/storage readiness with `/readyz`.
-- Inspect redacted runtime/auth/storage/license metadata with `/diagnostics`.
-- Download a redacted support zip with `/diagnostics/bundle`.
+- Inspect privacy-filtered runtime/auth/storage/license metadata with `/diagnostics`.
+- Download a privacy-filtered support zip with `/diagnostics/bundle`.
 - Review storage usage and clean terminal ASR/TTS jobs from Settings.
 
 ## Configuration

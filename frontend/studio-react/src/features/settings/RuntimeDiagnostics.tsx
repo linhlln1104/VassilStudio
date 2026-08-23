@@ -44,8 +44,10 @@ type RuntimeDiagnosticsProps = {
   bundleRunning: boolean
   warmupError: string | null
   bundleError: string | null
+  includeHostMetadata: boolean
   onRunDiagnostics: () => void
   onWarmup: (target: WarmupTarget) => void
+  onIncludeHostMetadataChange: (value: boolean) => void
   onDownloadBundle: () => void
 }
 
@@ -63,8 +65,10 @@ export function RuntimeDiagnostics({
   bundleRunning,
   warmupError,
   bundleError,
+  includeHostMetadata,
   onRunDiagnostics,
   onWarmup,
+  onIncludeHostMetadataChange,
   onDownloadBundle,
 }: RuntimeDiagnosticsProps) {
   const runtime = model?.runtime ?? diagnostics?.runtime
@@ -124,14 +128,29 @@ export function RuntimeDiagnostics({
               )}
               {warmingTarget?.engine === 'all' ? 'Warming' : 'Warm all models'}
             </Button>
-            <Button
-              variant="secondary"
-              disabled={bundleRunning || coreOffline || initialCheck}
-              onClick={onDownloadBundle}
-            >
-              {bundleRunning ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-              {bundleRunning ? 'Preparing' : 'Download bundle'}
-            </Button>
+            <div className="flex min-h-9 items-center rounded-md border border-slate-200 bg-white pl-2">
+              <label
+                className="flex cursor-pointer items-center gap-2 pr-2 text-xs font-medium text-slate-700"
+                title="Include Python version, OS release, and architecture in this download"
+              >
+                <input
+                  className="size-4 accent-blue-600"
+                  type="checkbox"
+                  checked={includeHostMetadata}
+                  onChange={(event) => onIncludeHostMetadataChange(event.target.checked)}
+                />
+                Host details
+              </label>
+              <Button
+                className="rounded-l-none border-y-0 border-r-0"
+                variant="secondary"
+                disabled={bundleRunning || coreOffline || initialCheck}
+                onClick={onDownloadBundle}
+              >
+                {bundleRunning ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                {bundleRunning ? 'Preparing' : 'Download bundle'}
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -217,9 +236,8 @@ export function RuntimeDiagnostics({
         checks={readinessChecks}
         failedChecks={failedChecks}
         storage={diagnostics?.storage ?? []}
+        privacy={diagnostics?.privacy}
         readinessAvailable={Boolean(readiness)}
-        bundleRunning={bundleRunning}
-        onDownloadBundle={onDownloadBundle}
       />
     </div>
   )
@@ -398,16 +416,14 @@ function Troubleshooting({
   checks,
   failedChecks,
   storage,
+  privacy,
   readinessAvailable,
-  bundleRunning,
-  onDownloadBundle,
 }: {
   checks: Array<[string, boolean]>
   failedChecks: Array<[string, boolean]>
   storage: DiagnosticsResponse['storage']
+  privacy: DiagnosticsResponse['privacy'] | undefined
   readinessAvailable: boolean
-  bundleRunning: boolean
-  onDownloadBundle: () => void
 }) {
   return (
     <section className="pb-1 pt-1">
@@ -428,6 +444,11 @@ function Troubleshooting({
                 ? 'No readiness blockers detected.'
                 : 'Readiness results are not available yet.'}
           </p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            {privacy?.storage_paths === 'logical_aliases' && privacy.storage_metrics === 'bucketed'
+              ? 'Support bundles use logical paths and storage ranges. Review the archive before sharing.'
+              : 'Review the diagnostics archive before sharing.'}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button asChild size="sm" variant="secondary">
@@ -435,10 +456,6 @@ function Troubleshooting({
               <ExternalLink className="size-4" />
               Operations guide
             </a>
-          </Button>
-          <Button size="sm" variant="secondary" disabled={bundleRunning} onClick={onDownloadBundle}>
-            {bundleRunning ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-            Support bundle
           </Button>
         </div>
       </div>
@@ -453,7 +470,7 @@ function Troubleshooting({
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-semibold text-amber-950">{issue.label}</div>
                   <div className="mt-1 text-xs leading-5 text-amber-900">{issue.remedy}</div>
-                  {issue.path ? <code className="mt-1 block break-all text-xs text-amber-800">{issue.path}</code> : null}
+                  {issue.location ? <code className="mt-1 block break-all text-xs text-amber-800">{issue.location}</code> : null}
                 </div>
               </div>
             )
@@ -495,7 +512,7 @@ function describeCheck(name: string, storage: DiagnosticsResponse['storage']) {
     const remedy = item?.exists
       ? 'Verify this location is writable by the VassilStudio process, then rerun diagnostics.'
       : 'Create the configured location, then rerun diagnostics.'
-    return { label, remedy, path: item?.path ?? null }
+    return { label, remedy, location: item?.path_alias ?? null }
   }
 
   const [engine, language, ...componentParts] = name.split('_')
@@ -504,7 +521,7 @@ function describeCheck(name: string, storage: DiagnosticsResponse['storage']) {
   return {
     label,
     remedy: 'Restore the configured model asset and verify its path in VASSIL_CONFIG, then rerun diagnostics.',
-    path: null,
+    location: null,
   }
 }
 

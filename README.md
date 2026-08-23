@@ -325,6 +325,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_e2e_sample_v
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_cleanup_jobs.ps1
 ```
 
+Diagnostics use logical storage aliases and bucketed usage values. Host metadata is excluded by
+default; request it only when support needs runtime fingerprinting:
+
+```powershell
+Invoke-WebRequest "http://127.0.0.1:8000/diagnostics/bundle?include_host_metadata=true" -OutFile diagnostics-with-host.zip
+```
+
+Review every file in a diagnostics archive before sharing it.
+
 Preload ASR/TTS runtimes:
 
 ```powershell

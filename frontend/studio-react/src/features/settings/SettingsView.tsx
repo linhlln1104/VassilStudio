@@ -33,15 +33,14 @@ import {
   type DiagnosticsStorageItem,
 } from '@/lib/api'
 import { API_BRAND_NAME } from '@/lib/brand'
-import { formatBytes } from '@/lib/format'
 import { RuntimeDiagnostics, type WarmupTarget } from './RuntimeDiagnostics'
 
 const storageRows = [
-  { label: 'Source models', value: 'models/source', description: 'Original checkpoints and research assets.' },
-  { label: 'Runtime models', value: 'models/runtime', description: 'ONNX models loaded by the backend.' },
-  { label: 'Voice assets', value: 'data/voices', description: 'Reference clips and prepared voice profiles.' },
-  { label: 'Generated outputs', value: 'data/outputs', description: 'Rendered TTS audio and exported files.' },
-  { label: 'Contracts', value: 'contracts/openapi', description: 'Generated API contract for integrations.' },
+  { label: 'Source models', value: 'MODEL_SOURCE_ROOT', description: 'Original checkpoints and research assets.' },
+  { label: 'Runtime models', value: 'MODEL_RUNTIME_ROOT', description: 'ONNX models loaded by the backend.' },
+  { label: 'Voice assets', value: 'DATA_ROOT/voices', description: 'Reference clips and prepared voice profiles.' },
+  { label: 'Generated outputs', value: 'DATA_ROOT/outputs', description: 'Rendered TTS audio and exported files.' },
+  { label: 'Contracts', value: 'CONTRACT_ROOT', description: 'Generated API contract for integrations.' },
 ]
 
 const endpointRows = [
@@ -102,6 +101,7 @@ export function SettingsView() {
   const [cleanupTarget, setCleanupTarget] = useState<RetentionOption | null>(null)
   const [cleanupResult, setCleanupResult] = useState<string | null>(null)
   const [clearKeyConfirmOpen, setClearKeyConfirmOpen] = useState(false)
+  const [includeHostMetadata, setIncludeHostMetadata] = useState(false)
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const healthQuery = useQuery({
@@ -191,12 +191,17 @@ export function SettingsView() {
     },
   })
   const diagnosticsBundleMutation = useMutation({
-    mutationFn: api.diagnosticsBundle,
-    onSuccess: (blob) => {
+    mutationFn: (includeHostDetails: boolean) => api.diagnosticsBundle(includeHostDetails),
+    onSuccess: (blob, includeHostDetails) => {
       downloadBlob(blob, `vassilstudio-diagnostics-${Date.now()}.zip`)
+      if (includeHostDetails) {
+        setIncludeHostMetadata(false)
+      }
       toast({
         title: 'Diagnostics downloaded',
-        description: 'The redacted support bundle is ready.',
+        description: includeHostDetails
+          ? 'This bundle includes host details. Review it before sharing.'
+          : 'The privacy-filtered bundle is ready. Review it before sharing.',
         variant: 'success',
       })
     },
@@ -352,9 +357,11 @@ export function SettingsView() {
             bundleError={
               diagnosticsBundleMutation.error instanceof Error ? diagnosticsBundleMutation.error.message : null
             }
+            includeHostMetadata={includeHostMetadata}
             onRunDiagnostics={() => { void runDiagnostics() }}
             onWarmup={(target) => warmupMutation.mutate(target)}
-            onDownloadBundle={() => diagnosticsBundleMutation.mutate()}
+            onIncludeHostMetadataChange={setIncludeHostMetadata}
+            onDownloadBundle={() => diagnosticsBundleMutation.mutate(includeHostMetadata)}
           />
           <AdvancedSettings />
         </>
@@ -371,7 +378,10 @@ export function SettingsView() {
           sessionCookieName={diagnosticsQuery.data?.security.session_cookie_name ?? 'vassil_session'}
           sessionTtlSeconds={diagnosticsQuery.data?.security.session_ttl_seconds ?? 0}
           secureCookies={Boolean(diagnosticsQuery.data?.security.secure_cookies)}
-          authDbPath={diagnosticsQuery.data?.storage.find((item) => item.name === 'auth_db')?.path ?? 'data/auth.sqlite3'}
+          authDbLocation={
+            diagnosticsQuery.data?.storage.find((item) => item.name === 'auth_db')?.path_alias
+              ?? 'DATA_ROOT/auth.sqlite3'
+          }
           signingOut={logoutMutation.isPending}
           currentPassword={currentPassword}
           newPassword={newPassword}
@@ -556,7 +566,7 @@ function AccountSessionCard({
   sessionCookieName,
   sessionTtlSeconds,
   secureCookies,
-  authDbPath,
+  authDbLocation,
   signingOut,
   currentPassword,
   newPassword,
@@ -578,7 +588,7 @@ function AccountSessionCard({
   sessionCookieName: string
   sessionTtlSeconds: number
   secureCookies: boolean
-  authDbPath: string
+  authDbLocation: string
   signingOut: boolean
   currentPassword: string
   newPassword: string
@@ -625,7 +635,7 @@ function AccountSessionCard({
         </div>
         <div className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2">
           <div className="text-xs font-medium text-slate-600">Account store</div>
-          <div className="mt-1 break-all text-xs font-semibold text-slate-950">{authDbPath}</div>
+          <div className="mt-1 break-all text-xs font-semibold text-slate-950">{authDbLocation}</div>
         </div>
         {authRequired && authenticated ? (
           <>
@@ -810,9 +820,6 @@ function StorageManagementCard({
 }) {
   const [retentionId, setRetentionId] = useState('30d')
   const dataRoot = storageItems.find((item) => item.name === 'data')
-  const jobStorage = storageItems.filter((item) => item.name === 'asr_jobs' || item.name === 'tts_jobs')
-  const jobBytes = jobStorage.reduce((sum, item) => sum + item.size_bytes, 0)
-  const jobFiles = jobStorage.reduce((sum, item) => sum + item.file_count, 0)
   const visibleStorage = storageItems.filter((item) =>
     ['voices', 'asr_jobs', 'tts_jobs', 'uploads', 'outputs', 'logs', 'auth_db'].includes(item.name),
   )
@@ -822,10 +829,8 @@ function StorageManagementCard({
   const healthyStorage = readinessStorage.filter((item) => item.exists && item.is_dir && item.writable)
   const storageIssues = readinessStorage.filter((item) => !item.exists || !item.is_dir || !item.writable)
   const selectedRetention = retentionOptions.find((option) => option.id === retentionId) ?? retentionOptions[1]
-  const diskUsagePercent = dataRoot?.capacity_bytes && dataRoot.free_bytes !== null
-    ? ((dataRoot.capacity_bytes - dataRoot.free_bytes) / dataRoot.capacity_bytes) * 100
-    : null
-  const lowDiskSpace = diskUsagePercent !== null && diskUsagePercent >= 90
+  const storagePressure = dataRoot?.storage_pressure ?? 'unknown'
+  const lowDiskSpace = storagePressure === 'low' || storagePressure === 'critical'
 
   return (
     <section>
@@ -849,18 +854,25 @@ function StorageManagementCard({
       </div>
 
       <div className="grid gap-2 py-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SettingsMetric label="Local data" value={formatBytes(dataRoot?.size_bytes ?? 0)} />
+        <SettingsMetric label="Local data" value={formatUsageBucket(dataRoot?.usage_bucket)} />
         <SettingsMetric
           label="Disk free"
-          value={dataRoot?.free_bytes === null || dataRoot?.free_bytes === undefined ? 'Unavailable' : formatBytes(dataRoot.free_bytes)}
+          value={formatCapacityBucket(dataRoot?.free_space_bucket)}
         />
-        <SettingsMetric label="Job storage" value={`${formatBytes(jobBytes)} / ${jobFiles} files`} />
+        <SettingsMetric label="Disk status" value={formatStoragePressure(storagePressure)} />
         <SettingsMetric label="Path health" value={`${healthyStorage.length}/${readinessStorage.length || 0} ready`} />
       </div>
 
       {lowDiskSpace ? (
-        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-900" role="alert">
-          Disk usage is {diskUsagePercent?.toFixed(1)}%. Free space before importing voices or rendering long outputs.
+        <div
+          className={
+            storagePressure === 'critical'
+              ? 'mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-900'
+              : 'mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-900'
+          }
+          role="alert"
+        >
+          Storage headroom is {storagePressure}. Free space before importing voices or rendering long outputs.
         </div>
       ) : null}
 
@@ -872,7 +884,7 @@ function StorageManagementCard({
               <div key={item.name}>
                 <span className="font-semibold">{storageLabel(item.name)}:</span>{' '}
                 {!item.exists ? 'path is missing' : !item.is_dir ? 'expected a directory' : 'path is not writable'}
-                <code className="ml-1 break-all">{item.path}</code>
+                <code className="ml-1 break-all">{item.path_alias}</code>
               </div>
             ))}
           </div>
@@ -962,10 +974,10 @@ function StoragePathRow({ item }: { item: DiagnosticsStorageItem }) {
         <div className="mt-0.5 text-xs text-slate-500">{item.is_dir ? 'Directory' : item.exists ? 'File' : 'Expected path'}</div>
       </div>
       <div className="text-xs text-slate-600">
-        <span className="font-semibold text-slate-900">{formatBytes(item.size_bytes)}</span>
-        <span className="ml-1">/ {item.file_count} files</span>
+        <span className="font-semibold text-slate-900">{formatUsageBucket(item.usage_bucket)}</span>
+        <span className="ml-1">/ {formatFileCountBucket(item.file_count_bucket)}</span>
       </div>
-      <code className="min-w-0 truncate text-xs text-slate-500" title={item.path}>{item.path}</code>
+      <code className="min-w-0 truncate text-xs text-slate-500" title={item.path_alias}>{item.path_alias}</code>
       <div className="flex justify-start sm:justify-end">
         <Badge variant={healthy ? 'success' : accountStorePending ? 'muted' : 'danger'}>{status}</Badge>
       </div>
@@ -991,6 +1003,58 @@ function storageLabel(name: string) {
     .split('_')
     .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
     .join(' ')
+}
+
+function formatUsageBucket(bucket: DiagnosticsStorageItem['usage_bucket'] | undefined) {
+  if (!bucket) {
+    return 'Unavailable'
+  }
+  const labels: Record<DiagnosticsStorageItem['usage_bucket'], string> = {
+    empty: 'Empty',
+    under_1_mb: '< 1 MB',
+    '1_to_99_mb': '1-99 MB',
+    '100_to_999_mb': '100-999 MB',
+    '1_to_9_gb': '1-9 GB',
+    '10_to_99_gb': '10-99 GB',
+    '100_gb_or_more': '100+ GB',
+  }
+  return labels[bucket]
+}
+
+function formatFileCountBucket(bucket: DiagnosticsStorageItem['file_count_bucket']) {
+  const labels: Record<DiagnosticsStorageItem['file_count_bucket'], string> = {
+    none: 'no files',
+    '1_to_9': '1-9 files',
+    '10_to_99': '10-99 files',
+    '100_to_999': '100-999 files',
+    '1000_or_more': '1,000+ files',
+  }
+  return labels[bucket]
+}
+
+function formatCapacityBucket(bucket: DiagnosticsStorageItem['capacity_bucket'] | undefined) {
+  if (!bucket) {
+    return 'Unavailable'
+  }
+  const labels: Record<NonNullable<DiagnosticsStorageItem['capacity_bucket']>, string> = {
+    under_10_gb: '< 10 GB',
+    '10_to_49_gb': '10-49 GB',
+    '50_to_99_gb': '50-99 GB',
+    '100_to_499_gb': '100-499 GB',
+    '500_to_999_gb': '500-999 GB',
+    '1_tb_or_more': '1+ TB',
+  }
+  return labels[bucket]
+}
+
+function formatStoragePressure(pressure: DiagnosticsStorageItem['storage_pressure']) {
+  const labels: Record<DiagnosticsStorageItem['storage_pressure'], string> = {
+    normal: 'Healthy',
+    low: 'Low headroom',
+    critical: 'Critical',
+    unknown: 'Unavailable',
+  }
+  return labels[pressure]
 }
 
 function SettingsMetric({ label, value }: { label: string; value: string }) {
@@ -1054,7 +1118,7 @@ function AdvancedSettings() {
           <div className="min-w-0">
             <div className="text-sm font-semibold text-slate-950">Advanced</div>
             <div className="mt-1 text-xs text-slate-600">
-              Backend links and repository paths for operators.
+              Backend links and logical storage aliases for operators.
             </div>
           </div>
           <ChevronDown className="size-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180" />
@@ -1081,7 +1145,7 @@ function AdvancedSettings() {
 
           <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-slate-800">
             <FolderOpen className="size-4 text-slate-500" />
-            Storage paths
+            Storage aliases
           </div>
           <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5">
             {storageRows.map((row) => (
