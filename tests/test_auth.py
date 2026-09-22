@@ -20,6 +20,17 @@ def test_auth_accepts_api_key_header() -> None:
     assert _matches(candidate, ["secret"])
 
 
+def test_malformed_login_username_returns_401_instead_of_server_error(tmp_path) -> None:
+    settings = make_security_settings(tmp_path, auth_required=True)
+    app = make_auth_app(settings)
+    app.state.container.auth.create_owner("owner", "correct horse battery")
+    response = TestClient(app).post(
+        "/api/v1/auth/login", json={"username": "bad name", "password": "wrong"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid username or password."
+
+
 def test_auth_accepts_legacy_api_key_header() -> None:
     candidate = _candidate_from_mapping({"X-VVoice-API-Key": "secret"}, {})
 

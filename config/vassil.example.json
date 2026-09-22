@@ -74,6 +74,8 @@
     "silence_rms": 0.003
   },
   "jobs": {
+    "asr_max_pending_jobs": 32,
+    "tts_max_pending_jobs": 32,
     "asr_max_workers": 1,
     "tts_max_workers": 1,
     "asr_max_attempts": 1,

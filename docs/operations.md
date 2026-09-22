@@ -17,12 +17,13 @@ and account/session data stay in the local workspace unless an operator copies t
 
 ## Native Quick Start
 
-Run these commands from the repository root:
+Use Python 3.12+ (tested on 3.12) and Node.js 24. For development and the complete local quality
+gate, run these commands from the repository root:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install torch==2.11.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cpu
-.\.venv\Scripts\python.exe -m pip install -e ".[runtime]"
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_storage.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_api.ps1
@@ -30,6 +31,42 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_api.ps1
 
 Open <http://127.0.0.1:8000/> for the product shell or <http://127.0.0.1:8000/studio> for the
 Studio workspace.
+
+Runtime-only installations can use `.[runtime]` and `scripts/doctor.ps1`; build the React frontend
+with `npm ci` and `npm run build` in `frontend/studio-react` before opening Studio. Missing React
+assets produce an actionable HTTP 503 page, including on setup/login routes, instead of an
+incompatible legacy authentication screen.
+
+## Processing Limits And Metadata Recovery
+
+Each ASR/TTS queue accepts at most 32 pending entries by default, including active/cancelling work
+and executor entries not yet consumed. Configure `jobs.asr_max_pending_jobs` and
+`jobs.tts_max_pending_jobs` to change the bound. A full queue returns HTTP 429 with `Retry-After`;
+idempotent replays of an existing job remain available. A cancelled queued entry releases its
+executor slot when consumed. Keep one application process per workspace.
+
+Audio decode has hard bounds of 30 minutes, 32 million interleaved source samples, 8 channels and
+192 kHz. Resampled mono output is also bounded to 32 million samples. The first limit reached
+applies; split longer audio before upload. FFmpeg output is limited on disk and never captured as
+an unbounded decoded stdout buffer. Limit failures return HTTP 413 with an actionable message.
+
+Realtime control JSON is limited to 4 KiB. Numeric settings must be finite; chunk durations are
+0.05–30 seconds and the configured buffer is at most 60 seconds. Clients cannot increase the
+server session buffer limit. A binary frame is bounded independently; partial chunks may be
+completed by the next frame without dropping the remainder. Studio waits for the final `closed`
+acknowledgement; a 30-second timeout reports an incomplete result while retaining received text.
+
+Malformed voice/job records are renamed to `metadata.corrupt-<id>.json` in their original record
+directory. Audio and damaged metadata remain available for recovery; healthy records continue to
+load. Settings diagnostics reports logical store names and quarantined counts without private paths.
+Stop the server, back up the affected record directory, then restore its `metadata.json` from a
+verified backup. Preserve the quarantined copy until recovery has been checked. Do not point restored
+artifact paths outside their own record directory. Quarantine is not a backup service.
+
+New TTS jobs retain `reference.wav`, reference transcript and a content hash in their own directory.
+Editing or deleting a library voice does not change accepted jobs. Existing jobs without snapshots
+remain readable; if executed, they snapshot their legacy reference before inference. Job retention
+cleanup removes the job's reference copy together with its output.
 
 For production-like local use, copy `.env.example` to `.env` and set at least:
 

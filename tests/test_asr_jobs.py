@@ -1,3 +1,4 @@
+import json
 import logging
 import threading
 import time
@@ -8,7 +9,9 @@ import numpy as np
 import pytest
 
 from vvoice.core.errors import (
+    AsrJobNotFoundError,
     IdempotencyConflictError,
+    JobQueueFullError,
     PUBLIC_JOB_ERROR_MESSAGE,
     TranscriptRevisionConflictError,
     VVoiceError,
@@ -434,6 +437,139 @@ def test_asr_job_service_revises_legacy_untimed_transcript(tmp_path) -> None:
         assert revised.transcript_revision == 1
     finally:
         jobs.shutdown()
+
+
+@pytest.mark.parametrize("content", ["{", "[]", '{"job_id":"broken","status":[]}'])
+def test_asr_jobs_preserve_corrupt_records_and_start_with_healthy_jobs(tmp_path, content):
+    directory = tmp_path / "asr-jobs"
+    jobs = AsrJobService(directory, FakeAsr(), target_sample_rate=16000)
+    job = jobs.create_from_audio(
+        audio_bytes=encode_wav(np.zeros(1600, dtype=np.float32), 16000), filename="good.wav",
+    )
+    assert wait_for_job(jobs, job.job_id).status == "succeeded"
+    jobs.shutdown()
+    broken = directory / "broken"
+    broken.mkdir()
+    (broken / "metadata.json").write_text(content, encoding="utf-8")
+
+    recovered = AsrJobService(directory, FakeAsr(), target_sample_rate=16000)
+    try:
+        assert [item.job_id for item in recovered.list()] == [job.job_id]
+        assert recovered.quarantined_count == 1
+        assert next(broken.glob("metadata.corrupt-*.json")).read_text(encoding="utf-8") == content
+        with pytest.raises(AsrJobNotFoundError):
+            recovered.get("broken")
+    finally:
+        recovered.shutdown()
+
+
+def test_asr_queue_rejects_excess_work_but_allows_idempotent_replay(tmp_path):
+    asr = BlockingAsr()
+    jobs = AsrJobService(tmp_path, asr, target_sample_rate=16000, max_pending_jobs=1)
+    audio = encode_wav(np.zeros(1600, dtype=np.float32), 16000)
+    try:
+        first = jobs.create_from_audio(audio_bytes=audio, filename="first.wav", idempotency_key="one")
+        assert asr.started.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS)
+        replay = jobs.create_from_audio(audio_bytes=audio, filename="first.wav", idempotency_key="one")
+        assert replay.job_id == first.job_id
+        with pytest.raises(JobQueueFullError):
+            jobs.create_from_audio(audio_bytes=audio, filename="second.wav")
+        assert len(jobs.list()) == 1
+        asr.release.set()
+        assert wait_for_job(jobs, first.job_id).status == "succeeded"
+        second = jobs.create_from_audio(audio_bytes=audio, filename="second.wav")
+        assert wait_for_job(jobs, second.job_id).status == "succeeded"
+    finally:
+        asr.release.set()
+        jobs.shutdown()
+
+
+def test_asr_jobs_do_not_follow_linked_storage_directories(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "metadata.json"
+    sentinel.write_text("{", encoding="utf-8")
+    directory = tmp_path / "jobs"
+    directory.mkdir()
+    try:
+        (directory / "linked").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        try:
+            import _winapi
+            _winapi.CreateJunction(str(outside), str(directory / "linked"))
+        except (ImportError, OSError):
+            pytest.skip("Creating symbolic links or junctions is unavailable")
+    jobs = AsrJobService(directory, FakeAsr(), target_sample_rate=16000)
+    try:
+        assert jobs.list() == []
+        with pytest.raises(AsrJobNotFoundError):
+            jobs.get("linked")
+        assert sentinel.read_text(encoding="utf-8") == "{"
+    finally:
+        jobs.shutdown()
+
+
+def test_asr_cancelling_queued_jobs_cannot_grow_executor_backlog_without_limit(tmp_path):
+    asr = BlockingAsr()
+    jobs = AsrJobService(tmp_path, asr, target_sample_rate=16000, max_pending_jobs=2)
+    audio = encode_wav(np.zeros(1600, dtype=np.float32), 16000)
+    try:
+        first = jobs.create_from_audio(audio_bytes=audio, filename="first.wav")
+        assert asr.started.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS)
+        queued = jobs.create_from_audio(audio_bytes=audio, filename="queued.wav")
+        assert jobs.cancel(queued.job_id).status == "cancelled"
+        jobs.delete(queued.job_id)
+        with pytest.raises(JobQueueFullError):
+            jobs.create_from_audio(audio_bytes=audio, filename="third.wav")
+        asr.release.set()
+        assert wait_for_job(jobs, first.job_id).status == "succeeded"
+    finally:
+        asr.release.set()
+        jobs.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("duration_seconds", float("nan")), ("sample_rate", float("inf")), ("created_at", None)],
+)
+def test_asr_jobs_quarantine_invalid_metadata_values_without_losing_audio(tmp_path, field, value):
+    jobs = AsrJobService(tmp_path, FakeAsr(), target_sample_rate=16000)
+    job = jobs.create_from_audio(
+        audio_bytes=encode_wav(np.zeros(1600, dtype=np.float32), 16000), filename="audio.wav",
+    )
+    assert wait_for_job(jobs, job.job_id).status == "succeeded"
+    jobs.shutdown()
+    metadata_path = tmp_path / job.job_id / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata[field] = value
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    recovered = AsrJobService(tmp_path, FakeAsr(), target_sample_rate=16000)
+    try:
+        assert recovered.list() == []
+        assert recovered.quarantined_count == 1
+        assert (tmp_path / job.job_id / "input.wav").is_file()
+    finally:
+        recovered.shutdown()
+
+
+def test_asr_cleanup_accepts_legacy_timestamps_without_timezone(tmp_path):
+    jobs = AsrJobService(tmp_path, FakeAsr(), target_sample_rate=16000)
+    job = jobs.create_from_audio(
+        audio_bytes=encode_wav(np.zeros(1600, dtype=np.float32), 16000), filename="audio.wav",
+    )
+    assert wait_for_job(jobs, job.job_id).status == "succeeded"
+    jobs.shutdown()
+    metadata_path = tmp_path / job.job_id / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata.update(created_at="2020-01-01T00:00:00", completed_at="2020-01-01T00:00:01")
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    recovered = AsrJobService(tmp_path, FakeAsr(), target_sample_rate=16000)
+    try:
+        assert len(recovered.list()) == 1
+        assert recovered.quarantined_count == 0
+        assert recovered.cleanup(max_age_seconds=1) == [job.job_id]
+    finally:
+        recovered.shutdown()
 
 
 def wait_for_job(jobs: AsrJobService, job_id: str):

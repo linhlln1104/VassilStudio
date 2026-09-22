@@ -1,3 +1,5 @@
+import { clearLocalDrafts } from './studio-preferences'
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 export const SESSION_API_KEY_STORAGE_KEY = 'vassil.sessionApiKey'
 const RETIRED_LOCAL_API_KEY_STORAGE_KEYS = ['vassil.apiKey', 'vvoice.apiKey'] as const
@@ -202,6 +204,7 @@ export type DiagnosticsStorageItem = {
 }
 
 export type DiagnosticsResponse = {
+  recovery_warnings?: string[]
   generated_at: string
   version: string
   privacy: {
@@ -432,11 +435,25 @@ export type AuthPasswordChangeResponse = {
   other_sessions_revoked: number
 }
 
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: string | null
+  readonly requestId: string | null
+
+  constructor(message: string, status: number, code: string | null, requestId: string | null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+    this.requestId = requestId
+  }
+}
+
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithAuth(path, init)
 
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response))
+    throw await readApiError(response)
   }
 
   return response.json() as Promise<T>
@@ -446,7 +463,7 @@ export async function fetchBlob(path: string, init?: RequestInit): Promise<Blob>
   const response = await fetchWithAuth(path, init)
 
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response))
+    throw await readApiError(response)
   }
 
   return response.blob()
@@ -455,7 +472,7 @@ export async function fetchBlob(path: string, init?: RequestInit): Promise<Blob>
 async function fetchProbe(path: string): Promise<ProbeResponse> {
   const response = await fetchWithAuth(path)
   if (!response.ok && response.status !== 503) {
-    throw new Error(await readErrorMessage(response))
+    throw await readApiError(response)
   }
   return response.json() as Promise<ProbeResponse>
 }
@@ -473,19 +490,24 @@ function fetchWithAuth(path: string, init?: RequestInit): Promise<Response> {
   })
 }
 
-async function readErrorMessage(response: Response) {
+async function readApiError(response: Response): Promise<ApiError> {
   const fallback = `Request failed: ${response.status}`
   const body = await response.text()
-  if (!body) {
-    return fallback
-  }
-
+  let message = fallback
+  let code: string | null = null
+  let requestId = response.headers.get('X-Request-ID')
   try {
     const parsed = JSON.parse(body) as unknown
-    return errorMessageFromJson(parsed) || fallback
+    message = errorMessageFromJson(parsed) || fallback
+    if (parsed && typeof parsed === 'object') {
+      const record = parsed as Record<string, unknown>
+      code = typeof record.code === 'string' ? record.code : typeof record.error === 'string' ? record.error : null
+      requestId ||= typeof record.request_id === 'string' ? record.request_id : null
+    }
   } catch {
-    return body
+    // Proxy HTML and implementation details are not suitable user-facing errors.
   }
+  return new ApiError(message, response.status, code, requestId)
 }
 
 function errorMessageFromJson(value: unknown): string {
@@ -561,6 +583,7 @@ export const api = {
     } finally {
       ownerSessionActive = false
       clearBrowserApiKey()
+      clearLocalDrafts()
     }
   },
   authChangePassword: (payload: { currentPassword: string; newPassword: string }) =>

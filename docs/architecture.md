@@ -47,7 +47,8 @@ require persisted model timing. JSON includes current and raw transcript state f
 
 `backend/vvoice/domains/tts`
 
-Uses ZipVoice via `sherpa_onnx.OfflineTtsZipvoiceModelConfig`.
+Uses ZipVoice through the direct `ZipVoiceOnnxRuntime` adapter, with eSpeak text preparation
+and ONNX Runtime CPU sessions for the text encoder, flow matching decoder, and Vocos vocoder.
 
 TTS runtime selection is language-aware. `config/vassil.example.json` defines `tts.models.vi` as the
 default Vietnamese ZipVoice profile and `tts.models.en` as the English profile, each with its own
@@ -240,6 +241,7 @@ logs are written by the deployment environment.
 
 - Keep model objects as singletons per process; loading them per request is too expensive.
 - Prefer CPU int8 for small machines and CUDA provider only with a compatible sherpa-onnx wheel.
-- Add queueing around ZipVoice if concurrency rises; flow matching can saturate CPU quickly.
+- ASR/TTS already have bounded in-process queues. Keep one application process per workspace;
+  introducing multiple processes requires coordinated job ownership and storage locking.
 - Keep the Vietnamese phonemizer health check in `scripts/doctor.py`; text frontend regressions are
   easier to catch there than by listening to generated WAVs after the fact.

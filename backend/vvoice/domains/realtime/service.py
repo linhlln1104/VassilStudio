@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any
 
 import numpy as np
@@ -10,6 +11,9 @@ from vvoice.core.errors import VVoiceError
 
 
 SUPPORTED_ENCODINGS = {"pcm_f32le", "pcm_s16le"}
+MIN_CHUNK_SECONDS = 0.05
+MAX_CHUNK_SECONDS = 30.0
+MAX_BUFFER_SECONDS = 60.0
 
 
 class RealtimeProtocolError(VVoiceError):
@@ -44,6 +48,7 @@ class RealtimeAsrSession:
         self.silence_rms = silence_rms
         self._buffer = np.empty(0, dtype=np.float32)
         self._validate()
+        self._buffer_limit = self.max_buffer_seconds
 
     @classmethod
     def from_settings(cls, settings: RealtimeSettings, sample_rate: int) -> RealtimeAsrSession:
@@ -57,18 +62,27 @@ class RealtimeAsrSession:
         )
 
     def apply_config(self, payload: dict[str, Any]) -> None:
-        sample_rate = int(payload.get("sample_rate", self.sample_rate))
+        allowed = {"type", *self.describe()}
+        if set(payload) - allowed:
+            raise RealtimeProtocolError("Unknown realtime configuration field")
+        sample_rate = payload.get("sample_rate", self.sample_rate)
+        if isinstance(sample_rate, bool) or not isinstance(sample_rate, int):
+            raise RealtimeProtocolError("Realtime sample_rate must be an integer")
         if sample_rate != self.sample_rate:
             raise RealtimeProtocolError(
                 f"Realtime ASR expects {self.sample_rate} Hz PCM, got {sample_rate} Hz"
             )
 
-        self.encoding = str(payload.get("encoding", self.encoding))
-        self.chunk_seconds = float(payload.get("chunk_seconds", self.chunk_seconds))
-        self.min_chunk_seconds = float(payload.get("min_chunk_seconds", self.min_chunk_seconds))
-        self.max_buffer_seconds = float(payload.get("max_buffer_seconds", self.max_buffer_seconds))
-        self.silence_rms = float(payload.get("silence_rms", self.silence_rms))
-        self._validate()
+        candidate = self.describe() | {key: value for key, value in payload.items() if key != "type"}
+        validated = RealtimeAsrSession(**candidate)
+        if validated.max_buffer_seconds > self._buffer_limit:
+            raise RealtimeProtocolError("Realtime buffer exceeds the server session limit")
+        if self._buffer.size and validated.encoding != self.encoding:
+            raise RealtimeProtocolError("Flush or clear buffered audio before changing encoding")
+        if self._buffer.size > self._seconds_to_samples(validated.max_buffer_seconds):
+            raise RealtimeProtocolError("Flush or clear audio before reducing the buffer limit")
+        for key, value in validated.describe().items():
+            setattr(self, key, value)
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -81,6 +95,12 @@ class RealtimeAsrSession:
         }
 
     def append_binary(self, data: bytes) -> list[RealtimeAudioChunk]:
+        bytes_per_sample = 4 if self.encoding == "pcm_f32le" else 2
+        max_samples = self._seconds_to_samples(self.max_buffer_seconds)
+        # A frame may complete a buffered chunk. Bound the incoming frame separately;
+        # after draining, retained audio is strictly shorter than one chunk.
+        if len(data) / bytes_per_sample > max_samples:
+            raise RealtimeProtocolError("Realtime audio exceeds the session buffer limit")
         samples = self.decode_binary(data)
         if samples.size == 0:
             return []
@@ -93,9 +113,6 @@ class RealtimeAsrSession:
             chunk = self._buffer[:chunk_samples]
             self._buffer = self._buffer[chunk_samples:]
             chunks.append(self._make_chunk(chunk))
-
-        if self._buffer.size > self._seconds_to_samples(self.max_buffer_seconds):
-            self._buffer = self._buffer[-self._seconds_to_samples(self.max_buffer_seconds) :]
 
         return chunks
 
@@ -148,15 +165,27 @@ class RealtimeAsrSession:
         return max(1, int(round(seconds * self.sample_rate)))
 
     def _validate(self) -> None:
-        if self.sample_rate <= 0:
-            raise RealtimeProtocolError("Realtime sample_rate must be positive")
-        if self.encoding not in SUPPORTED_ENCODINGS:
-            raise RealtimeProtocolError(f"Unsupported realtime audio encoding: {self.encoding}")
-        if self.chunk_seconds <= 0:
-            raise RealtimeProtocolError("Realtime chunk_seconds must be positive")
-        if self.min_chunk_seconds <= 0:
-            raise RealtimeProtocolError("Realtime min_chunk_seconds must be positive")
-        if self.max_buffer_seconds < self.chunk_seconds:
-            raise RealtimeProtocolError("Realtime max_buffer_seconds must be >= chunk_seconds")
-        if self.silence_rms < 0:
-            raise RealtimeProtocolError("Realtime silence_rms must be non-negative")
+        if (
+            isinstance(self.sample_rate, bool)
+            or not isinstance(self.sample_rate, int)
+            or not 8000 <= self.sample_rate <= 192000
+        ):
+            raise RealtimeProtocolError("Realtime sample_rate must be an integer from 8000 to 192000")
+        if not isinstance(self.encoding, str) or self.encoding not in SUPPORTED_ENCODINGS:
+            raise RealtimeProtocolError("Unsupported realtime audio encoding")
+        for name, lower, upper in (
+            ("chunk_seconds", MIN_CHUNK_SECONDS, MAX_CHUNK_SECONDS),
+            ("min_chunk_seconds", MIN_CHUNK_SECONDS, MAX_CHUNK_SECONDS),
+            ("max_buffer_seconds", MIN_CHUNK_SECONDS, MAX_BUFFER_SECONDS),
+            ("silence_rms", 0, 1),
+        ):
+            value = getattr(self, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or not lower <= value <= upper
+            ):
+                raise RealtimeProtocolError(f"Realtime {name} must be between {lower} and {upper}")
+        if max(self.min_chunk_seconds, self.chunk_seconds) > self.max_buffer_seconds:
+            raise RealtimeProtocolError("Realtime chunk durations must not exceed the buffer")

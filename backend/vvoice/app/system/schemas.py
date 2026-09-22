@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
@@ -111,6 +111,7 @@ class DiagnosticsResponse(BaseModel):
     security: DiagnosticsSecurity
     storage: list[DiagnosticsStorageItem]
     license: DiagnosticsLicense
+    recovery_warnings: list[str] = Field(default_factory=list)
 
 
 class WarmupResponse(BaseModel):

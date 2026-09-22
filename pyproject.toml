@@ -9,7 +9,7 @@ description = "VassilStudio local voice platform using ZipFormer ASR and ZipVoic
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115",
   "python-multipart>=0.0.9",
@@ -36,6 +36,9 @@ test = [
   "pytest==9.1.1",
   "ruff==0.15.20",
 ]
+qa = [
+  "uvicorn>=0.30",
+]
 dev = [
   "uvicorn[standard]>=0.30",
   "requests>=2.32",
@@ -59,7 +62,7 @@ where = ["backend"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

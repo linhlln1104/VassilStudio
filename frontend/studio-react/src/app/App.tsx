@@ -6,6 +6,7 @@ import { AuthPage } from '@/features/auth/AuthPage'
 import { ProductShell } from '@/features/product/ProductShell'
 
 import { AppProviders } from './providers'
+import { RouteErrorBoundary } from './RouteErrorBoundary'
 import { routeFromHash, routes, type RouteId } from './routes'
 
 type ProductPage = 'privacy' | 'license' | 'support' | 'changelog' | 'operations'
@@ -31,9 +32,11 @@ function StudioApp() {
 
   return (
     <AppShell activeRoute={activeRoute} onRouteChange={handleRouteChange}>
-      <Suspense fallback={<RouteLoadingFallback />}>
-        <ActiveView />
-      </Suspense>
+      <RouteErrorBoundary key={activeRoute}>
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <ActiveView />
+        </Suspense>
+      </RouteErrorBoundary>
     </AppShell>
   )
 }

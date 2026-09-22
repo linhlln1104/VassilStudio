@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
+import { authPageUrl } from '@/lib/auth-navigation'
 import { BRAND_LOGO_SRC, BRAND_NAME } from '@/lib/brand'
 
 type AuthGateProps = {
@@ -24,11 +25,11 @@ export function AuthGate({ children }: AuthGateProps) {
       return
     }
     if (status.setup_required) {
-      window.location.assign('/setup')
+      window.location.assign(authPageUrl('setup'))
       return
     }
     if (!status.authenticated) {
-      window.location.assign('/login')
+      window.location.assign(authPageUrl('login'))
     }
   }, [statusQuery.data])
 

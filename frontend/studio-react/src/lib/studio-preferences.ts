@@ -13,14 +13,14 @@ function readStoredPreference(key: string, legacyKey: string): string {
     return ''
   }
 
-  const value = window.localStorage.getItem(key)
+  const value = readStorage(key)
   if (value) {
     return value
   }
 
-  const legacyValue = window.localStorage.getItem(legacyKey)
+  const legacyValue = readStorage(legacyKey)
   if (legacyValue) {
-    window.localStorage.setItem(key, legacyValue)
+    writeStorage(key, legacyValue)
     return legacyValue
   }
 
@@ -34,11 +34,11 @@ function writeStoredPreference(key: string, legacyKey: string, value: string): v
 
   const normalized = value.trim()
   if (normalized) {
-    window.localStorage.setItem(key, normalized)
-    window.localStorage.removeItem(legacyKey)
+    writeStorage(key, normalized)
+    writeStorage(legacyKey)
   } else {
-    window.localStorage.removeItem(key)
-    window.localStorage.removeItem(legacyKey)
+    writeStorage(key)
+    writeStorage(legacyKey)
   }
 }
 
@@ -65,8 +65,8 @@ export function getPendingScript(): string {
 export function consumePendingScript(): string {
   const pendingScript = getPendingScript()
   if (typeof window !== 'undefined') {
-    window.localStorage.removeItem(PENDING_SCRIPT_STORAGE_KEY)
-    window.localStorage.removeItem(LEGACY_PENDING_SCRIPT_STORAGE_KEY)
+    writeStorage(PENDING_SCRIPT_STORAGE_KEY)
+    writeStorage(LEGACY_PENDING_SCRIPT_STORAGE_KEY)
   }
   return pendingScript
 }
@@ -85,10 +85,30 @@ export function setGenerateDraft(script: string): void {
   }
 
   if (script) {
-    window.localStorage.setItem(GENERATE_DRAFT_STORAGE_KEY, script)
-    window.localStorage.removeItem(LEGACY_GENERATE_DRAFT_STORAGE_KEY)
+    writeStorage(GENERATE_DRAFT_STORAGE_KEY, script)
+    writeStorage(LEGACY_GENERATE_DRAFT_STORAGE_KEY)
   } else {
-    window.localStorage.removeItem(GENERATE_DRAFT_STORAGE_KEY)
-    window.localStorage.removeItem(LEGACY_GENERATE_DRAFT_STORAGE_KEY)
+    writeStorage(GENERATE_DRAFT_STORAGE_KEY)
+    writeStorage(LEGACY_GENERATE_DRAFT_STORAGE_KEY)
+  }
+}
+
+export function clearLocalDrafts(): void {
+  for (const key of [PENDING_SCRIPT_STORAGE_KEY, GENERATE_DRAFT_STORAGE_KEY,
+    LEGACY_PENDING_SCRIPT_STORAGE_KEY, LEGACY_GENERATE_DRAFT_STORAGE_KEY]) {
+    writeStorage(key)
+  }
+}
+
+function readStorage(key: string): string | null {
+  try { return window.localStorage.getItem(key) } catch { return null }
+}
+
+function writeStorage(key: string, value?: string): void {
+  try {
+    if (value === undefined) window.localStorage.removeItem(key)
+    else window.localStorage.setItem(key, value)
+  } catch {
+    // Drafts remain usable in memory when storage is disabled or full.
   }
 }

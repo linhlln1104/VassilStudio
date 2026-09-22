@@ -1,15 +1,11 @@
+param([string]$Target = "")
+
 $ErrorActionPreference = "Stop"
+$Root = Split-Path -Parent $PSScriptRoot
+$Python = Join-Path $Root ".venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $Python)) { $Python = "python" }
 
-$root = Split-Path -Parent $PSScriptRoot
-$target = Join-Path $root "models\runtime\tts\vi\zipvoice\vocos_24khz.onnx"
-$url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx"
-
-if (Test-Path $target) {
-    Write-Host "Already exists: $target"
-    exit 0
-}
-
-New-Item -ItemType Directory -Force (Split-Path -Parent $target) | Out-Null
-Write-Host "Downloading $url"
-Invoke-WebRequest -UseBasicParsing $url -OutFile $target
-Write-Host "Saved: $target"
+$DownloadArguments = @((Join-Path $PSScriptRoot "download_vocoder.py"))
+if ($Target) { $DownloadArguments += @("--target", $Target) }
+& $Python @DownloadArguments
+if ($LASTEXITCODE -ne 0) { throw "Vocoder download or integrity verification failed." }

@@ -284,8 +284,9 @@ export function JobsView() {
         throw new Error('The original input audio is unavailable.')
       }
       const blob = await fetchBlob(job.audioUrl)
-      const source = new File([blob], job.filename || `${job.id}-input.wav`, {
-        type: blob.type || 'audio/wav',
+      const sourceName = job.filename?.replace(/\.[^.]+$/, '') || `${job.id}-input`
+      const source = new File([blob], `${sourceName}.wav`, {
+        type: 'audio/wav',
       })
       return api.createAsrJob(source, { language: job.language }, { idempotencyKey })
     },

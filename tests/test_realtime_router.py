@@ -1,8 +1,10 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from vvoice.core.errors import ModelConfigurationError, PUBLIC_MODEL_ERROR_MESSAGE
 from vvoice.domains.realtime.router import router
@@ -23,6 +25,57 @@ class FakeAsr:
 class FailingAsr(FakeAsr):
     def transcribe(self, samples: np.ndarray, sample_rate: int, language: str | None = None):
         raise ModelConfigurationError(r"Missing C:\Users\private\models\encoder.onnx")
+
+
+def protocol_client() -> TestClient:
+    app = FastAPI()
+    app.state.container = SimpleNamespace(
+        asr=FakeAsr(),
+        settings=SimpleNamespace(
+            realtime=SimpleNamespace(
+                encoding="pcm_f32le", chunk_seconds=0.5, min_chunk_seconds=0.1,
+                max_buffer_seconds=2.0, silence_rms=0.0,
+            ),
+            limits=SimpleNamespace(max_realtime_frame_bytes=2 * 1024 * 1024),
+            security=SimpleNamespace(api_keys=()),
+        ),
+    )
+    app.include_router(router, prefix="/api/v1/realtime")
+    return TestClient(app)
+
+
+@pytest.mark.parametrize("text", [
+    "[]", "null", '"close"', "", '{"type": 1}',
+    '{"type":"config","chunk_seconds":"abc"}',
+    '{"type":"config","chunk_seconds":NaN}',
+    '{"type":"config","max_buffer_seconds":1000000000}',
+    '{"type":"ping","extra":true}', " " * 4097,
+])
+def test_invalid_control_has_error_envelope_and_protocol_close(text) -> None:
+    with protocol_client().websocket_connect("/api/v1/realtime/asr") as websocket:
+        assert websocket.receive_json()["type"] == "ready"
+        websocket.send_text(text)
+        assert websocket.receive_json()["type"] == "error"
+        with pytest.raises(WebSocketDisconnect) as closed:
+            websocket.receive_json()
+        assert closed.value.code == 1003
+
+
+def test_close_ack_follows_final_transcript() -> None:
+    with protocol_client().websocket_connect("/api/v1/realtime/asr") as websocket:
+        websocket.receive_json()
+        websocket.send_bytes(np.full(800, 0.1, dtype=np.float32).tobytes())
+        websocket.send_json({"type": "close"})
+        final = websocket.receive_json()
+        assert final["type"] == "transcript"
+        assert final["final"] is True
+        assert final["text"] == "vi:800"
+        assert websocket.receive_json() == {"type": "closed"}
+
+
+def test_invalid_language_returns_safe_error_after_accept() -> None:
+    with protocol_client().websocket_connect("/api/v1/realtime/asr?language=invalid") as websocket:
+        assert websocket.receive_json()["type"] == "error"
 
 
 def test_realtime_websocket_uses_requested_language() -> None:

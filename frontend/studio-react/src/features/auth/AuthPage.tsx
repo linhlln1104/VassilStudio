@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useId, useState, type FormEvent } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -13,6 +13,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
+import { authPageUrl, authReturnTo } from '@/lib/auth-navigation'
 import { BRAND_LOGO_SRC, BRAND_NAME } from '@/lib/brand'
 
 type AuthPageProps = {
@@ -20,6 +21,7 @@ type AuthPageProps = {
 }
 
 export function AuthPage({ mode }: AuthPageProps) {
+  const returnTo = authReturnTo()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -31,7 +33,7 @@ export function AuthPage({ mode }: AuthPageProps) {
   const mutation = useMutation({
     mutationFn: mode === 'setup' ? api.authSetup : api.authLogin,
     onSuccess: () => {
-      window.location.assign('/studio')
+      window.location.assign(returnTo)
     },
   })
 
@@ -42,21 +44,21 @@ export function AuthPage({ mode }: AuthPageProps) {
       return
     }
     if (!status.auth_required) {
-      window.location.assign('/studio')
+      window.location.assign(returnTo)
       return
     }
     if (mode === 'setup' && !status.setup_required) {
-      window.location.assign(status.authenticated ? '/studio' : '/login')
+      window.location.assign(status.authenticated ? returnTo : authPageUrl('login', returnTo))
       return
     }
     if (mode === 'login' && status.setup_required) {
-      window.location.assign('/setup')
+      window.location.assign(authPageUrl('setup', returnTo))
       return
     }
     if (mode === 'login' && status.authenticated) {
-      window.location.assign('/studio')
+      window.location.assign(returnTo)
     }
-  }, [mode, status])
+  }, [mode, returnTo, status])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -235,11 +237,13 @@ function AuthPasswordField({
   onChange: (value: string) => void
   onToggle?: () => void
 }) {
+  const inputId = useId()
   return (
-    <label className={`block text-xs font-medium text-slate-700 ${className}`}>
-      {label}
+    <div className={`block text-xs font-medium text-slate-700 ${className}`}>
+      <label htmlFor={inputId}>{label}</label>
       <div className="mt-1 flex rounded-md border border-slate-200 bg-white focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 aria-invalid:border-red-400 aria-invalid:ring-red-100" aria-invalid={invalid}>
         <input
+          id={inputId}
           className="h-9 min-w-0 flex-1 border-0 bg-transparent px-2.5 text-sm text-slate-950 outline-none"
           type={visible ? 'text' : 'password'}
           value={value}
@@ -262,6 +266,6 @@ function AuthPasswordField({
           </button>
         ) : null}
       </div>
-    </label>
+    </div>
   )
 }

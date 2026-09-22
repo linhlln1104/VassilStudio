@@ -2,6 +2,7 @@ param(
   [switch]$SkipDoctor,
   [switch]$SkipOpenApi,
   [switch]$SkipNode,
+  [switch]$SkipBrowser,
   [switch]$SkipCompose,
   [switch]$CI,
   [switch]$RunE2E,
@@ -51,17 +52,7 @@ function Test-CommandAvailable {
   return [bool](Get-Command $Command -ErrorAction SilentlyContinue)
 }
 
-function Get-NpmCommand {
-  if (Test-CommandAvailable "npm.cmd") {
-    return "npm.cmd"
-  }
-
-  if (Test-CommandAvailable "npm") {
-    return "npm"
-  }
-
-  return $null
-}
+. (Join-Path $PSScriptRoot "node_toolchain.ps1")
 
 Invoke-Step "setup storage" {
   & (Join-Path $PSScriptRoot "setup_storage.ps1")
@@ -92,14 +83,9 @@ Invoke-Step "ruff" {
 }
 
 if (-not $SkipNode) {
-  if (-not (Test-CommandAvailable "node")) {
-    throw "Node.js is required for frontend syntax checks. Install node or rerun with -SkipNode."
-  }
-
-  $Npm = Get-NpmCommand
-  if (-not $Npm) {
-    throw "npm is required for React Studio checks. Install npm or rerun with -SkipNode."
-  }
+  $NodeToolchain = Resolve-NodeToolchain
+  $Node = $NodeToolchain.Node
+  $Npm = $NodeToolchain.Npm
 
   $StudioReact = Join-Path $Root "frontend\studio-react"
   if ($CI -or -not (Test-Path (Join-Path $StudioReact "node_modules"))) {
@@ -152,7 +138,7 @@ if (-not $SkipNode) {
 
   foreach ($RelativePath in $FrontendFiles) {
     Invoke-Step "node --check $RelativePath" {
-      & node --check (Join-Path $Root $RelativePath)
+      & $Node --check (Join-Path $Root $RelativePath)
     }
   }
 }
@@ -163,6 +149,14 @@ Invoke-Step "pytest" {
 
 Invoke-Step "auth/product smoke" {
   & $Python (Join-Path $PSScriptRoot "smoke_auth.py")
+}
+
+if (-not $SkipNode -and -not $SkipBrowser) {
+  Invoke-Step "isolated browser QA" {
+    $BrowserArguments = @((Join-Path $PSScriptRoot "browser_qa.py"), "--node", $Node)
+    if ($CI) { $BrowserArguments += "--install-browser" }
+    & $Python @BrowserArguments
+  }
 }
 
 if (-not $SkipCompose) {

@@ -255,3 +255,26 @@ def test_studio_redirects_to_setup_until_local_session_exists(tmp_path) -> None:
 
     refreshed_response = client.get("/studio")
     assert f'content="{nonce}"' not in refreshed_response.text
+
+
+def test_auth_redirect_keeps_studio_path_and_query(tmp_path) -> None:
+    app = FastAPI()
+    app.state.container = SimpleNamespace(
+        settings=SimpleNamespace(security=SimpleNamespace(auth_required=True)),
+        auth=SimpleNamespace(setup_required=True, account_from_session_token=lambda _: None),
+    )
+    app.include_router(router)
+    response = TestClient(app).get("/studio/review?job=test-job", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/setup?return_to=%2Fstudio%2Freview%3Fjob%3Dtest-job"
+
+
+def test_missing_react_build_has_actionable_unavailable_page(tmp_path, monkeypatch) -> None:
+    tmp_path.joinpath("index.html").write_text("<html>legacy</html>", encoding="utf-8")
+    monkeypatch.setattr("vvoice.app.studio.router.STATIC_DIR", tmp_path)
+    app = FastAPI()
+    app.include_router(router)
+    response = TestClient(app).get("/setup")
+    assert response.status_code == 503
+    assert "npm run build" in response.text
+    assert "Studio needs its frontend build" in response.text

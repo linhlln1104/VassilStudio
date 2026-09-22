@@ -64,16 +64,22 @@ class AsrService:
         return tuple(sorted(self._settings.models))
 
     def sample_rate_for(self, language: str | None = None) -> int:
+        if not self._settings.enabled:
+            raise ModelConfigurationError("ASR is disabled in this workspace")
         return self._settings.model_for(language).sample_rate
 
     def warmup(self, language: str | None = None) -> None:
         self._get_recognizer(normalize_language(language or self._settings.default_language))
 
     def warmup_all(self) -> None:
+        if not self._settings.enabled:
+            return
         for language in self.configured_languages:
             self.warmup(language)
 
     def _get_recognizer(self, language: str):
+        if not self._settings.enabled:
+            raise ModelConfigurationError("ASR is disabled in this workspace")
         normalized_language = normalize_language(language)
         if normalized_language in self._recognizers:
             return self._recognizers[normalized_language]

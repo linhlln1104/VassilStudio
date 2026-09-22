@@ -16,7 +16,7 @@ def test_github_quality_workflow_uses_read_only_pinned_actions() -> None:
     assert "runs-on: windows-latest" in workflow
     assert "timeout-minutes: 45" in workflow
     assert "./scripts/check.ps1 -CI" in workflow
-    assert 'python -m pip install ".[test]"' in workflow
+    assert 'python -m pip install ".[test,qa]"' in workflow
     assert 'python -m pip install ".[dev]"' not in workflow
     assert "secrets." not in workflow
 
@@ -40,6 +40,9 @@ def test_ci_check_mode_is_reproducible_and_model_independent() -> None:
 def test_toolchain_versions_match_container_baseline() -> None:
     assert ROOT.joinpath(".python-version").read_text(encoding="utf-8").strip() == "3.12"
     assert ROOT.joinpath(".node-version").read_text(encoding="utf-8").strip() == "24"
+    metadata = tomllib.loads(ROOT.joinpath("pyproject.toml").read_text(encoding="utf-8"))
+    assert metadata["project"]["requires-python"] == ">=3.12"
+    assert metadata["tool"]["ruff"]["target-version"] == "py312"
 
     dockerfile = ROOT.joinpath("docker", "Dockerfile").read_text(encoding="utf-8")
     assert "FROM python:3.12-slim@sha256:" in dockerfile
@@ -93,6 +96,8 @@ def test_runtime_dependencies_are_resolvable_from_supported_package_indexes() ->
     assert model_runtime <= extras["runtime"]
     assert model_runtime.isdisjoint(base | extras["test"])
     assert test_tools == extras["test"]
+    assert extras["qa"] == {"uvicorn>=0.30"}
+    assert model_runtime.isdisjoint(extras["qa"])
     assert extras["runtime"] | extras["test"] <= extras["dev"]
     assert "piper_phonemize" not in project_text
 

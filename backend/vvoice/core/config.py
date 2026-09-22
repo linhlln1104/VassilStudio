@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -241,6 +242,8 @@ class JobSettings:
     asr_max_attempts: int
     tts_max_attempts: int
     retry_backoff_seconds: float
+    asr_max_pending_jobs: int = 32
+    tts_max_pending_jobs: int = 32
 
 
 @dataclass(frozen=True)
@@ -321,6 +324,12 @@ def parse_settings(raw: dict[str, Any], root: Path) -> Settings:
             silence_rms=float(realtime.get("silence_rms", 0.003)),
         ),
         jobs=JobSettings(
+            asr_max_pending_jobs=_positive_int(
+                jobs.get("asr_max_pending_jobs", 32), "jobs.asr_max_pending_jobs",
+            ),
+            tts_max_pending_jobs=_positive_int(
+                jobs.get("tts_max_pending_jobs", 32), "jobs.tts_max_pending_jobs",
+            ),
             asr_max_workers=_positive_int(jobs.get("asr_max_workers", 1), "jobs.asr_max_workers"),
             tts_max_workers=_positive_int(jobs.get("tts_max_workers", 1), "jobs.tts_max_workers"),
             asr_max_attempts=_positive_int(
@@ -514,8 +523,8 @@ def _positive_int(value: Any, name: str) -> int:
 
 def _non_negative_float(value: Any, name: str) -> float:
     parsed = float(value)
-    if parsed < 0:
-        raise ValueError(f"{name} must be greater than or equal to 0.")
+    if not math.isfinite(parsed) or parsed < 0:
+        raise ValueError(f"{name} must be finite and greater than or equal to 0.")
     return parsed
 
 

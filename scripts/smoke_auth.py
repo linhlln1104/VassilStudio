@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import tempfile
 
 try:
     from scripts._path import bootstrap_backend_path
+    from scripts.isolated_workspace import isolated_environment
 except ModuleNotFoundError:
     from _path import bootstrap_backend_path
+    from isolated_workspace import isolated_environment
 
 bootstrap_backend_path()
 
@@ -23,33 +24,27 @@ API_KEY = "smoke-api-key"
 
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="vassil-auth-smoke-") as temp_dir:
-        configure_environment(Path(temp_dir))
+        with isolated_environment(Path(temp_dir), {
+            "VASSIL_AUTH_REQUIRED": "true",
+            "VASSIL_SESSION_SECRET": "smoke-session-secret-with-enough-entropy",
+            "VASSIL_API_KEYS": API_KEY,
+        }):
+            from vvoice.main import create_app
 
-        from vvoice.main import create_app  # noqa: PLC0415
-
-        with TestClient(create_app()) as client:
-            assert_product_shell(client)
-            assert_first_run_redirect(client)
-            setup_owner(client)
-            assert_session_allows_studio_and_api(client)
-            assert_logout_redirects_to_login(client)
-            assert_login_restores_session(client)
-            assert_change_password(client)
-            assert_api_key_still_allows_automation(client)
+            with TestClient(create_app()) as client:
+                assert_product_shell(client)
+                assert_first_run_redirect(client)
+                setup_owner(client)
+                assert_session_allows_studio_and_api(client)
+                assert_logout_redirects_to_login(client)
+                assert_login_restores_session(client)
+                assert_change_password(client)
+                assert_api_key_still_allows_automation(client)
 
     print(
         "Auth/product smoke passed: setup, login, password change, "
         "protected Studio, API key automation",
     )
-
-
-def configure_environment(temp_dir: Path) -> None:
-    os.environ["VASSIL_ROOT"] = str(ROOT)
-    os.environ["VASSIL_CONFIG"] = str(ROOT / "config" / "vassil.example.json")
-    os.environ["VASSIL_AUTH_REQUIRED"] = "true"
-    os.environ["VASSIL_AUTH_DB_PATH"] = str(temp_dir / "auth.sqlite3")
-    os.environ["VASSIL_SESSION_SECRET"] = "smoke-session-secret-with-enough-entropy"
-    os.environ["VASSIL_API_KEYS"] = API_KEY
 
 
 def assert_product_shell(client: TestClient) -> None:

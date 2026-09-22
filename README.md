@@ -71,6 +71,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\download_vocoder.p
 
 ## Run
 
+Python 3.12 or newer and Node.js 24 are required. The tested runtime baseline is Python 3.12.
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -184,7 +186,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1
 ```
 
 The default check runs storage setup, doctor, OpenAPI export, ruff, pytest, React Studio
-lint/build, legacy frontend JavaScript syntax checks, and Docker Compose config validation.
+lint/build, seven isolated browser QA suites, legacy frontend JavaScript syntax checks, and
+Docker Compose config validation. Install `.[dev]` for the full local gate. Lightweight CI uses
+`.[test,qa]`; browser QA installs Chromium in CI and uses Chrome by default locally.
+OpenAPI export, auth smoke and browser QA use disposable storage, so they do not recover or mutate
+jobs in your normal workspace. `-SkipBrowser` explicitly omits browser QA when needed.
 GitHub Actions runs the Windows CI equivalent with `scripts/check.ps1 -CI`; that mode performs a
 clean npm install, rejects high-severity npm advisories and generated OpenAPI drift, and leaves
 model-binary and Docker-daemon validation to the release hardware gates below.
@@ -195,6 +201,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1 -RunE2E
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1 -RunLanguageMatrix
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1 -RunDocker
 ```
+
+Run a real-model VI/EN pipeline smoke with synthetic audio and disposable voices/jobs/auth:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/smoke_runtime_isolated.py
+```
+
+This validates API, intake, queued TTS/ASR, export and WebSocket finalization using installed models.
+It does not measure perceptual voice quality or access your saved voice samples.
 
 Latency benchmarks run against a live API and write JSON summaries under `tmp/benchmarks`:
 

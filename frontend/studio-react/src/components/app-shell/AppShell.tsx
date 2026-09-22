@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { useState, type ReactNode } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
+import { motion } from 'framer-motion'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Cpu,
@@ -34,25 +35,8 @@ export function AppShell({ activeRoute, onRouteChange, children }: AppShellProps
     setMobileNavOpen(false)
   }
 
-  useEffect(() => {
-    if (!mobileNavOpen) {
-      return
-    }
-    const previousOverflow = document.body.style.overflow
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setMobileNavOpen(false)
-      }
-    }
-    document.body.style.overflow = 'hidden'
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [mobileNavOpen])
-
   return (
+    <Dialog.Root open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
     <div className="min-h-screen bg-studio-canvas text-studio-ink">
       <div className="flex min-h-screen">
         <aside className="hidden w-[236px] shrink-0 border-r border-studio-border bg-white px-3 py-4 lg:block">
@@ -62,63 +46,40 @@ export function AppShell({ activeRoute, onRouteChange, children }: AppShellProps
           />
         </aside>
 
-        <AnimatePresence>
-          {mobileNavOpen ? (
-            <div className="fixed inset-0 z-40 lg:hidden">
-              <motion.button
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16 }}
-                className="absolute inset-0 bg-neutral-950/35"
-                type="button"
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-neutral-950/35" />
+          <Dialog.Content className="fixed inset-y-0 left-0 z-50 w-[min(82vw,296px)] border-r border-studio-border bg-white px-3 py-4 shadow-xl outline-none">
+            <Dialog.Title className="sr-only">Studio navigation</Dialog.Title>
+            <Dialog.Description className="sr-only">Choose a Studio view.</Dialog.Description>
+            <Dialog.Close asChild>
+              <Button
+                className="absolute right-3 top-3"
+                size="icon"
+                variant="ghost"
                 aria-label="Close navigation"
-                onClick={() => setMobileNavOpen(false)}
-              />
-              <motion.aside
-                initial={{ x: -296 }}
-                animate={{ x: 0 }}
-                exit={{ x: -296 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="relative h-full w-[min(82vw,296px)] border-r border-studio-border bg-white px-3 py-4 shadow-xl"
               >
-                <Button
-                  className="absolute right-3 top-3"
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setMobileNavOpen(false)}
-                  aria-label="Close navigation"
-                >
-                  <X className="size-4" />
-                </Button>
-                <NavigationRail
-                  activeRoute={activeRoute}
-                  onRouteChange={handleRouteSelect}
-                />
-              </motion.aside>
-            </div>
-          ) : null}
-        </AnimatePresence>
+                <X className="size-4" />
+              </Button>
+            </Dialog.Close>
+            <NavigationRail activeRoute={activeRoute} onRouteChange={handleRouteSelect} />
+          </Dialog.Content>
+        </Dialog.Portal>
 
         <main className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-studio-border bg-white/95 backdrop-blur-sm">
             <div className="flex min-h-14 items-center gap-2 px-3 sm:px-5 lg:px-6">
-              <Button
-                className="lg:hidden"
-                size="icon"
-                variant="ghost"
-                onClick={() => setMobileNavOpen(true)}
-                aria-label="Open navigation"
-              >
-                <Menu className="size-5" />
-              </Button>
+              <Dialog.Trigger asChild>
+                <Button className="lg:hidden" size="icon" variant="ghost" aria-label="Open navigation">
+                  <Menu className="size-5" />
+                </Button>
+              </Dialog.Trigger>
 
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-2.5 text-sm font-semibold text-studio-ink">
                   <span className="grid size-7 shrink-0 place-items-center rounded-md border border-studio-border bg-studio-paper text-neutral-600">
                     <ActiveRouteIcon className="size-4" />
                   </span>
-                  <span className="truncate">{activeRouteData.label}</span>
+                  <h1 className="truncate">{activeRouteData.label}</h1>
                 </div>
               </div>
 
@@ -141,6 +102,7 @@ export function AppShell({ activeRoute, onRouteChange, children }: AppShellProps
         </main>
       </div>
     </div>
+    </Dialog.Root>
   )
 }
 

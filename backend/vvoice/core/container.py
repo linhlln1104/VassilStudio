@@ -30,6 +30,7 @@ class AppContainer:
             self.asr,
             target_sample_rate=self.settings.asr.sample_rate,
             max_workers=self.settings.jobs.asr_max_workers,
+            max_pending_jobs=self.settings.jobs.asr_max_pending_jobs,
             max_attempts=self.settings.jobs.asr_max_attempts,
             retry_backoff_seconds=self.settings.jobs.retry_backoff_seconds,
         )
@@ -38,6 +39,7 @@ class AppContainer:
             self.tts,
             self.voices,
             max_workers=self.settings.jobs.tts_max_workers,
+            max_pending_jobs=self.settings.jobs.tts_max_pending_jobs,
             max_attempts=self.settings.jobs.tts_max_attempts,
             retry_backoff_seconds=self.settings.jobs.retry_backoff_seconds,
             max_text_chars=self.settings.limits.max_tts_text_chars,

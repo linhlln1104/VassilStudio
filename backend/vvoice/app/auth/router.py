@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 
 from vvoice.app.auth.schemas import (
     AuthChangePasswordRequest,
@@ -51,7 +52,7 @@ async def setup_owner(
         )
 
     try:
-        account = auth.create_owner(payload.username, payload.password)
+        account = await run_in_threadpool(auth.create_owner, payload.username, payload.password)
         session = auth.create_session(account, user_agent=request.headers.get("user-agent"))
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -91,7 +92,10 @@ async def login(
     if retry_after is not None:
         _raise_rate_limited(retry_after, "Too many login attempts. Try again later.")
 
-    account = auth.authenticate(payload.username, payload.password)
+    try:
+        account = await run_in_threadpool(auth.authenticate, payload.username, payload.password)
+    except AuthError:
+        account = None
     if account is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -159,7 +163,8 @@ async def change_password(
         _raise_rate_limited(retry_after, "Too many password change attempts. Try again later.")
 
     try:
-        revoked_count = auth.change_password(
+        revoked_count = await run_in_threadpool(
+            auth.change_password,
             account.account_id,
             payload.current_password,
             payload.new_password,

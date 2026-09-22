@@ -58,6 +58,30 @@ def test_health_reports_release_version(tmp_path) -> None:
     assert response.json()["version"] == __version__
 
 
+def test_readiness_rejects_empty_models_and_ignores_disabled_domains(tmp_path) -> None:
+    app, _, _ = make_app(tmp_path)
+    settings = app.state.container.settings
+    settings.asr.models["vi"].encoder.write_bytes(b"")
+    response = TestClient(app).get("/readyz")
+    assert response.status_code == 503
+    assert response.json()["checks"]["asr_vi_encoder"] is False
+    settings.asr.enabled = False
+    response = TestClient(app).get("/readyz")
+    assert response.status_code == 200
+    assert not any(key.startswith("asr_") for key in response.json()["checks"])
+
+
+def test_diagnostics_surfaces_recovery_warning_without_private_paths(tmp_path) -> None:
+    app, _, _ = make_app(tmp_path)
+    app.state.container.asr_jobs = SimpleNamespace(quarantined_count=2)
+    response = TestClient(app).get("/diagnostics")
+    warnings = response.json()["recovery_warnings"]
+    assert len(warnings) == 1
+    assert "asr_jobs: 2" in warnings[0]
+    assert "retained for recovery" in warnings[0]
+    assert str(tmp_path) not in warnings[0]
+
+
 def test_diagnostics_reports_privacy_filtered_operations_metadata(tmp_path, monkeypatch) -> None:
     gibibyte = 1024**3
     monkeypatch.setattr(
@@ -301,7 +325,7 @@ def make_tts_model(tmp_path):
 
 
 def touch(path):
-    path.write_text("", encoding="utf-8")
+    path.write_text("fixture", encoding="utf-8")
     return path
 
 

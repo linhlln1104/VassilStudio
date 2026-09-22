@@ -37,7 +37,8 @@ async def transcribe_audio(
         max_bytes=container.settings.limits.max_upload_bytes,
         field_name="audio",
     )
-    samples, sample_rate = load_audio_bytes(
+    samples, sample_rate = await run_in_threadpool(
+        load_audio_bytes,
         data,
         target_sample_rate=container.asr.sample_rate_for(normalized_language),
     )
@@ -60,7 +61,11 @@ async def transcribe_audio(
     "/jobs",
     response_model=AsrJobResponse,
     status_code=202,
-    responses={409: {"description": "Idempotency key conflicts with an earlier request"}},
+    responses={
+        409: {"description": "Idempotency key conflicts with an earlier request"},
+        429: {"description": "Job queue is full"},
+        413: {"description": "Decoded audio exceeds processing limits"},
+    },
 )
 async def create_asr_job(
     request: Request,
@@ -74,7 +79,8 @@ async def create_asr_job(
         max_bytes=container.settings.limits.max_upload_bytes,
         field_name="audio",
     )
-    job = container.asr_jobs.create_from_audio(
+    job = await run_in_threadpool(
+        container.asr_jobs.create_from_audio,
         audio_bytes=data,
         filename=safe_display_filename(audio.filename),
         language=normalize_language(language),
@@ -84,13 +90,13 @@ async def create_asr_job(
 
 
 @router.get("/jobs", response_model=list[AsrJobResponse])
-async def list_asr_jobs(request: Request):
+def list_asr_jobs(request: Request):
     container = request.app.state.container
     return [_job_response(job) for job in container.asr_jobs.list()]
 
 
 @router.delete("/jobs", response_model=AsrJobCleanupResponse)
-async def cleanup_asr_jobs(
+def cleanup_asr_jobs(
     request: Request,
     max_age_seconds: int | None = Query(default=None, ge=0),
 ):
@@ -100,13 +106,13 @@ async def cleanup_asr_jobs(
 
 
 @router.get("/jobs/{job_id}", response_model=AsrJobResponse)
-async def get_asr_job(request: Request, job_id: str):
+def get_asr_job(request: Request, job_id: str):
     container = request.app.state.container
     return _job_response(container.asr_jobs.get(job_id))
 
 
 @router.post("/jobs/{job_id}/cancel", response_model=AsrJobResponse)
-async def cancel_asr_job(request: Request, job_id: str):
+def cancel_asr_job(request: Request, job_id: str):
     container = request.app.state.container
     return _job_response(container.asr_jobs.cancel(job_id))
 
@@ -116,7 +122,7 @@ async def cancel_asr_job(request: Request, job_id: str):
     response_model=AsrJobResponse,
     responses={409: {"description": "Transcript is not ready or the revision is stale"}},
 )
-async def revise_asr_transcript(
+def revise_asr_transcript(
     request: Request,
     job_id: str,
     revision: TranscriptRevisionRequest,
@@ -140,7 +146,7 @@ async def revise_asr_transcript(
     "/jobs/{job_id}/exports/{export_format}",
     responses={409: {"description": "Transcript or timed segments are not ready"}},
 )
-async def export_asr_transcript(
+def export_asr_transcript(
     request: Request,
     job_id: str,
     export_format: TranscriptExportFormat,
@@ -158,7 +164,7 @@ async def export_asr_transcript(
 
 
 @router.get("/jobs/{job_id}/audio")
-async def get_asr_job_audio(request: Request, job_id: str):
+def get_asr_job_audio(request: Request, job_id: str):
     container = request.app.state.container
     job = container.asr_jobs.get(job_id)
     if not job.input_path or not job.input_path.exists():
@@ -172,7 +178,7 @@ async def get_asr_job_audio(request: Request, job_id: str):
 
 
 @router.delete("/jobs/{job_id}", response_model=AsrJobDeleteResponse)
-async def delete_asr_job(request: Request, job_id: str):
+def delete_asr_job(request: Request, job_id: str):
     container = request.app.state.container
     container.asr_jobs.delete(job_id)
     return {"deleted": True, "job_id": job_id}

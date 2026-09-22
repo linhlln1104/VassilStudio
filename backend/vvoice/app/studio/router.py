@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import secrets
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -116,6 +117,16 @@ def _studio_html_response(request: Request) -> HTMLResponse:
     style_nonce = secrets.token_urlsafe(24)
     request.state.style_nonce = style_nonce
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    if '<div id="root"' not in page:
+        return HTMLResponse(
+            "<!doctype html><html lang='en'><head><title>Build VassilStudio</title></head>"
+            "<body><h1>Studio needs its frontend build</h1>"
+            "<p>Run these commands from the project directory, then restart the server:</p>"
+            "<pre>cd frontend/studio-react\nnpm ci\nnpm run build</pre>"
+            "<p>The API remains available while Studio is being prepared.</p></body></html>",
+            status_code=503,
+            headers={"Cache-Control": "no-store", "Retry-After": "30"},
+        )
     nonce_meta = f'<meta name="csp-style-nonce" content="{style_nonce}" />'
     page = page.replace("</head>", f"    {nonce_meta}\n  </head>", 1)
     return HTMLResponse(page, headers={"Cache-Control": "no-store"})
@@ -139,4 +150,9 @@ def _studio_auth_redirect(request: Request) -> RedirectResponse | None:
 
     auth = getattr(request.app.state.container, "auth", None)
     target = "/setup" if auth and auth.setup_required else "/login"
+    destination = request.url.path
+    if request.url.query:
+        destination += "?" + request.url.query
+    if destination != "/studio":
+        target += "?" + urlencode({"return_to": destination})
     return RedirectResponse(url=target, status_code=303)

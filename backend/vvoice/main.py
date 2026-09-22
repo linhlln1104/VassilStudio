@@ -13,8 +13,10 @@ from vvoice.core.config import load_settings
 from vvoice.core.container import AppContainer
 from vvoice.core.errors import (
     AudioError,
+    AudioLimitError,
     AsrJobNotFoundError,
     IdempotencyConflictError,
+    JobQueueFullError,
     ModelConfigurationError,
     TranscriptNotReadyError,
     TranscriptRevisionConflictError,
@@ -124,6 +126,21 @@ def register_request_middleware(app: FastAPI) -> None:
 
 def register_exception_handlers(app: FastAPI) -> None:
     logger = logging.getLogger("vvoice.errors")
+
+    @app.exception_handler(JobQueueFullError)
+    async def queue_full_handler(_: Request, exc: JobQueueFullError) -> JSONResponse:
+        return JSONResponse(
+            status_code=429,
+            content=_error_content("job_queue_full", str(exc)),
+            headers={"Retry-After": "5"},
+        )
+
+    @app.exception_handler(AudioLimitError)
+    async def audio_limit_handler(_: Request, exc: AudioLimitError) -> JSONResponse:
+        return JSONResponse(
+            status_code=413,
+            content=_error_content("audio_limit_exceeded", public_error_message(exc)),
+        )
 
     @app.exception_handler(UnsupportedAudioFormatError)
     async def unsupported_audio_handler(

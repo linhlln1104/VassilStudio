@@ -25,6 +25,14 @@ class AudioError(VVoiceError):
     pass
 
 
+class AudioLimitError(AudioError):
+    pass
+
+
+class JobQueueFullError(VVoiceError):
+    pass
+
+
 class UnsupportedAudioFormatError(AudioError):
     pass
 
@@ -66,6 +74,8 @@ class TranscriptNotReadyError(VVoiceError):
 
 
 def public_error_message(exc: Exception) -> str:
+    if isinstance(exc, AudioLimitError):
+        return str(exc)
     if isinstance(exc, UnsupportedAudioFormatError):
         return PUBLIC_UNSUPPORTED_AUDIO_FORMAT_MESSAGE
     if isinstance(exc, AudioError):

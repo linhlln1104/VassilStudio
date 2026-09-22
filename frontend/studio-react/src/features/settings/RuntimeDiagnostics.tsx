@@ -90,6 +90,15 @@ export function RuntimeDiagnostics({
 
   return (
     <div className="space-y-3">
+      {diagnostics?.recovery_warnings?.length ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-950" role="alert">
+          <h2 className="text-sm font-semibold">Some saved metadata needs recovery</h2>
+          <p className="mt-1 text-xs leading-5">The workspace isolated unreadable records so other work can continue. Keep your backup before attempting recovery.</p>
+          <ul className="mt-2 list-disc pl-4 text-xs leading-5">
+            {diagnostics.recovery_warnings.map((warning) => <li key={warning}>{warning}</li>)}
+          </ul>
+        </div>
+      ) : null}
       <section className="border-b border-slate-200 px-1 pb-4 pt-1">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CircleStop, Mic, RotateCcw, ShieldAlert } from 'lucide-react'
+import { CircleStop, Loader2, Mic, RotateCcw, ShieldAlert } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { formatBytes } from '@/lib/format'
@@ -15,26 +15,36 @@ type VoiceRecorderProps = {
 export function VoiceRecorder({ recording, onRecording }: VoiceRecorderProps) {
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<number | null>(null)
+  const generationRef = useRef(0)
+  const requestingRef = useRef(false)
+  const [requesting, setRequesting] = useState(false)
   const [recordingActive, setRecordingActive] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => () => releaseRecorder(recorderRef, streamRef, timerRef), [])
+  useEffect(() => () => {
+    generationRef.current += 1
+    requestingRef.current = false
+    releaseRecorder(recorderRef, streamRef, timerRef)
+  }, [])
 
   useEffect(() => {
     if (recordingActive && elapsedSeconds >= MAX_RECORDING_SECONDS) {
-      recorderRef.current?.stop()
+      if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
     }
   }, [elapsedSeconds, recordingActive])
 
   const start = async () => {
+    if (requestingRef.current || recorderRef.current) return
     setError(null)
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setError('Microphone recording is not supported by this browser.')
       return
     }
+    const generation = ++generationRef.current
+    requestingRef.current = true
+    setRequesting(true)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -43,18 +53,28 @@ export function VoiceRecorder({ recording, onRecording }: VoiceRecorderProps) {
           noiseSuppression: true,
         },
       })
+      if (generationRef.current !== generation) {
+        stream.getTracks().forEach((track) => track.stop())
+        return
+      }
+      streamRef.current = stream
       const mimeType = MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
-      chunksRef.current = []
-      streamRef.current = stream
+      const chunks: Blob[] = []
       recorderRef.current = recorder
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data)
+        if (event.data.size > 0) chunks.push(event.data)
       }
-      recorder.onerror = () => setError('The recording could not be completed.')
+      recorder.onerror = () => {
+        if (generationRef.current !== generation) return
+        releaseRecorder(recorderRef, streamRef, timerRef)
+        setRecordingActive(false)
+        setError('The recording could not be completed.')
+      }
       recorder.onstop = () => {
+        if (generationRef.current !== generation) return
         const finalType = recorder.mimeType || mimeType || 'audio/webm'
-        const blob = new Blob(chunksRef.current, { type: finalType })
+        const blob = new Blob(chunks, { type: finalType })
         releaseRecorder(recorderRef, streamRef, timerRef)
         setRecordingActive(false)
         if (blob.size === 0) {
@@ -73,9 +93,15 @@ export function VoiceRecorder({ recording, onRecording }: VoiceRecorderProps) {
         setElapsedSeconds((current) => current + 1)
       }, 1000)
     } catch (caught) {
+      if (generationRef.current !== generation) return
       releaseRecorder(recorderRef, streamRef, timerRef)
       setRecordingActive(false)
       setError(microphoneError(caught))
+    } finally {
+      if (generationRef.current === generation) {
+        requestingRef.current = false
+        setRequesting(false)
+      }
     }
   }
 
@@ -89,7 +115,7 @@ export function VoiceRecorder({ recording, onRecording }: VoiceRecorderProps) {
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
             <span className={recordingActive ? 'size-2 rounded-full bg-red-500 motion-safe:animate-pulse' : 'size-2 rounded-full bg-slate-300'} />
-            {recordingActive ? 'Recording' : recording ? 'Recording captured' : 'Microphone ready'}
+            {requesting ? 'Waiting for microphone permission' : recordingActive ? 'Recording' : recording ? 'Recording captured' : 'Microphone ready'}
           </div>
           <div className="mt-1 truncate text-xs text-slate-600">
             {recordingActive
@@ -105,9 +131,9 @@ export function VoiceRecorder({ recording, onRecording }: VoiceRecorderProps) {
             Stop
           </Button>
         ) : (
-          <Button size="sm" variant="secondary" onClick={() => void start()}>
-            {recording ? <RotateCcw className="size-4" /> : <Mic className="size-4" />}
-            {recording ? 'Record again' : 'Start recording'}
+          <Button size="sm" variant="secondary" disabled={requesting} onClick={() => void start()}>
+            {requesting ? <Loader2 className="size-4 animate-spin" /> : recording ? <RotateCcw className="size-4" /> : <Mic className="size-4" />}
+            {requesting ? 'Requesting microphone' : recording ? 'Record again' : 'Start recording'}
           </Button>
         )}
       </div>
@@ -128,6 +154,13 @@ function releaseRecorder(
 ) {
   if (timerRef.current !== null) window.clearInterval(timerRef.current)
   timerRef.current = null
+  const recorder = recorderRef.current
+  if (recorder) {
+    recorder.onstop = null
+    recorder.ondataavailable = null
+    recorder.onerror = null
+    if (recorder.state !== 'inactive') recorder.stop()
+  }
   streamRef.current?.getTracks().forEach((track) => track.stop())
   streamRef.current = null
   recorderRef.current = null

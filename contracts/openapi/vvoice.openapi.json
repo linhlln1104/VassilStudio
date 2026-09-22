@@ -973,6 +973,13 @@
           "privacy": {
             "$ref": "#/components/schemas/DiagnosticsPrivacy"
           },
+          "recovery_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recovery Warnings",
+            "type": "array"
+          },
           "runtime": {
             "$ref": "#/components/schemas/RuntimeStatus"
           },
@@ -2248,6 +2255,9 @@
           "409": {
             "description": "Idempotency key conflicts with an earlier request"
           },
+          "413": {
+            "description": "Decoded audio exceeds processing limits"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2257,6 +2267,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Job queue is full"
           }
         },
         "summary": "Create Asr Job",
@@ -2911,6 +2924,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Job queue is full"
           }
         },
         "summary": "Create Tts Job With Voice",

@@ -16,7 +16,8 @@
     "qa:jobs": "node scripts/qa-jobs.mjs",
     "qa:voices": "node scripts/qa-voice-intake.mjs",
     "qa:transcripts": "node scripts/qa-transcript-review.mjs",
-    "qa:settings": "node scripts/qa-settings.mjs"
+    "qa:settings": "node scripts/qa-settings.mjs",
+    "qa:regressions": "node scripts/qa-regressions.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.18",

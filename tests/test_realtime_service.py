@@ -46,3 +46,45 @@ def test_realtime_session_rejects_bad_payload_alignment() -> None:
 
     with pytest.raises(RealtimeProtocolError):
         session.append_binary(b"abc")
+
+
+@pytest.mark.parametrize("payload", [
+    {"chunk_seconds": "abc"}, {"chunk_seconds": float("nan")},
+    {"chunk_seconds": float("inf")}, {"max_buffer_seconds": 1e9},
+    {"chunk_seconds": 0.0001}, {"sample_rate": True},
+    {"encoding": []}, {"silence_rms": -1}, {"extra": 1},
+    {"max_buffer_seconds": 3},
+])
+def test_config_rejection_is_atomic_and_preserves_buffer(payload) -> None:
+    session = make_session()
+    session.append_binary(np.full(800, 0.1, dtype=np.float32).tobytes())
+    before = session.describe()
+    with pytest.raises(RealtimeProtocolError):
+        session.apply_config({"type": "config", **payload})
+    assert session.describe() == before
+    assert session.flush(force=True).samples.size == 800
+
+
+def test_session_rejects_oversized_audio_without_losing_existing_samples() -> None:
+    session = make_session()
+    session.append_binary(np.full(800, 0.1, dtype=np.float32).tobytes())
+    with pytest.raises(RealtimeProtocolError, match="buffer limit"):
+        session.append_binary(np.zeros(32001, dtype=np.float32).tobytes())
+    assert session.flush(force=True).samples.size == 800
+
+
+def test_config_accepts_existing_small_chunk_client_and_keeps_server_cap() -> None:
+    session = make_session(chunk_seconds=3, min_chunk_seconds=0.6, max_buffer_seconds=12)
+    session.apply_config({"type": "config", "chunk_seconds": 0.5})
+    assert session.chunk_seconds == 0.5
+    with pytest.raises(RealtimeProtocolError):
+        session.apply_config({"type": "config", "max_buffer_seconds": 13})
+
+
+def test_frames_cross_chunk_boundary_when_buffer_equals_chunk() -> None:
+    session = make_session(chunk_seconds=0.5, max_buffer_seconds=0.5)
+    emitted = []
+    for _ in range(6):
+        emitted.extend(session.append_binary(np.full(1365, 0.1, dtype=np.float32).tobytes()))
+    assert [len(chunk.samples) for chunk in emitted] == [8000]
+    assert len(session.flush(force=True).samples) == 190

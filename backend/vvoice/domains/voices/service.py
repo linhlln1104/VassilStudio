@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-import json
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -10,9 +10,21 @@ from threading import RLock
 
 from vvoice.core.errors import VVoiceError, VoiceDuplicateError, VoiceNotFoundError
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
+from vvoice.shared.jobs.storage import (
+    artifact_path,
+    atomic_write_bytes,
+    atomic_write_metadata,
+    contained_path,
+    count_quarantined_metadata,
+    delete_record_files,
+    quarantine_metadata,
+    read_metadata,
+    record_directory,
+)
 
 
 AUDIO_IMPORT_EXTENSIONS = {".flac", ".m4a", ".mp3", ".ogg", ".opus", ".wav", ".weba", ".webm"}
+logger = logging.getLogger("vvoice.voices")
 
 
 @dataclass(frozen=True)
@@ -35,6 +47,10 @@ class VoiceStore:
     def __init__(self, voices_dir: Path) -> None:
         self._voices_dir = voices_dir
         self._lock = RLock()
+
+    @property
+    def quarantined_count(self) -> int:
+        return count_quarantined_metadata(self._voices_dir)
 
     def create(
         self,
@@ -67,7 +83,7 @@ class VoiceStore:
             language = normalize_language(language)
 
             audio_path = voice_dir / "reference.wav"
-            audio_path.write_bytes(audio_bytes)
+            atomic_write_bytes(audio_path, audio_bytes)
             metadata = {
                 "metadata_version": 4,
                 "voice_id": voice_id,
@@ -83,10 +99,7 @@ class VoiceStore:
                 "created_at": created_at,
                 "updated_at": created_at,
             }
-            (voice_dir / "metadata.json").write_text(
-                json.dumps(metadata, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            atomic_write_metadata(voice_dir / "metadata.json", metadata)
             return VoiceProfile(
                 voice_id=voice_id,
                 name=name,
@@ -109,7 +122,13 @@ class VoiceStore:
 
             profiles: list[VoiceProfile] = []
             for metadata_path in self._voices_dir.glob("*/metadata.json"):
-                profiles.append(_load_profile(metadata_path))
+                try:
+                    self._voice_dir(metadata_path.parent.name)
+                    profiles.append(_load_profile(metadata_path))
+                except VoiceNotFoundError:
+                    continue
+                except (OSError, ValueError, KeyError, TypeError, AttributeError, VVoiceError):
+                    quarantine_metadata(metadata_path, logger)
             return sorted(profiles, key=lambda item: item.created_at, reverse=True)
 
     def find_by_audio_sha256(self, audio_sha256: str) -> VoiceProfile | None:
@@ -131,7 +150,10 @@ class VoiceStore:
                 [
                     path
                     for path in self._voices_dir.iterdir()
-                    if path.is_file() and path.suffix.lower() in AUDIO_IMPORT_EXTENSIONS
+                    if path.is_file()
+                    and not path.is_symlink()
+                    and path.suffix.lower() in AUDIO_IMPORT_EXTENSIONS
+                    and path.resolve().parent == self._voices_dir.resolve()
                 ],
                 key=lambda item: item.name.lower(),
             )
@@ -142,6 +164,10 @@ class VoiceStore:
                 raise VVoiceError(f"Invalid voice import filename: {filename}")
 
             path = self._voices_dir / filename
+            try:
+                contained_path(self._voices_dir, path)
+            except ValueError as exc:
+                raise VoiceNotFoundError("Voice import file is outside the voice store") from exc
             if not path.exists() or not path.is_file():
                 raise VoiceNotFoundError(f"Voice import file not found: {filename}")
             if path.suffix.lower() not in AUDIO_IMPORT_EXTENSIONS:
@@ -150,14 +176,24 @@ class VoiceStore:
 
     def get(self, voice_id: str) -> VoiceProfile:
         with self._lock:
-            metadata_path = self._voices_dir / voice_id / "metadata.json"
+            metadata_path = self._voice_dir(voice_id) / "metadata.json"
             if not metadata_path.exists():
                 raise VoiceNotFoundError(f"Voice profile not found: {voice_id}")
 
-            profile = _load_profile(metadata_path)
+            try:
+                profile = _load_profile(metadata_path)
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, VVoiceError) as exc:
+                quarantine_metadata(metadata_path, logger)
+                raise VoiceNotFoundError("Voice profile metadata is unavailable") from exc
             if not profile.audio_path.exists():
                 raise VoiceNotFoundError(f"Voice profile audio is missing: {voice_id}")
             return profile
+
+    def snapshot(self, voice_id: str) -> tuple[VoiceProfile, bytes]:
+        """Read one consistent reference while profile updates/deletion are locked out."""
+        with self._lock:
+            profile = self.get(voice_id)
+            return profile, profile.audio_path.read_bytes()
 
     def update(
         self,
@@ -168,11 +204,9 @@ class VoiceStore:
         reference_text: str | None = None,
     ) -> VoiceProfile:
         with self._lock:
-            metadata_path = self._voices_dir / voice_id / "metadata.json"
-            if not metadata_path.exists():
-                raise VoiceNotFoundError(f"Voice profile not found: {voice_id}")
-
-            raw = json.loads(metadata_path.read_text(encoding="utf-8"))
+            self.get(voice_id)
+            metadata_path = self._voice_dir(voice_id) / "metadata.json"
+            raw = read_metadata(metadata_path)
             if name is not None:
                 raw["name"] = name
             if language is not None:
@@ -182,26 +216,30 @@ class VoiceStore:
                 raw["reference_text_source"] = "user"
             raw["updated_at"] = datetime.now(tz=timezone.utc).isoformat()
 
-            metadata_path.write_text(
-                json.dumps(raw, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            atomic_write_metadata(metadata_path, raw)
             return self.get(voice_id)
 
     def delete(self, voice_id: str) -> None:
         with self._lock:
-            voice_dir = self._voices_dir / voice_id
+            voice_dir = self._voice_dir(voice_id)
             if not voice_dir.exists():
                 raise VoiceNotFoundError(f"Voice profile not found: {voice_id}")
+            # A random directory inside the store is not necessarily a voice.
+            self.get(voice_id)
+            try:
+                delete_record_files(voice_dir)
+            except ValueError as exc:
+                raise VVoiceError("Voice profile contains an unexpected file or directory") from exc
 
-            for path in voice_dir.glob("*"):
-                if path.is_file():
-                    path.unlink()
-            voice_dir.rmdir()
+    def _voice_dir(self, voice_id: str) -> Path:
+        try:
+            return record_directory(self._voices_dir, voice_id)
+        except (ValueError, OSError) as exc:
+            raise VoiceNotFoundError(f"Voice profile not found: {voice_id}") from exc
 
 
 def _load_profile(metadata_path: Path) -> VoiceProfile:
-    raw = json.loads(metadata_path.read_text(encoding="utf-8"))
+    raw = read_metadata(metadata_path)
     return _profile_from_metadata(raw, metadata_path.parent)
 
 
@@ -224,8 +262,7 @@ def _profile_from_metadata(raw: dict, voice_dir: Path) -> VoiceProfile:
 
 
 def _resolve_audio_path(voice_dir: Path, value: str) -> Path:
-    path = Path(value)
-    return path if path.is_absolute() else voice_dir / path
+    return artifact_path(voice_dir, value)
 
 
 def _file_size(path: Path) -> int:

@@ -33,6 +33,7 @@ import {
   type DiagnosticsStorageItem,
 } from '@/lib/api'
 import { API_BRAND_NAME } from '@/lib/brand'
+import { clearLocalDrafts } from '@/lib/studio-preferences'
 import { RuntimeDiagnostics, type WarmupTarget } from './RuntimeDiagnostics'
 
 const storageRows = [
@@ -378,6 +379,16 @@ export function SettingsView() {
 
       {activeTab === 'account' ? (
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <Card className="xl:col-span-2">
+            <CardContent className="pt-4">
+              <h2 className="text-sm font-semibold">Browser drafts</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-600">Your Generate script is saved in this browser between visits. Signing out clears script drafts from this browser. Clear them here before sharing this browser profile.</p>
+              <Button className="mt-3" size="sm" variant="secondary" onClick={() => {
+                clearLocalDrafts()
+                toast({ title: 'Local drafts cleared', description: 'Saved Generate and handoff scripts were removed from this browser.', variant: 'success' })
+              }}>Clear local drafts</Button>
+            </CardContent>
+          </Card>
           <AccountSessionCard
           authRequired={Boolean(authQuery.data?.auth_required)}
           authenticated={Boolean(authQuery.data?.authenticated)}

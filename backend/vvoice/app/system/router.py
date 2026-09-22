@@ -105,7 +105,7 @@ async def diagnostics(request: Request, response: Response):
     container = request.app.state.container
     settings = request.app.state.container.settings
     response.headers["Cache-Control"] = "no-store"
-    return _diagnostics_payload(container, settings)
+    return await run_in_threadpool(_diagnostics_payload, container, settings)
 
 
 @router.get(
@@ -121,7 +121,8 @@ async def diagnostics_bundle(
 ):
     container = request.app.state.container
     settings = request.app.state.container.settings
-    payload = _diagnostics_payload(
+    payload = await run_in_threadpool(
+        _diagnostics_payload,
         container,
         settings,
         host_metadata_included=include_host_metadata,
@@ -188,12 +189,25 @@ def _diagnostics_payload(
             "secure_cookies": getattr(settings.security, "secure_cookies", False),
         },
         "storage": _diagnostic_storage_items(settings),
+        "recovery_warnings": _recovery_warnings(container),
         "license": {
             "status": "open-source",
             "plan": "GPL-3.0-or-later",
             "billing_enabled": False,
         },
     }
+
+
+def _recovery_warnings(container) -> list[str]:
+    warnings = []
+    for name in ("voices", "asr_jobs", "tts_jobs"):
+        count = getattr(getattr(container, name, None), "quarantined_count", 0)
+        if count:
+            warnings.append(
+                f"{name}: {count} damaged metadata record(s) were isolated. "
+                "Original records are retained for recovery; restore them from a verified backup."
+            )
+    return warnings
 
 
 @router.post(
@@ -433,28 +447,39 @@ def _bundle_readme(include_host_metadata: bool) -> str:
 def _model_file_checks(settings) -> dict[str, bool]:
     checks = {}
     for language, model in settings.asr.models.items():
+        if not getattr(settings.asr, "enabled", True):
+            continue
         prefix = f"asr_{language}"
         checks.update(
             {
-                f"{prefix}_encoder": model.encoder.exists(),
-                f"{prefix}_decoder": model.decoder.exists(),
-                f"{prefix}_joiner": model.joiner.exists(),
-                f"{prefix}_tokens": model.tokens.exists(),
+                f"{prefix}_encoder": _usable_file(model.encoder),
+                f"{prefix}_decoder": _usable_file(model.decoder),
+                f"{prefix}_joiner": _usable_file(model.joiner),
+                f"{prefix}_tokens": _usable_file(model.tokens),
             }
         )
     for language, model in settings.tts.models.items():
+        if not getattr(settings.tts, "enabled", True):
+            continue
         prefix = f"tts_{language}"
         checks.update(
             {
-                f"{prefix}_encoder": model.encoder.exists(),
-                f"{prefix}_decoder": model.decoder.exists(),
-                f"{prefix}_vocoder": model.vocoder.exists(),
-                f"{prefix}_tokens": model.tokens.exists(),
-                f"{prefix}_lexicon": model.lexicon.exists(),
-                f"{prefix}_data_dir": model.data_dir.exists(),
+                f"{prefix}_encoder": _usable_file(model.encoder),
+                f"{prefix}_decoder": _usable_file(model.decoder),
+                f"{prefix}_vocoder": _usable_file(model.vocoder),
+                f"{prefix}_tokens": _usable_file(model.tokens),
+                f"{prefix}_lexicon": _usable_file(model.lexicon),
+                f"{prefix}_data_dir": model.data_dir.is_dir(),
             }
         )
     return checks
+
+
+def _usable_file(path: Path) -> bool:
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
 
 
 def _storage_checks(settings) -> dict[str, bool]:

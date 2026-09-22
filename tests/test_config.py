@@ -51,6 +51,47 @@ def test_env_example_points_to_existing_default_config() -> None:
     assert config_path.is_file()
 
 
+def test_job_admission_limits_are_configurable_and_positive(tmp_path) -> None:
+    raw = _minimal_settings_raw()
+    assert parse_settings(raw, tmp_path).jobs.asr_max_pending_jobs == 32
+    raw["jobs"] = {"asr_max_pending_jobs": 2, "tts_max_pending_jobs": 3}
+    settings = parse_settings(raw, tmp_path)
+    assert settings.jobs.asr_max_pending_jobs == 2
+    assert settings.jobs.tts_max_pending_jobs == 3
+    raw["jobs"]["asr_max_pending_jobs"] = 0
+    with pytest.raises(ValueError, match="asr_max_pending_jobs"):
+        parse_settings(raw, tmp_path)
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), -1])
+def test_retry_backoff_requires_finite_nonnegative_value(tmp_path, value) -> None:
+    raw = _minimal_settings_raw()
+    raw["jobs"] = {"retry_backoff_seconds": value}
+    with pytest.raises(ValueError, match="retry_backoff_seconds"):
+        parse_settings(raw, tmp_path)
+
+
+def test_disabled_model_services_do_not_load_or_accept_inference(tmp_path) -> None:
+    from vvoice.core.errors import ModelConfigurationError
+    from vvoice.domains.asr.service import AsrService
+    from vvoice.domains.tts.service import ZipVoiceService
+
+    raw = _minimal_settings_raw()
+    raw["asr"]["enabled"] = False
+    raw["tts"]["enabled"] = False
+    settings = parse_settings(raw, tmp_path)
+    for service in (
+        AsrService(settings.asr, settings.runtime),
+        ZipVoiceService(settings.tts, settings.runtime),
+    ):
+        service.warmup_all()
+        assert not service.is_loaded
+        with pytest.raises(ModelConfigurationError, match="disabled"):
+            service.sample_rate_for("vi")
+        with pytest.raises(ModelConfigurationError, match="disabled"):
+            service.warmup("vi")
+
+
 def test_run_api_loads_local_env_file() -> None:
     script = ROOT.joinpath("scripts", "run_api.ps1").read_text(encoding="utf-8")
 

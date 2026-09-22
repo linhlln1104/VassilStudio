@@ -78,16 +78,22 @@ class ZipVoiceService:
         return tuple(sorted(self._settings.models))
 
     def sample_rate_for(self, language: str | None = None) -> int:
+        if not self._settings.enabled:
+            raise ModelConfigurationError("TTS is disabled in this workspace")
         return self._model_settings(language).sample_rate
 
     def warmup(self, language: str | None = None) -> None:
         self._get_tts(normalize_language(language or self._settings.default_language))
 
     def warmup_all(self) -> None:
+        if not self._settings.enabled:
+            return
         for language in self.configured_languages:
             self.warmup(language)
 
     def _model_settings(self, language: str | None) -> TtsModelSettings:
+        if not self._settings.enabled:
+            raise ModelConfigurationError("TTS is disabled in this workspace")
         return self._settings.model_for(language)
 
     def _get_tts(self, language: str):

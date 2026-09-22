@@ -17,6 +17,7 @@ from vvoice.shared.security.auth import websocket_is_authorized
 
 
 router = APIRouter()
+MAX_CONTROL_MESSAGE_BYTES = 4096
 
 
 @router.websocket("/asr")
@@ -27,29 +28,30 @@ async def realtime_asr(websocket: WebSocket):
 
     await websocket.accept()
     container = websocket.app.state.container
-    language = normalize_language(websocket.query_params.get("language", DEFAULT_LANGUAGE))
-    session = RealtimeAsrSession.from_settings(
-        container.settings.realtime,
-        sample_rate=container.asr.sample_rate_for(language),
-    )
-    sequence = 0
-
-    await websocket.send_json(
-        {
-            "type": "ready",
-            "protocol": "vvoice.realtime.asr.v1",
-            "language": language,
-            **session.describe(),
-        }
-    )
-
     try:
+        if not getattr(container.settings.realtime, "enabled", True):
+            raise RealtimeProtocolError("Realtime ASR is disabled")
+        language = normalize_language(websocket.query_params.get("language", DEFAULT_LANGUAGE))
+        session = RealtimeAsrSession.from_settings(
+            container.settings.realtime,
+            sample_rate=container.asr.sample_rate_for(language),
+        )
+        sequence = 0
+        await websocket.send_json(
+            {
+                "type": "ready",
+                "protocol": "vvoice.realtime.asr.v1",
+                "language": language,
+                **session.describe(),
+            }
+        )
         while True:
             message = await websocket.receive()
             if message["type"] == "websocket.disconnect":
                 return
 
-            if text := message.get("text"):
+            text = message.get("text")
+            if text is not None:
                 should_close, sequence = await _handle_control_message(
                     websocket,
                     container,
@@ -97,12 +99,18 @@ async def _handle_control_message(
     text: str,
     sequence: int,
 ) -> tuple[bool, int]:
+    if len(text.encode("utf-8")) > MAX_CONTROL_MESSAGE_BYTES:
+        raise RealtimeProtocolError("Realtime control message exceeds the size limit")
     try:
         payload = json.loads(text)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, RecursionError) as exc:
         raise RealtimeProtocolError("Realtime control messages must be JSON") from exc
 
-    message_type = str(payload.get("type", "")).lower()
+    if not isinstance(payload, dict) or not isinstance(payload.get("type"), str):
+        raise RealtimeProtocolError("Realtime control messages require an object with a string type")
+    message_type = payload["type"].lower()
+    if message_type != "config" and set(payload) != {"type"}:
+        raise RealtimeProtocolError("Unexpected realtime control message fields")
 
     if message_type == "config":
         session.apply_config(payload)

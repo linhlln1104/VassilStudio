@@ -3,7 +3,9 @@ from fastapi.testclient import TestClient
 
 from vvoice.core.errors import (
     AudioError,
+    AudioLimitError,
     IdempotencyConflictError,
+    JobQueueFullError,
     ModelConfigurationError,
     PUBLIC_AUDIO_ERROR_MESSAGE,
     PUBLIC_MODEL_ERROR_MESSAGE,
@@ -60,6 +62,19 @@ def test_idempotency_conflict_uses_stable_409_response() -> None:
         "error": "idempotency_conflict",
         "message": "Idempotency-Key was already used for a different request",
     }
+
+
+def test_queue_capacity_returns_retryable_429() -> None:
+    response = _response_for(JobQueueFullError("Queue is full. Try again later."))
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "5"
+    assert response.json()["error"] == "job_queue_full"
+
+
+def test_decoded_audio_limits_return_413_with_actionable_message() -> None:
+    response = _response_for(AudioLimitError("Audio exceeds the sample limit; split the file"))
+    assert response.status_code == 413
+    assert "split the file" in response.json()["message"]
 
 
 def _response_for(exc: Exception):

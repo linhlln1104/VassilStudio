@@ -6,7 +6,10 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from vvoice.core.errors import IdempotencyConflictError, PUBLIC_JOB_ERROR_MESSAGE, VVoiceError
+from vvoice.core.errors import (
+    IdempotencyConflictError, JobQueueFullError, PUBLIC_JOB_ERROR_MESSAGE,
+    TtsJobNotFoundError, VVoiceError,
+)
 from vvoice.shared.audio.io import encode_wav
 from vvoice.domains.tts.jobs import TtsJobService
 from vvoice.domains.tts.router import _job_response
@@ -345,6 +348,134 @@ def test_tts_job_service_rejects_invalid_idempotency_key(tmp_path) -> None:
                 idempotency_key="contains spaces",
             )
     finally:
+        jobs.shutdown()
+
+
+def test_tts_queued_job_uses_accepted_reference_after_voice_edit_and_delete(tmp_path):
+    voices = VoiceStore(tmp_path / "voices")
+    profile = create_voice(voices)
+    original_audio = profile.audio_path.read_bytes()
+    tts = BlockingTts()
+    jobs = TtsJobService(tmp_path / "jobs", tts, voices)
+    try:
+        first = jobs.create_from_voice(voice_id=profile.voice_id, text="first")
+        assert tts.started.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS)
+        queued = jobs.create_from_voice(
+            voice_id=profile.voice_id, text="second", idempotency_key="snapshot-replay",
+        )
+        voices.update(profile.voice_id, reference_text="changed reference")
+        voices.delete(profile.voice_id)
+        replay = jobs.create_from_voice(
+            voice_id=profile.voice_id, text="second", idempotency_key="snapshot-replay",
+        )
+        assert replay.job_id == queued.job_id
+        tts.release.set()
+        assert wait_for_job(jobs, first.job_id).status == "succeeded"
+        completed = wait_for_job(jobs, queued.job_id)
+        assert completed.status == "succeeded"
+        assert completed.reference_text == profile.reference_text
+        assert tts.last_kwargs["reference_text"] == profile.reference_text
+        assert (tmp_path / "jobs" / queued.job_id / "reference.wav").read_bytes() == original_audio
+        assert completed.reference_audio_sha256 == profile.audio_sha256
+    finally:
+        tts.release.set()
+        jobs.shutdown()
+
+
+def test_tts_retry_keeps_snapshot_when_voice_is_deleted_during_first_attempt(tmp_path):
+    voices = VoiceStore(tmp_path / "voices")
+    profile = create_voice(voices)
+
+    class DeleteVoiceTts(FakeTts):
+        calls = 0
+
+        def synthesize(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                voices.update(profile.voice_id, reference_text="edited")
+                voices.delete(profile.voice_id)
+                raise RuntimeError("retry after profile removal")
+            return super().synthesize(**kwargs)
+
+    tts = DeleteVoiceTts()
+    jobs = TtsJobService(
+        tmp_path / "jobs", tts, voices, max_attempts=2, retry_backoff_seconds=0,
+    )
+    try:
+        job = jobs.create_from_voice(voice_id=profile.voice_id, text="hello")
+        completed = wait_for_job(jobs, job.job_id)
+        assert completed.status == "succeeded"
+        assert completed.attempt == 2
+        assert tts.last_kwargs["reference_text"] == profile.reference_text
+    finally:
+        jobs.shutdown()
+
+
+def test_tts_rejects_changed_snapshot_audio_before_inference(tmp_path):
+    voices = VoiceStore(tmp_path / "voices")
+    profile = create_voice(voices)
+    tts = BlockingTts()
+    directory = tmp_path / "jobs"
+    jobs = TtsJobService(directory, tts, voices)
+    try:
+        first = jobs.create_from_voice(voice_id=profile.voice_id, text="first")
+        assert tts.started.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS)
+        queued = jobs.create_from_voice(voice_id=profile.voice_id, text="second")
+        (directory / queued.job_id / "reference.wav").write_bytes(b"changed after acceptance")
+        tts.release.set()
+        assert wait_for_job(jobs, first.job_id).status == "succeeded"
+        completed = wait_for_job(jobs, queued.job_id)
+        assert completed.status == "failed"
+        assert completed.failed_reason == "application_error"
+        assert tts.last_kwargs["text"] == "first"
+    finally:
+        tts.release.set()
+        jobs.shutdown()
+
+
+@pytest.mark.parametrize("content", ["{", "[]", '{"job_id":"broken","status":[]}'])
+def test_tts_jobs_preserve_corrupt_records_and_start_with_healthy_jobs(tmp_path, content):
+    voices = VoiceStore(tmp_path / "voices")
+    profile = create_voice(voices)
+    directory = tmp_path / "jobs"
+    jobs = TtsJobService(directory, FakeTts(), voices)
+    job = jobs.create_from_voice(voice_id=profile.voice_id, text="hello")
+    assert wait_for_job(jobs, job.job_id).status == "succeeded"
+    jobs.shutdown()
+    broken = directory / "broken"
+    broken.mkdir()
+    (broken / "metadata.json").write_text(content, encoding="utf-8")
+
+    recovered = TtsJobService(directory, FakeTts(), voices)
+    try:
+        assert [item.job_id for item in recovered.list()] == [job.job_id]
+        assert recovered.quarantined_count == 1
+        assert next(broken.glob("metadata.corrupt-*.json")).read_text(encoding="utf-8") == content
+        with pytest.raises(TtsJobNotFoundError):
+            recovered.get("broken")
+    finally:
+        recovered.shutdown()
+
+
+def test_tts_queue_rejects_excess_work_but_allows_idempotent_replay(tmp_path):
+    voices = VoiceStore(tmp_path / "voices")
+    profile = create_voice(voices)
+    tts = BlockingTts()
+    jobs = TtsJobService(tmp_path / "jobs", tts, voices, max_pending_jobs=1)
+    try:
+        first = jobs.create_from_voice(voice_id=profile.voice_id, text="first", idempotency_key="one")
+        assert tts.started.wait(timeout=ASYNC_TEST_TIMEOUT_SECONDS)
+        replay = jobs.create_from_voice(voice_id=profile.voice_id, text="first", idempotency_key="one")
+        assert replay.job_id == first.job_id
+        with pytest.raises(JobQueueFullError):
+            jobs.create_from_voice(voice_id=profile.voice_id, text="second")
+        assert len(jobs.list()) == 1
+        tts.release.set()
+        assert wait_for_job(jobs, first.job_id).status == "succeeded"
+        second = jobs.create_from_voice(voice_id=profile.voice_id, text="second")
+        assert wait_for_job(jobs, second.job_id).status == "succeeded"
+    finally:
+        tts.release.set()
         jobs.shutdown()
 
 

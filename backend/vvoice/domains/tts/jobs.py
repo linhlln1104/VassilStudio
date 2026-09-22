@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import time
@@ -12,6 +11,7 @@ from pathlib import Path
 
 from vvoice.core.errors import (
     IdempotencyConflictError,
+    JobQueueFullError,
     TtsJobNotFoundError,
     VVoiceError,
     public_error_message,
@@ -20,9 +20,20 @@ from vvoice.domains.tts.parameters import validate_tts_parameters
 from vvoice.shared.audio.io import encode_wav, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
 from vvoice.shared.jobs.integrity import (
+    content_sha256,
     idempotency_key_hash,
     normalize_progress_stage,
     request_fingerprint,
+)
+from vvoice.shared.jobs.storage import (
+    artifact_path,
+    atomic_write_bytes,
+    atomic_write_metadata,
+    count_quarantined_metadata,
+    delete_record_files,
+    quarantine_metadata,
+    read_metadata,
+    record_directory,
 )
 from vvoice.shared.validation import validate_text_field
 from vvoice.domains.tts.service import ZipVoiceService
@@ -62,6 +73,8 @@ class TtsJob:
     output_path: Path | None
     sample_rate: int | None
     duration_seconds: float | None
+    reference_text: str | None = None
+    reference_audio_sha256: str | None = None
 
 
 class TtsJobService:
@@ -72,6 +85,7 @@ class TtsJobService:
         voices: VoiceStore,
         *,
         max_workers: int = 1,
+        max_pending_jobs: int = 32,
         max_attempts: int = 1,
         retry_backoff_seconds: float = 0.5,
         max_text_chars: int = 5000,
@@ -80,15 +94,22 @@ class TtsJobService:
         self._tts = tts
         self._voices = voices
         self._max_attempts = max(1, int(max_attempts))
+        self._max_pending_jobs = max(1, int(max_pending_jobs))
         self._retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
         self._max_text_chars = max_text_chars
         self._lock = threading.RLock()
+        self._accepting = True
+        self._pending_job_ids: set[str] = set()
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers,
             thread_name_prefix="vvoice-tts-job",
         )
         self._jobs_dir.mkdir(parents=True, exist_ok=True)
         self._mark_interrupted_jobs()
+
+    @property
+    def quarantined_count(self) -> int:
+        return count_quarantined_metadata(self._jobs_dir)
 
     def create_from_voice(
         self,
@@ -109,28 +130,38 @@ class TtsJobService:
         validate_tts_parameters(num_steps, speed)
         key_hash = idempotency_key_hash(idempotency_key)
 
-        profile = self._voices.get(voice_id)
-        language = normalize_language(language or profile.language)
-        self._tts.sample_rate_for(language)
-        fingerprint = request_fingerprint(
-            {
-                "language": language,
-                "num_steps": num_steps,
-                "speed": speed,
-                "text": text,
-                "voice_id": voice_id,
-            }
-        )
-
         with self._lock:
+            # Replays remain usable after the original profile has been edited or deleted.
+            replay = next(
+                (job for job in self.list() if key_hash and job.idempotency_key_hash == key_hash),
+                None,
+            ) if key_hash else None
+            if replay is not None:
+                effective_language = normalize_language(language or replay.language)
+            else:
+                self._check_queue_capacity()
+                profile, reference_bytes = self._voices.snapshot(voice_id)
+                effective_language = normalize_language(language or profile.language)
+            self._tts.sample_rate_for(effective_language)
+            fingerprint = request_fingerprint(
+                {
+                    "language": effective_language,
+                    "num_steps": num_steps,
+                    "speed": speed,
+                    "text": text,
+                    "voice_id": voice_id,
+                }
+            )
             existing = self._find_idempotent_job(key_hash, fingerprint)
             if existing is not None:
                 return existing
 
+            language = effective_language
             job_id = str(uuid.uuid4())
             now = _now()
             job_dir = self._job_dir(job_id)
             job_dir.mkdir(parents=True, exist_ok=False)
+            atomic_write_bytes(job_dir / "reference.wav", reference_bytes)
             job = TtsJob(
                 job_id=job_id,
                 status="queued",
@@ -154,8 +185,12 @@ class TtsJobService:
                 output_path=job_dir / "output.wav",
                 sample_rate=None,
                 duration_seconds=None,
+                reference_text=profile.reference_text,
+                reference_audio_sha256=content_sha256(reference_bytes),
             )
             self._save(job)
+            self._pending_job_ids.add(job_id)
+            self._executor.submit(self._run_queued, job_id)
         logger.info(
             "tts_job_created",
             extra={
@@ -166,7 +201,6 @@ class TtsJobService:
                 "speed": speed,
             },
         )
-        self._executor.submit(self._run, job_id)
         return job
 
     def _find_idempotent_job(
@@ -177,8 +211,7 @@ class TtsJobService:
         if key_hash is None:
             return None
 
-        for metadata_path in self._jobs_dir.glob("*/metadata.json"):
-            job = self._load(metadata_path)
+        for job in self.list():
             if job.idempotency_key_hash != key_hash:
                 continue
             if job.request_fingerprint != fingerprint:
@@ -196,28 +229,43 @@ class TtsJobService:
         if not self._jobs_dir.exists():
             return []
 
-        jobs = [
-            self._load(metadata_path)
-            for metadata_path in self._jobs_dir.glob("*/metadata.json")
-        ]
+        jobs: list[TtsJob] = []
+        with self._lock:
+            for metadata_path in self._jobs_dir.glob("*/metadata.json"):
+                try:
+                    jobs.append(self.get(metadata_path.parent.name))
+                except TtsJobNotFoundError:
+                    continue
         return sorted(jobs, key=lambda item: item.created_at, reverse=True)
 
     def get(self, job_id: str) -> TtsJob:
         metadata_path = self._metadata_path(job_id)
         if not metadata_path.exists():
             raise TtsJobNotFoundError(f"TTS job not found: {job_id}")
-        return self._load(metadata_path)
+        try:
+            return self._load(metadata_path)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, VVoiceError) as exc:
+            quarantine_metadata(metadata_path, logger)
+            raise TtsJobNotFoundError("TTS job metadata is unavailable") from exc
+
+    def _check_queue_capacity(self) -> None:
+        if not self._accepting:
+            raise VVoiceError("The TTS job service is shutting down")
+        pending = self._pending_job_ids | {
+            job.job_id for job in self.list() if job.status not in TERMINAL_STATUSES
+        }
+        if len(pending) >= self._max_pending_jobs:
+            raise JobQueueFullError("The TTS job queue is full. Wait for a job to finish and retry.")
 
     def delete(self, job_id: str) -> None:
-        job = self.get(job_id)
-        if job.status not in TERMINAL_STATUSES:
-            raise VVoiceError(f"Cannot delete TTS job while it is {job.status}")
-
-        job_dir = self._job_dir(job_id)
-        for path in job_dir.glob("*"):
-            if path.is_file():
-                path.unlink()
-        job_dir.rmdir()
+        with self._lock:
+            job = self.get(job_id)
+            if job.status not in TERMINAL_STATUSES:
+                raise VVoiceError(f"Cannot delete TTS job while it is {job.status}")
+            try:
+                delete_record_files(self._job_dir(job_id))
+            except ValueError as exc:
+                raise VVoiceError("TTS job contains an unexpected file or directory") from exc
 
     def cancel(self, job_id: str) -> TtsJob:
         with self._lock:
@@ -273,7 +321,16 @@ class TtsJobService:
         return deleted
 
     def shutdown(self) -> None:
-        self._executor.shutdown(wait=False, cancel_futures=True)
+        with self._lock:
+            self._accepting = False
+            self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def _run_queued(self, job_id: str) -> None:
+        try:
+            self._run(job_id)
+        finally:
+            with self._lock:
+                self._pending_job_ids.discard(job_id)
 
     def _run(self, job_id: str) -> None:
         while True:
@@ -294,9 +351,9 @@ class TtsJobService:
                 )
 
                 self._raise_if_cancel_requested(job_id)
-                profile = self._voices.get(job.voice_id)
+                job, reference_bytes = self._reference_snapshot(job)
                 reference_audio, reference_sample_rate = load_audio_bytes(
-                    profile.audio_path.read_bytes(),
+                    reference_bytes,
                     target_sample_rate=self._tts.sample_rate_for(job.language),
                 )
                 self._raise_if_cancel_requested(job_id)
@@ -305,7 +362,7 @@ class TtsJobService:
                     text=job.text,
                     reference_audio=reference_audio,
                     reference_sample_rate=reference_sample_rate,
-                    reference_text=profile.reference_text,
+                    reference_text=job.reference_text,
                     language=job.language,
                     num_steps=job.num_steps,
                     speed=job.speed,
@@ -315,7 +372,7 @@ class TtsJobService:
 
                 output_path = self._job_dir(job_id) / "output.wav"
                 temporary_output_path = output_path.with_suffix(".wav.tmp")
-                temporary_output_path.write_bytes(encode_wav(speech.samples, speech.sample_rate))
+                atomic_write_bytes(temporary_output_path, encode_wav(speech.samples, speech.sample_rate))
                 self._complete_successfully(
                     job_id,
                     temporary_output_path=temporary_output_path,
@@ -334,6 +391,8 @@ class TtsJobService:
                     },
                 )
                 return
+            except TtsJobNotFoundError:
+                return  # A queued cancellation may have been deleted before the worker reached it.
             except _JobCancelled as exc:
                 self._mark_cancelled(job_id, str(exc))
                 return
@@ -362,24 +421,43 @@ class TtsJobService:
                 )
             )
 
+    def _reference_snapshot(self, job: TtsJob) -> tuple[TtsJob, bytes]:
+        with self._lock:
+            reference_path = artifact_path(self._job_dir(job.job_id), "reference.wav")
+            if job.reference_text is None and job.reference_audio_sha256 is None:
+                # Legacy records had only a voice ID. Freeze their reference on first use.
+                profile, reference_bytes = self._voices.snapshot(job.voice_id)
+                atomic_write_bytes(reference_path, reference_bytes)
+                current = self.get(job.job_id)
+                job = _replace_job(
+                    current,
+                    reference_text=profile.reference_text,
+                    reference_audio_sha256=content_sha256(reference_bytes),
+                )
+                self._save(job)
+            else:
+                if not reference_path.is_file():
+                    raise VVoiceError("TTS job reference audio is missing")
+                reference_bytes = reference_path.read_bytes()
+            if content_sha256(reference_bytes) != job.reference_audio_sha256:
+                raise VVoiceError("TTS job reference audio integrity check failed")
+            return job, reference_bytes
+
     def _save(self, job: TtsJob) -> None:
         with self._lock:
             self._job_dir(job.job_id).mkdir(parents=True, exist_ok=True)
             metadata_path = self._metadata_path(job.job_id)
-            tmp_path = metadata_path.with_suffix(".json.tmp")
-            tmp_path.write_text(
-                json.dumps(_job_to_metadata(job), ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            tmp_path.replace(metadata_path)
+            atomic_write_metadata(metadata_path, _job_to_metadata(job))
 
     def _load(self, metadata_path: Path) -> TtsJob:
         with self._lock:
-            raw = json.loads(metadata_path.read_text(encoding="utf-8"))
+            raw = read_metadata(metadata_path)
         output_path = raw.get("output_path")
         status = raw["status"]
         failed_reason = raw.get("failed_reason")
         max_attempts = int(raw.get("max_attempts") or self._max_attempts)
+        if (raw.get("reference_text") is None) != (raw.get("reference_audio_sha256") is None):
+            raise ValueError("TTS job reference snapshot metadata is incomplete")
         return TtsJob(
             job_id=raw["job_id"],
             status=status,
@@ -409,9 +487,11 @@ class TtsJobService:
             ),
             idempotency_key_hash=raw.get("idempotency_key_hash"),
             request_fingerprint=raw.get("request_fingerprint"),
-            output_path=Path(output_path) if output_path else None,
+            output_path=artifact_path(metadata_path.parent, output_path) if output_path else None,
             sample_rate=raw.get("sample_rate"),
             duration_seconds=raw.get("duration_seconds"),
+            reference_text=raw.get("reference_text"),
+            reference_audio_sha256=raw.get("reference_audio_sha256"),
         )
 
     def _start_attempt(self, job_id: str) -> TtsJob | None:
@@ -602,9 +682,10 @@ class TtsJobService:
                 temporary_output_path.unlink()
 
     def _job_dir(self, job_id: str) -> Path:
-        if "/" in job_id or "\\" in job_id or job_id in {"", ".", ".."}:
-            raise TtsJobNotFoundError(f"TTS job not found: {job_id}")
-        return self._jobs_dir / job_id
+        try:
+            return record_directory(self._jobs_dir, job_id)
+        except (ValueError, OSError) as exc:
+            raise TtsJobNotFoundError(f"TTS job not found: {job_id}") from exc
 
     def _metadata_path(self, job_id: str) -> Path:
         return self._job_dir(job_id) / "metadata.json"
@@ -634,6 +715,8 @@ def _job_to_metadata(job: TtsJob) -> dict:
         "output_path": str(job.output_path) if job.output_path else None,
         "sample_rate": job.sample_rate,
         "duration_seconds": job.duration_seconds,
+        "reference_text": job.reference_text,
+        "reference_audio_sha256": job.reference_audio_sha256,
     }
 
 
@@ -664,6 +747,8 @@ def _replace_job(job: TtsJob, **changes) -> TtsJob:
         output_path=Path(output_path) if output_path else None,
         sample_rate=values.get("sample_rate"),
         duration_seconds=values.get("duration_seconds"),
+        reference_text=values.get("reference_text"),
+        reference_audio_sha256=values.get("reference_audio_sha256"),
     )
 
 
@@ -679,7 +764,8 @@ def _cutoff(max_age_seconds: int | None) -> datetime | None:
 
 def _job_age_anchor(job: TtsJob) -> datetime:
     value = job.completed_at or job.created_at
-    return datetime.fromisoformat(value)
+    timestamp = datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+    return timestamp if timestamp.tzinfo else timestamp.replace(tzinfo=timezone.utc)
 
 
 def _is_retryable_exception(exc: Exception) -> bool:

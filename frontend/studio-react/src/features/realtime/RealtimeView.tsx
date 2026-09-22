@@ -35,6 +35,8 @@ import { getPreferredLanguage, setPendingScript, setPreferredLanguage } from '@/
 import { cn } from '@/lib/utils'
 
 type SessionState = 'idle' | 'connecting' | 'listening' | 'stopping' | 'error'
+const FINALIZATION_TIMEOUT_MS = 30_000
+const INCOMPLETE_TRANSCRIPT_MESSAGE = 'The final transcript was not confirmed. The text received so far is preserved; the last audio may be missing. Copy or download it before starting again.'
 
 type RealtimeMessage = {
   type: string
@@ -82,6 +84,7 @@ export function RealtimeView() {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const gainRef = useRef<GainNode | null>(null)
   const stopTimeoutRef = useRef<number | null>(null)
+  const finalizingRef = useRef(false)
   const sessionStartedAtRef = useRef<number | null>(null)
 
   const healthQuery = useQuery({
@@ -186,6 +189,7 @@ export function RealtimeView() {
   useEffect(() => () => cleanupRealtimeResources(), [])
 
   const startSession = () => {
+    if (websocketRef.current) return
     if (!microphoneSupported) {
       setError('This browser does not expose microphone capture.')
       setSessionState('error')
@@ -193,6 +197,7 @@ export function RealtimeView() {
     }
 
     cleanupRealtimeResources()
+    finalizingRef.current = false
     setError('')
     setProtocol(null)
     setInputRms(0)
@@ -216,12 +221,15 @@ export function RealtimeView() {
     websocket.binaryType = 'arraybuffer'
 
     websocket.onmessage = (event) => {
+      if (websocketRef.current !== websocket) return
       try {
         const message = JSON.parse(String(event.data)) as RealtimeMessage
         handleRealtimeMessage(message, websocket)
       } catch {
         setError('Realtime server returned an unreadable message.')
         setSessionState('error')
+        finalizeSessionTimer()
+        cleanupRealtimeResources()
       }
     }
 
@@ -229,7 +237,7 @@ export function RealtimeView() {
       if (websocketRef.current !== websocket) {
         return
       }
-      setError('Realtime websocket failed to connect.')
+      setError(finalizingRef.current ? INCOMPLETE_TRANSCRIPT_MESSAGE : 'Realtime connection failed. Text received so far is preserved.')
       setSessionState('error')
       setInputRms(0)
       finalizeSessionTimer()
@@ -245,14 +253,15 @@ export function RealtimeView() {
       cleanupMediaResources()
       setInputRms(0)
       finalizeSessionTimer()
-      setSessionState((current) => (current === 'error' ? current : 'idle'))
+      setError(finalizingRef.current ? INCOMPLETE_TRANSCRIPT_MESSAGE : 'Realtime connection closed unexpectedly. Text received so far is preserved.')
+      setSessionState('error')
     }
   }
 
   const handleRealtimeMessage = (message: RealtimeMessage, websocket: WebSocket) => {
     if (message.type === 'ready' || message.type === 'configured') {
       setProtocol(message)
-      if (message.type === 'ready') {
+      if (message.type === 'ready' && !finalizingRef.current) {
         void startMicrophone(websocket, message.sample_rate ?? 16000)
       }
       return
@@ -287,8 +296,16 @@ export function RealtimeView() {
     }
 
     if (message.type === 'closed') {
+      if (!finalizingRef.current) {
+        setError(INCOMPLETE_TRANSCRIPT_MESSAGE)
+        setSessionState('error')
+        cleanupRealtimeResources()
+        return
+      }
+      finalizingRef.current = false
       setInputRms(0)
       finalizeSessionTimer()
+      cleanupRealtimeResources()
       setSessionState('idle')
       return
     }
@@ -312,6 +329,11 @@ export function RealtimeView() {
           autoGainControl: true,
         },
       })
+      if (websocketRef.current !== websocket || websocket.readyState !== WebSocket.OPEN || finalizingRef.current) {
+        stream.getTracks().forEach((track) => track.stop())
+        return
+      }
+      streamRef.current = stream
       const AudioContextCtor =
         window.AudioContext ??
         (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
@@ -319,11 +341,7 @@ export function RealtimeView() {
         throw new Error('This browser does not expose Web Audio capture.')
       }
       const audioContext = new AudioContextCtor()
-      if (websocketRef.current !== websocket || websocket.readyState !== WebSocket.OPEN) {
-        stream.getTracks().forEach((track) => track.stop())
-        await audioContext.close()
-        return
-      }
+      contextRef.current = audioContext
       const source = audioContext.createMediaStreamSource(stream)
       const processor = audioContext.createScriptProcessor(4096, 1, 1)
       const gain = audioContext.createGain()
@@ -358,6 +376,7 @@ export function RealtimeView() {
       setSessionElapsedSeconds(0)
       setSessionState('listening')
     } catch (microphoneError) {
+      if (websocketRef.current !== websocket || finalizingRef.current) return
       setError(
         microphoneError instanceof Error
           ? microphoneError.message
@@ -366,7 +385,6 @@ export function RealtimeView() {
       setSessionState('error')
       setInputRms(0)
       finalizeSessionTimer()
-      websocket.close()
       cleanupRealtimeResources()
     }
   }
@@ -378,14 +396,16 @@ export function RealtimeView() {
     const websocket = websocketRef.current
     cleanupMediaResources()
     if (websocket?.readyState === WebSocket.OPEN) {
-      websocket.send(JSON.stringify({ type: 'close' }))
+      finalizingRef.current = true
       clearStopTimeout()
       stopTimeoutRef.current = window.setTimeout(() => {
         if (websocketRef.current === websocket) {
           cleanupRealtimeResources()
-          setSessionState('idle')
+          setError(INCOMPLETE_TRANSCRIPT_MESSAGE)
+          setSessionState('error')
         }
-      }, 5000)
+      }, FINALIZATION_TIMEOUT_MS)
+      websocket.send(JSON.stringify({ type: 'close' }))
       return
     }
     cleanupRealtimeResources()

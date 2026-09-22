@@ -50,19 +50,19 @@ AUDIO_MEDIA_TYPES = {
 
 
 @router.get("", response_model=list[VoiceResponse])
-async def list_voices(request: Request):
+def list_voices(request: Request):
     container = request.app.state.container
     return [_voice_response(voice) for voice in container.voices.list()]
 
 
 @router.get("/import-candidates", response_model=list[VoiceImportCandidateResponse])
-async def list_voice_import_candidates(request: Request):
+def list_voice_import_candidates(request: Request):
     container = request.app.state.container
     return [_import_candidate_response(path) for path in container.voices.list_import_candidates()]
 
 
 @router.get("/import-candidates/{filename}/audio")
-async def get_voice_import_candidate_audio(request: Request, filename: str):
+def get_voice_import_candidate_audio(request: Request, filename: str):
     container = request.app.state.container
     audio_path = container.voices.import_candidate_path(filename)
     return FileResponse(
@@ -160,14 +160,14 @@ async def import_voice(
 
 
 @router.get("/{voice_id}", response_model=VoiceResponse)
-async def get_voice(request: Request, voice_id: str):
+def get_voice(request: Request, voice_id: str):
     container = request.app.state.container
     profile = container.voices.get(voice_id)
     return _voice_response(profile)
 
 
 @router.get("/{voice_id}/reference-audio")
-async def get_voice_reference_audio(request: Request, voice_id: str):
+def get_voice_reference_audio(request: Request, voice_id: str):
     container = request.app.state.container
     profile = container.voices.get(voice_id)
     return FileResponse(
@@ -212,7 +212,7 @@ async def create_voice(
 
 
 @router.patch("/{voice_id}", response_model=VoiceResponse)
-async def update_voice(
+def update_voice(
     request: Request,
     voice_id: str,
     name: str | None = Form(default=None),
@@ -268,7 +268,7 @@ async def update_voice(
 
 
 @router.delete("/{voice_id}", response_model=VoiceDeleteResponse)
-async def delete_voice(request: Request, voice_id: str):
+def delete_voice(request: Request, voice_id: str):
     container = request.app.state.container
     container.voices.delete(voice_id)
     return {"deleted": True, "voice_id": voice_id}

@@ -2,6 +2,24 @@
 
 All notable VassilStudio productionization changes are tracked here.
 
+## Unreleased — 2026-09-22 reliability fixes
+
+- Confine voice/job IDs and artifact paths to their stores, reject links/junctions, and validate
+  all entries before deletion. Preserve malformed metadata in quarantine while loading healthy records.
+- Persist TTS reference audio/text snapshots and verify their hashes across queued execution/retry;
+  idempotent replay survives edits or deletion of the original voice.
+- Bound pending ASR/TTS jobs, decoded audio and realtime control/buffer inputs; move blocking audio
+  preparation, storage handlers and diagnostics off the HTTP event loop.
+- Fix ASR rerun filenames, delayed realtime finalization, microphone permission races, auth deep links,
+  logout draft cleanup, route error recovery, accessible headings/password fields and mobile focus.
+- Show retained-metadata recovery warnings in Settings; reject empty model files in readiness,
+  respect disabled engines, and show an actionable page when React assets have not been built.
+- Align Python support with 3.12, resolve Node/npm reliably, repair Vite HTTP/WebSocket proxies,
+  verify vocoder downloads before atomic installation, and run seven isolated browser QA suites.
+- Isolate OpenAPI/auth/browser tools from user storage. Add a disposable real-model VI/EN pipeline
+  smoke and regression coverage for filesystem boundaries, metadata, snapshots, queue capacity,
+  protocol input, audio budgets, API responsiveness and frontend lifecycle behavior.
+
 ## 0.1.0-local-product - 2026-07-08
 
 ### Added

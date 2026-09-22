@@ -50,7 +50,8 @@ async def synthesize(
         max_bytes=container.settings.limits.max_upload_bytes,
         field_name="reference_audio",
     )
-    samples, sample_rate = load_audio_bytes(
+    samples, sample_rate = await run_in_threadpool(
+        load_audio_bytes,
         data,
         target_sample_rate=container.tts.sample_rate_for(normalized_language),
     )
@@ -64,7 +65,7 @@ async def synthesize(
         num_steps=num_steps,
         speed=speed,
     )
-    return _wav_response(speech)
+    return await run_in_threadpool(_wav_response, speech)
 
 
 @router.post("/synthesize/voices/{voice_id}")
@@ -83,10 +84,11 @@ async def synthesize_with_voice(
         field_name="text",
         max_chars=container.settings.limits.max_tts_text_chars,
     )
-    profile = container.voices.get(voice_id)
+    profile, audio_bytes = await run_in_threadpool(container.voices.snapshot, voice_id)
     normalized_language = normalize_language(language or profile.language)
-    samples, sample_rate = load_audio_bytes(
-        profile.audio_path.read_bytes(),
+    samples, sample_rate = await run_in_threadpool(
+        load_audio_bytes,
+        audio_bytes,
         target_sample_rate=container.tts.sample_rate_for(normalized_language),
     )
     speech = await run_in_threadpool(
@@ -99,14 +101,17 @@ async def synthesize_with_voice(
         num_steps=num_steps,
         speed=speed,
     )
-    return _wav_response(speech)
+    return await run_in_threadpool(_wav_response, speech)
 
 
 @router.post(
     "/jobs/voices/{voice_id}",
     response_model=TtsJobResponse,
     status_code=202,
-    responses={409: {"description": "Idempotency key conflicts with an earlier request"}},
+    responses={
+        409: {"description": "Idempotency key conflicts with an earlier request"},
+        429: {"description": "Job queue is full"},
+    },
 )
 async def create_tts_job_with_voice(
     request: Request,
@@ -119,7 +124,8 @@ async def create_tts_job_with_voice(
 ):
     container = request.app.state.container
     validate_tts_parameters(num_steps, speed)
-    job = container.tts_jobs.create_from_voice(
+    job = await run_in_threadpool(
+        container.tts_jobs.create_from_voice,
         voice_id=voice_id,
         text=text,
         language=language,
@@ -131,13 +137,13 @@ async def create_tts_job_with_voice(
 
 
 @router.get("/jobs", response_model=list[TtsJobResponse])
-async def list_tts_jobs(request: Request):
+def list_tts_jobs(request: Request):
     container = request.app.state.container
     return [_job_response(job) for job in container.tts_jobs.list()]
 
 
 @router.delete("/jobs", response_model=TtsJobCleanupResponse)
-async def cleanup_tts_jobs(
+def cleanup_tts_jobs(
     request: Request,
     max_age_seconds: int | None = Query(default=None, ge=0),
 ):
@@ -147,19 +153,19 @@ async def cleanup_tts_jobs(
 
 
 @router.get("/jobs/{job_id}", response_model=TtsJobResponse)
-async def get_tts_job(request: Request, job_id: str):
+def get_tts_job(request: Request, job_id: str):
     container = request.app.state.container
     return _job_response(container.tts_jobs.get(job_id))
 
 
 @router.post("/jobs/{job_id}/cancel", response_model=TtsJobResponse)
-async def cancel_tts_job(request: Request, job_id: str):
+def cancel_tts_job(request: Request, job_id: str):
     container = request.app.state.container
     return _job_response(container.tts_jobs.cancel(job_id))
 
 
 @router.get("/jobs/{job_id}/audio")
-async def get_tts_job_audio(request: Request, job_id: str):
+def get_tts_job_audio(request: Request, job_id: str):
     container = request.app.state.container
     job = container.tts_jobs.get(job_id)
     if job.status != "succeeded" or not job.output_path or not job.output_path.exists():
@@ -173,7 +179,7 @@ async def get_tts_job_audio(request: Request, job_id: str):
 
 
 @router.delete("/jobs/{job_id}", response_model=TtsJobDeleteResponse)
-async def delete_tts_job(request: Request, job_id: str):
+def delete_tts_job(request: Request, job_id: str):
     container = request.app.state.container
     container.tts_jobs.delete(job_id)
     return {"deleted": True, "job_id": job_id}
