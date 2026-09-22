@@ -111,7 +111,7 @@ function settingsFixture() {
         secure_cookies: false,
       },
       storage,
-      license: { status: 'open-source', plan: 'GPL-3.0-or-later', billing_enabled: false },
+      license: { status: 'open-source', plan: 'MIT', billing_enabled: false },
     },
     auth: {
       auth_required: false,

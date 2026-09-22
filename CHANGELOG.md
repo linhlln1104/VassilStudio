@@ -2,6 +2,12 @@
 
 All notable VassilStudio productionization changes are tracked here.
 
+## Unreleased — 2026-09-22 MIT license
+
+- Relicense original VassilStudio application source under MIT, copyright 2026 linhlln1104.
+- Align package, diagnostics, UI, Docker, and release metadata with MIT; retain upstream
+  dependency notices and model/data license boundaries.
+
 ## Unreleased — 2026-09-22 reliability fixes
 
 - Confine voice/job IDs and artifact paths to their stores, reject links/junctions, and validate

@@ -249,7 +249,8 @@ The compose service mounts:
 
 ## Release And License
 
-VassilStudio 0.1.x is distributed source-first under `GPL-3.0-or-later`. The supported release
+VassilStudio application source is distributed source-first under the [MIT License](LICENSE).
+Third-party dependencies and model assets retain their own licenses. The supported release
 artifact is an audited source ZIP with a manifest and SHA256 checksums; model assets and local
 workspace data are always excluded. Build an untagged candidate from a clean working tree with:
 

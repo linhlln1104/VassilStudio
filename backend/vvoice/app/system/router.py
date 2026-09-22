@@ -192,7 +192,7 @@ def _diagnostics_payload(
         "recovery_warnings": _recovery_warnings(container),
         "license": {
             "status": "open-source",
-            "plan": "GPL-3.0-or-later",
+            "plan": "MIT",
             "billing_enabled": False,
         },
     }

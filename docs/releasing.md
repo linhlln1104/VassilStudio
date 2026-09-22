@@ -4,7 +4,7 @@
 
 VassilStudio 0.1.x uses a source-first release model:
 
-- Application source is licensed under `GPL-3.0-or-later`.
+- Original application source is licensed under `MIT`; third-party components retain their licenses.
 - The official artifact is a tagged source ZIP with a JSON manifest and SHA256 checksums.
 - Docker Compose is the supported production-like build and runtime recipe.
 - Model weights, tokenizers, vocoders, datasets, voice samples, local data, logs, and secrets are
@@ -12,7 +12,8 @@ VassilStudio 0.1.x uses a source-first release model:
 - A prebuilt Docker image or native installer is not an official 0.1.x artifact. Publishing one
   requires a complete third-party source/notice review, an SBOM, signing, and binary install smoke.
 
-This decision follows the actual runtime composition. `phonemizer-fork`, bundled eSpeak NG, and the
+The source-first distribution policy follows the actual runtime composition. The MIT grant and
+application license metadata do not replace third-party terms. `phonemizer-fork`, bundled eSpeak NG, and the
 GPL-enabled FFmpeg executables used by `imageio-ffmpeg` carry GPL obligations. Apache, MIT, BSD, and
 frontend package notices remain applicable; see `THIRD_PARTY_NOTICES.md`. This document is an
 engineering distribution policy, not legal advice. Obtain legal review before proprietary, paid,

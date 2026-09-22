@@ -16,7 +16,8 @@
   Torch/TorchAudio 2.11.0+cpu.
 - Benchmark protocol and accepted baseline are recorded in
   `docs/benchmarks/rc-0.1.0-windows-cpu.md`.
-- Application license is GPL-3.0-or-later; major runtime and model boundaries are documented.
+- This historical candidate used GPL-3.0-or-later; original application source on the current branch
+  moved to MIT on 2026-09-22. Major runtime and model boundaries remain documented separately.
 
 ## Official Tag Checklist
 

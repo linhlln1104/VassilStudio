@@ -148,11 +148,11 @@ const infoPages: Record<InfoPageId, InfoPageContent> = {
   },
   license: {
     title: 'License',
-    summary: 'VassilStudio is distributed source-first under GPL-3.0-or-later.',
+    summary: 'VassilStudio application source is distributed under the MIT License.',
     rows: [
       {
         label: 'Application',
-        value: 'Application source is GPL-3.0-or-later. The repository LICENSE contains the full terms.',
+        value: 'Original application source is licensed under MIT. The repository LICENSE contains the full terms.',
       },
       {
         label: 'Models',

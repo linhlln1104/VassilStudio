@@ -1,7 +1,8 @@
 # Third-Party Notices
 
-VassilStudio is licensed under GPL-3.0-or-later. The full application license is in
-`LICENSE`. This notice identifies the principal direct components and bundled native tools used by
+VassilStudio's original application source is licensed under MIT. The full application license is in
+`LICENSE`. This grant does not relicense third-party code, dependencies, models, or datasets.
+This notice identifies the principal direct components and bundled native tools used by
 the local runtime; it is not a complete transitive SBOM and does not replace license files shipped
 by those components.
 

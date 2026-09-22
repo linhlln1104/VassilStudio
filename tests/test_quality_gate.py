@@ -51,7 +51,7 @@ def test_toolchain_versions_match_container_baseline() -> None:
     assert '"torch==${TORCH_VERSION}" "torchaudio==${TORCH_VERSION}"' in dockerfile
     assert "--constraint docker/runtime-linux-cpu.constraints.txt" in dockerfile
     assert '".[runtime]"' in dockerfile
-    assert 'org.opencontainers.image.licenses="GPL-3.0-or-later"' in dockerfile
+    assert 'org.opencontainers.image.licenses="MIT"' in dockerfile
     assert "ENV VASSIL_BIND_ADDRESS=0.0.0.0" in dockerfile
     assert "COPY frontend ./frontend" not in dockerfile
 
@@ -107,7 +107,7 @@ def test_release_license_and_packaging_contract_are_declared() -> None:
     project = metadata["project"]
 
     assert metadata["build-system"]["requires"] == ["setuptools==81.0.0"]
-    assert project["license"] == "GPL-3.0-or-later"
+    assert project["license"] == "MIT"
     assert set(project["license-files"]) == {"LICENSE", "THIRD_PARTY_NOTICES.md"}
     assert ROOT.joinpath("LICENSE").is_file()
     assert ROOT.joinpath("THIRD_PARTY_NOTICES.md").is_file()

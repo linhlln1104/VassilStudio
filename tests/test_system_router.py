@@ -105,7 +105,7 @@ def test_diagnostics_reports_privacy_filtered_operations_metadata(tmp_path, monk
     }
     assert payload["license"] == {
         "status": "open-source",
-        "plan": "GPL-3.0-or-later",
+        "plan": "MIT",
         "billing_enabled": False,
     }
     assert payload["security"]["auth_required"] is False

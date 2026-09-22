@@ -818,7 +818,7 @@ function LicenseCard({
           <SettingsMetric label="Billing" value={billingEnabled ? 'Enabled' : 'Not applicable'} />
         </div>
         <div className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-600">
-          Application code is GPL-3.0-or-later. Installed models keep their own terms.
+          Application code is MIT-licensed. Dependencies and installed models keep their own terms.
         </div>
         {generatedAt ? (
           <div className="mt-2 text-xs font-medium text-slate-500">

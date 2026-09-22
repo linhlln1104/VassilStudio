@@ -17,7 +17,7 @@ ARG VASSIL_VERSION=0.1.0
 LABEL org.opencontainers.image.title="VassilStudio" \
       org.opencontainers.image.description="Local-first ZipFormer ASR and ZipVoice TTS studio" \
       org.opencontainers.image.version="${VASSIL_VERSION}" \
-      org.opencontainers.image.licenses="GPL-3.0-or-later" \
+      org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/linhlln1104/VassilStudio"
 
 ENV PYTHONDONTWRITEBYTECODE=1

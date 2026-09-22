@@ -108,7 +108,7 @@ def main() -> int:
             "source_tag": expected_tag if expected_tag in tags else None,
             "candidate_build": expected_tag not in tags,
             "built_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-            "license": "GPL-3.0-or-later",
+            "license": "MIT",
             "distribution": "source-first",
             "models_included": False,
             "binary_images_published": False,
