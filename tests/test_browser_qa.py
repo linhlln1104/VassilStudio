@@ -63,13 +63,13 @@ def test_node_resolution_repairs_missing_path_for_child_scripts(tmp_path: Path) 
     environment["VASSIL_NODE_PATH"] = str(node)
     environment["VASSIL_TOOLCHAIN_TEST_PS"] = str(ROOT / "scripts/node_toolchain.ps1")
     command = (
-        '. $env:VASSIL_TOOLCHAIN_TEST_PS; $env:PATH = ""; '
+        '$ErrorActionPreference = "Stop"; . $env:VASSIL_TOOLCHAIN_TEST_PS; $env:PATH = ""; '
         '$resolvedTools = Resolve-NodeToolchain; '
         '@{Node=$resolvedTools.Node; Npm=$resolvedTools.Npm; Path=$env:PATH} | ConvertTo-Json'
     )
     encoded = base64.b64encode(command.encode("utf-16le")).decode("ascii")
     result = subprocess.run(
-        ["powershell", "-NoProfile", "-EncodedCommand", encoded],
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded],
         env=environment, capture_output=True, text=True, check=True, timeout=15,
     )
     resolved = json.loads(result.stdout)

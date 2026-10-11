@@ -6,6 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from vvoice.app.auth.schemas import (
     AuthChangePasswordRequest,
     AuthLoginRequest,
+    AuthKeyLoginRequest,
     AuthLogoutResponse,
     AuthPasswordChangeResponse,
     AuthSessionResponse,
@@ -14,22 +15,25 @@ from vvoice.app.auth.schemas import (
     AuthUser,
 )
 from vvoice.app.auth.service import Account, AuthError, CreatedSession, LocalAuthService
+from vvoice.app.auth.iam_router import router as iam_router
+from vvoice.shared.security.auth import Principal, ROLE_SCOPES, studio_principal
 
 
 router = APIRouter()
+router.include_router(iam_router)
 
 
 @router.get("/status", response_model=AuthStatusResponse)
 async def auth_status(request: Request) -> AuthStatusResponse:
     auth = _auth_service(request)
     settings = request.app.state.container.settings.security
-    account = auth.account_from_session_token(_session_cookie(request)) if auth.auth_required else None
+    principal = studio_principal(request)
     return AuthStatusResponse(
         auth_required=auth.auth_required,
         setup_required=auth.setup_required,
-        authenticated=account is not None,
-        api_key_auth_enabled=bool(settings.api_keys),
-        user=_auth_user(account) if account else None,
+        authenticated=principal is not None,
+        api_key_auth_enabled=bool(settings.api_keys) or auth.has_active_api_keys(),
+        user=_principal_user(principal) if principal else None,
     )
 
 
@@ -58,6 +62,7 @@ async def setup_owner(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     _set_session_cookie(request, response, session)
+    _set_actor(request, account)
     return AuthSessionResponse(
         authenticated=True,
         user=_auth_user(account),
@@ -105,6 +110,7 @@ async def login(
     auth.clear_login_attempts(rate_limit_key)
     session = auth.create_session(account, user_agent=request.headers.get("user-agent"))
     _set_session_cookie(request, response, session)
+    _set_actor(request, account)
     return AuthSessionResponse(
         authenticated=True,
         user=_auth_user(account),
@@ -115,7 +121,9 @@ async def login(
 @router.post("/logout", response_model=AuthLogoutResponse)
 async def logout(request: Request, response: Response) -> AuthLogoutResponse:
     auth = _auth_service(request)
+    request.state.principal = studio_principal(request)
     auth.revoke_session(_session_cookie(request))
+    auth.revoke_key_session(_session_cookie(request))
     settings = request.app.state.container.settings.security
     response.delete_cookie(
         key=settings.session_cookie_name,
@@ -129,14 +137,34 @@ async def logout(request: Request, response: Response) -> AuthLogoutResponse:
 
 @router.get("/me", response_model=AuthUser)
 async def me(request: Request) -> AuthUser:
-    auth = _auth_service(request)
-    account = auth.account_from_session_token(_session_cookie(request)) if auth.auth_required else None
-    if account is None:
+    principal = studio_principal(request)
+    if principal is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid Studio session.",
         )
-    return _auth_user(account)
+    return _principal_user(principal)
+
+
+@router.post("/key-login", response_model=AuthSessionResponse,
+             responses={429: {"description": "Too many login attempts."}})
+async def key_login(payload: AuthKeyLoginRequest, request: Request, response: Response):
+    auth = _auth_service(request)
+    if not auth.auth_required:
+        raise HTTPException(409, "Enable Studio auth to use scoped browser sessions.")
+    rate_limit_key = _rate_limit_identifier(request, "service-key-login")
+    retry_after = auth.record_login_attempt(rate_limit_key)
+    if retry_after is not None:
+        _raise_rate_limited(retry_after, "Too many login attempts. Try again later.")
+    created = await run_in_threadpool(auth.create_key_session, payload.api_key)
+    if created is None:
+        raise HTTPException(401, "Invalid or revoked service API key.")
+    auth.clear_login_attempts(rate_limit_key)
+    session = CreatedSession(token=created["token"], expires_at=created["expires_at"])
+    _set_session_cookie(request, response, session)
+    principal = created["principal"]
+    request.state.principal = principal
+    return AuthSessionResponse(authenticated=True, user=_principal_user(principal), expires_at=session.expires_at)
 
 
 @router.post(
@@ -174,11 +202,21 @@ async def change_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     auth.clear_password_change_attempts(rate_limit_key)
+    _set_actor(request, account)
     return AuthPasswordChangeResponse(password_changed=True, other_sessions_revoked=revoked_count)
 
 
 def _auth_service(request: Request) -> LocalAuthService:
     return request.app.state.container.auth
+
+
+def _set_actor(request: Request, account: Account) -> None:
+    request.state.principal = Principal(account.account_id, account.username, "user", account.role,
+                                        tuple(sorted(ROLE_SCOPES.get(account.role, frozenset()))))
+
+
+def _principal_user(principal: Principal) -> AuthUser:
+    return AuthUser(account_id=principal.principal_id, username=principal.name, role=principal.role)
 
 
 def _session_cookie(request: Request) -> str | None:

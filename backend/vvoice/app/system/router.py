@@ -23,7 +23,7 @@ from vvoice.app.system.schemas import (
     WarmupAllResponse,
     WarmupResponse,
 )
-from vvoice.shared.security.auth import require_api_key
+from vvoice.shared.security.auth import require_scope
 
 
 router = APIRouter()
@@ -65,9 +65,10 @@ async def liveness():
 
 @router.get("/readyz", response_model=ProbeResponse)
 async def readiness(request: Request, response: Response):
-    settings = request.app.state.container.settings
+    container = request.app.state.container
+    settings = container.settings
     checks = {
-        **_model_file_checks(settings),
+        **_model_file_checks(settings, container.tts),
         **_storage_checks(settings),
     }
     ready = all(checks.values())
@@ -83,12 +84,12 @@ async def readiness(request: Request, response: Response):
 @router.get(
     "/model-status",
     response_model=ModelStatusResponse,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_scope("models:read"))],
 )
 async def model_status(request: Request):
     container = request.app.state.container
     settings = request.app.state.container.settings
-    checks = _model_file_checks(settings)
+    checks = _model_file_checks(settings, container.tts)
     return {
         "ready": all(checks.values()),
         "checks": checks,
@@ -99,7 +100,7 @@ async def model_status(request: Request):
 @router.get(
     "/diagnostics",
     response_model=DiagnosticsResponse,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_scope("system:read"))],
 )
 async def diagnostics(request: Request, response: Response):
     container = request.app.state.container
@@ -110,7 +111,9 @@ async def diagnostics(request: Request, response: Response):
 
 @router.get(
     "/diagnostics/bundle",
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_scope("system:read"))],
+    response_class=StreamingResponse,
+    responses={200: {"content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}}}},
 )
 async def diagnostics_bundle(
     request: Request,
@@ -128,7 +131,7 @@ async def diagnostics_bundle(
         host_metadata_included=include_host_metadata,
     )
     readiness_checks = {
-        **_model_file_checks(settings),
+        **_model_file_checks(settings, container.tts),
         **_storage_checks(settings),
     }
     generated_at = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -172,6 +175,8 @@ def _diagnostics_payload(
     *,
     host_metadata_included: bool = False,
 ) -> dict:
+    auth = getattr(container, "auth", None)
+    named_keys_enabled = bool(auth and auth.has_active_api_keys())
     return {
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "version": __version__,
@@ -183,7 +188,7 @@ def _diagnostics_payload(
         "runtime": _runtime_status(container, settings),
         "security": {
             "auth_required": getattr(settings.security, "auth_required", False),
-            "api_key_auth_enabled": bool(settings.security.api_keys),
+            "api_key_auth_enabled": bool(settings.security.api_keys) or named_keys_enabled,
             "session_cookie_name": getattr(settings.security, "session_cookie_name", "vassil_session"),
             "session_ttl_seconds": getattr(settings.security, "session_ttl_seconds", 0),
             "secure_cookies": getattr(settings.security, "secure_cookies", False),
@@ -213,7 +218,7 @@ def _recovery_warnings(container) -> list[str]:
 @router.post(
     "/warmup/asr",
     response_model=WarmupResponse,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_scope("models:manage"))],
 )
 async def warmup_asr(request: Request, language: str | None = None):
     container = request.app.state.container
@@ -227,11 +232,16 @@ async def warmup_asr(request: Request, language: str | None = None):
 @router.post(
     "/warmup/tts",
     response_model=WarmupResponse,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_scope("models:manage"))],
 )
-async def warmup_tts(request: Request, language: str | None = None):
+async def warmup_tts(
+    request: Request, language: str | None = None, model_id: str | None = None,
+):
     container = request.app.state.container
-    await run_in_threadpool(container.tts.warmup, language)
+    if model_id is None:
+        await run_in_threadpool(container.tts.warmup, language)
+    else:
+        await run_in_threadpool(container.tts.warmup, language, model_id=model_id)
     return {
         "loaded": container.tts.is_loaded,
         "loaded_languages": list(container.tts.loaded_languages),
@@ -241,7 +251,7 @@ async def warmup_tts(request: Request, language: str | None = None):
 @router.post(
     "/warmup",
     response_model=WarmupAllResponse,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_scope("models:manage"))],
 )
 async def warmup_all(request: Request):
     container = request.app.state.container
@@ -444,7 +454,7 @@ def _bundle_readme(include_host_metadata: bool) -> str:
     )
 
 
-def _model_file_checks(settings) -> dict[str, bool]:
+def _model_file_checks(settings, tts=None) -> dict[str, bool]:
     checks = {}
     for language, model in settings.asr.models.items():
         if not getattr(settings.asr, "enabled", True):
@@ -458,6 +468,9 @@ def _model_file_checks(settings) -> dict[str, bool]:
                 f"{prefix}_tokens": _usable_file(model.tokens),
             }
         )
+    if tts is not None and hasattr(tts, "readiness_checks"):
+        checks.update(tts.readiness_checks())
+        return checks
     for language, model in settings.tts.models.items():
         if not getattr(settings.tts, "enabled", True):
             continue

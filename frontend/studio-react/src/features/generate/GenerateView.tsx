@@ -21,7 +21,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { QueryErrorState } from '@/components/ui/query-error'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/components/ui/use-toast'
-import { api, createIdempotencyKey, type TtsJob, type Voice } from '@/lib/api'
+import { api, createIdempotencyKey, type TtsJob, type TtsModel, type Voice } from '@/lib/api'
 import { BRAND_NAME } from '@/lib/brand'
 import { compactId, formatDuration } from '@/lib/format'
 import { jobRefetchInterval } from '@/lib/job-polling'
@@ -34,14 +34,17 @@ import {
   voiceLanguageLabel,
   voiceLanguageShortLabel,
 } from '@/lib/language'
+import { ttsModelMessage, ttsModelStatus } from '@/lib/tts-models'
 import { queryErrorMessage } from '@/lib/query-error'
 import {
   consumePendingScript,
   getGenerateDraft,
   getPreferredLanguage,
+  getPreferredTtsModel,
   getPreferredVoiceId,
   setGenerateDraft,
   setPreferredLanguage,
+  setPreferredTtsModel,
   setPreferredVoiceId,
 } from '@/lib/studio-preferences'
 
@@ -64,8 +67,9 @@ type GenerateRequest = {
   voiceId: string
   text: string
   language: VoiceLanguage
-  numSteps: number
-  speed: number
+  modelId: string
+  numSteps?: number
+  speed?: number
   fingerprint: string
   idempotencyKey: string
 }
@@ -89,6 +93,7 @@ export function GenerateView() {
   const [selectedLanguage, setSelectedLanguage] = useState<VoiceLanguage>(() =>
     normalizeVoiceLanguage(getPreferredLanguage()),
   )
+  const [selectedModelIds, setSelectedModelIds] = useState<Record<string, string>>({})
   const [renderMode, setRenderMode] = useState<RenderMode>('preview')
   const [speedPercent, setSpeedPercent] = useState(100)
   const importInputRef = useRef<HTMLInputElement>(null)
@@ -103,41 +108,50 @@ export function GenerateView() {
     queryFn: api.ttsJobs,
     refetchInterval: (query) => jobRefetchInterval(query.state.data),
   })
-  const modelStatusQuery = useQuery({
-    queryKey: ['model-status'],
-    queryFn: api.modelStatus,
+  const modelsQuery = useQuery({
+    queryKey: ['tts-models'],
+    queryFn: api.ttsModels,
     staleTime: 30000,
     refetchInterval: 30000,
   })
 
+  const models = modelsQuery.data?.models ?? []
+  const languageModels = models.filter((model) => model.languages.includes(selectedLanguage))
+  const preferredModelId = selectedModelIds[selectedLanguage] ?? getPreferredTtsModel(selectedLanguage)
+  const selectedModel = languageModels.find((model) => model.model_id === preferredModelId)
+    ?? languageModels.find((model) => model.model_id === modelsQuery.data?.default_models[selectedLanguage])
+    ?? languageModels[0]
   const voices = voicesQuery.data ?? []
   const ttsJobs = useMemo(() => ttsJobsQuery.data ?? [], [ttsJobsQuery.data])
   const selectedVoice = voices.find((voice) => voice.voice_id === selectedVoiceId) ?? voices[0]
   const selectedVoiceLanguage = normalizeVoiceLanguage(selectedVoice?.language)
   const selectedVoiceEffectId = selectedVoice?.voice_id
   const selectedVoiceEffectLanguage = selectedVoice?.language
-  const latestOutput = useMemo(
-    () => ttsJobs.find((job) => job.audio_url) ?? null,
-    [ttsJobs],
-  )
   const activeTtsCount = ttsJobs.filter((job) => ['queued', 'running', 'cancelling'].includes(job.status)).length
-  const latestFailedTtsJob = ttsJobs.find((job) => job.status === 'failed') ?? null
-  const latestOutputVoice = voices.find((voice) => voice.voice_id === latestOutput?.voice_id)
   const renderProfile = renderProfiles[renderMode]
-  const currentRequestFingerprint = selectedVoice
+  const currentRequestFingerprint = selectedVoice && selectedModel
     ? renderRequestFingerprint({
         voiceId: selectedVoice.voice_id,
         text: script.trim(),
         language: selectedLanguage,
-        numSteps: renderProfile.numSteps,
-        speed: speedFromPercent(speedPercent),
+        modelId: selectedModel.model_id,
+        numSteps: selectedModel.capabilities.num_steps ? renderProfile.numSteps : undefined,
+        speed: selectedModel.capabilities.speed ? speedFromPercent(speedPercent) : undefined,
       })
     : ''
+  const matchingJobs = ttsJobs.filter((job) => renderRequestFingerprint({
+    voiceId: job.voice_id, text: job.text, language: normalizeVoiceLanguage(job.language),
+    modelId: job.model_id, numSteps: job.num_steps ?? undefined, speed: job.speed ?? 1,
+  }) === currentRequestFingerprint)
+  const latestOutput = matchingJobs.find((job) => job.audio_url) ?? null
+  const latestFailedTtsJob = matchingJobs.find((job) => job.status === 'failed') ?? null
+  const latestOutputVoice = voices.find((voice) => voice.voice_id === latestOutput?.voice_id)
   const generateMutation = useMutation({
-    mutationFn: ({ voiceId, text, language, numSteps, speed, idempotencyKey }: GenerateRequest) =>
+    mutationFn: ({ voiceId, text, language, modelId, numSteps, speed, idempotencyKey }: GenerateRequest) =>
       api.createTtsJobWithVoice(voiceId, {
         text,
         language,
+        modelId,
         numSteps,
         speed,
       }, { idempotencyKey }),
@@ -153,7 +167,8 @@ export function GenerateView() {
       submitLockRef.current = false
     },
   })
-  const latestJob = generateMutationJob(ttsJobs, generateMutation.data)
+  const latestJob = generateMutationJob(matchingJobs,
+    generateMutation.variables?.fingerprint === currentRequestFingerprint ? generateMutation.data : undefined)
   const latestJobVoice = voices.find((voice) => voice.voice_id === latestJob?.voice_id)
   const activeRequestJob = findActiveRenderJob(
     ttsJobs,
@@ -180,21 +195,16 @@ export function GenerateView() {
     : null
   const scriptReady = Boolean(script.trim())
   const languageWarning = getLanguageWarning(script, selectedLanguage, selectedVoice)
-  const runtimeLanguageWarning = getRuntimeLanguageWarning(
-    selectedLanguage,
-    modelStatusQuery.data?.runtime.tts_configured_languages,
-  )
-  const modelReadinessMessage = getModelReadinessMessage({
-    selectedLanguage,
-    configuredLanguages: modelStatusQuery.data?.runtime.tts_configured_languages,
-    loadedLanguages: modelStatusQuery.data?.runtime.tts_loaded_languages,
-    statusError: modelStatusQuery.error,
-    kind: 'TTS',
-  })
+  const modelsError = modelsQuery.isError
+    ? queryErrorMessage(modelsQuery.error, 'Unable to load TTS models.')
+    : null
+  const modelReadinessMessage = selectedModel ? ttsModelMessage(selectedModel) : null
   const canGenerate = Boolean(
-    scriptReady &&
+    scriptReady && script.length <= 5000 &&
     selectedVoice &&
-    !runtimeLanguageWarning &&
+    selectedModel?.ready &&
+    selectedModel.capabilities.reference_audio &&
+    !modelsError &&
     !generateMutation.isPending &&
     !activeRequestJob,
   )
@@ -249,6 +259,11 @@ export function GenerateView() {
     setPreferredLanguage(language)
   }
 
+  const handleModelSelect = (modelId: string) => {
+    setSelectedModelIds((current) => ({ ...current, [selectedLanguage]: modelId }))
+    setPreferredTtsModel(selectedLanguage, modelId)
+  }
+
   const handleTextImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) {
@@ -259,6 +274,9 @@ export function GenerateView() {
       const importedScript = await file.text()
       if (!importedScript.trim()) {
         throw new Error('The selected text file is empty.')
+      }
+      if (importedScript.length > 5000) {
+        throw new Error('Quick Generate accepts up to 5,000 characters. Split the script into project segments or import it through Batches.')
       }
       setScript(importedScript)
       toast({
@@ -278,14 +296,15 @@ export function GenerateView() {
   }
 
   const handleGenerate = () => {
-    if (!selectedVoice || !canGenerate || submitLockRef.current) return
+    if (!selectedVoice || !selectedModel || !canGenerate || submitLockRef.current) return
 
     const request = {
       voiceId: selectedVoice.voice_id,
       text: script.trim(),
       language: selectedLanguage,
-      numSteps: renderProfile.numSteps,
-      speed: speedFromPercent(speedPercent),
+      modelId: selectedModel.model_id,
+      numSteps: selectedModel.capabilities.num_steps ? renderProfile.numSteps : undefined,
+      speed: selectedModel.capabilities.speed ? speedFromPercent(speedPercent) : undefined,
     }
     const fingerprint = renderRequestFingerprint(request)
     const retryRequest = retryRequestRef.current?.fingerprint === fingerprint
@@ -308,7 +327,12 @@ export function GenerateView() {
     selectedLanguage,
     selectedVoiceLanguage,
     languageWarning,
-    runtimeLanguageWarning,
+    models: languageModels,
+    selectedModel,
+    modelsLoading: modelsQuery.isLoading,
+    modelsError,
+    onModelChange: handleModelSelect,
+    onRetryModels: () => { void modelsQuery.refetch() },
     modelReadinessMessage,
     onLanguageChange: handleLanguageSelect,
     scriptReady,
@@ -337,8 +361,8 @@ export function GenerateView() {
       />
 
       <FirstRunChecklist
-        runtimeReady={Boolean(modelStatusQuery.data?.ready)}
-        runtimeLoading={modelStatusQuery.isLoading}
+        runtimeReady={Boolean(selectedModel?.ready) && !modelsError}
+        runtimeLoading={modelsQuery.isLoading}
         voiceReady={voices.length > 0}
         scriptReady={scriptReady}
         renderQueued={firstRunRenderQueued}
@@ -522,7 +546,12 @@ type VoicePanelProps = {
   selectedLanguage: VoiceLanguage
   selectedVoiceLanguage: VoiceLanguage
   languageWarning: string | null
-  runtimeLanguageWarning: string | null
+  models: TtsModel[]
+  selectedModel: TtsModel | undefined
+  modelsLoading: boolean
+  modelsError: string | null
+  onModelChange: (modelId: string) => void
+  onRetryModels: () => void
   modelReadinessMessage: string | null
   onLanguageChange: (language: VoiceLanguage) => void
   scriptReady: boolean
@@ -548,7 +577,12 @@ function VoicePanel({
   selectedLanguage,
   selectedVoiceLanguage,
   languageWarning,
-  runtimeLanguageWarning,
+  models,
+  selectedModel,
+  modelsLoading,
+  modelsError,
+  onModelChange,
+  onRetryModels,
   modelReadinessMessage,
   onLanguageChange,
   scriptReady,
@@ -571,6 +605,36 @@ function VoicePanel({
         <SlidersHorizontal className="size-5 text-slate-500" />
       </CardHeader>
       <CardContent className="space-y-3">
+        <label className="block">
+          <span className="mb-2 block text-xs font-semibold text-slate-700">TTS model</span>
+          <select
+            aria-label="TTS model"
+            value={selectedModel?.model_id ?? ''}
+            disabled={modelsLoading || Boolean(modelsError) || models.length === 0}
+            onChange={(event) => onModelChange(event.target.value)}
+            className="h-8 w-full rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-950 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          >
+            {!models.length ? <option value="">{modelsLoading ? 'Loading models...' : 'No model available'}</option> : null}
+            {models.map((model) => (
+              <option key={model.model_id} value={model.model_id}>
+                {model.label} - {ttsModelStatus(model)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {modelsError ? (
+          <QueryErrorState compact title="Unable to load TTS models" message={modelsError} onRetry={onRetryModels} />
+        ) : !modelsLoading && !models.length ? (
+          <div className="text-xs text-red-700">No TTS model supports {voiceLanguageLabel(selectedLanguage)}. Configure one in Settings.</div>
+        ) : null}
+        {selectedModel && !selectedModel.capabilities.reference_audio ? (
+          <div className="text-xs text-red-700">This model does not support reference voice profiles.</div>
+        ) : null}
+        {modelReadinessMessage ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800">
+            {modelReadinessMessage}
+          </div>
+        ) : null}
         {voicesError ? (
           <QueryErrorState
             compact
@@ -582,7 +646,7 @@ function VoicePanel({
           <div className="rounded-md border border-dashed border-amber-300 bg-amber-50 p-3">
             <div className="text-sm font-semibold text-slate-950">No voice profiles yet</div>
             <p className="mt-1 text-xs leading-5 text-slate-700">
-              Import a reference recording before rendering with ZipVoice.
+              Import a reference recording before generating speech.
             </p>
             <Button className="mt-3 w-full" onClick={() => { window.location.hash = '/voices' }}>
               Import a voice
@@ -614,31 +678,21 @@ function VoicePanel({
               voiceLanguage={selectedVoiceLanguage}
               onChange={onLanguageChange}
             />
-            {runtimeLanguageWarning ? (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
-                {runtimeLanguageWarning}
-              </div>
-            ) : null}
-            {modelReadinessMessage ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800">
-                {modelReadinessMessage}
-              </div>
-            ) : null}
             {languageWarning ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800">
                 {languageWarning}
               </div>
             ) : null}
 
-            <ControlSlider
+            {selectedModel?.capabilities.speed ? <ControlSlider
               label="Speed"
               min="Slower"
               max="Faster"
               value={speedPercent}
               valueLabel={`${speedFromPercent(speedPercent).toFixed(2)}x`}
               onChange={setSpeedPercent}
-            />
-            <RenderModeControl value={renderMode} onChange={setRenderMode} />
+            /> : null}
+            {selectedModel?.capabilities.num_steps ? <RenderModeControl value={renderMode} onChange={setRenderMode} /> : null}
 
             <GenerateActionContent
               selectedVoice={selectedVoice}
@@ -648,7 +702,7 @@ function VoicePanel({
               submittedJob={submittedJob}
               activeRequestJob={activeRequestJob}
               generateError={generateError}
-              blockedReason={runtimeLanguageWarning}
+              blockedReason={modelsError ?? (!selectedModel?.ready ? 'Complete model setup in Settings.' : null)}
               onGenerate={onGenerate}
             />
           </>
@@ -684,10 +738,10 @@ function GenerateActionContent({
     : !scriptReady
       ? 'Add a script to enable rendering.'
       : blockedReason
-        ? 'Select a configured render language.'
+        ? blockedReason
         : activeRequestJob
           ? jobProgressLabel(activeRequestJob, 'TTS')
-          : 'Queue a local ZipVoice render.'
+          : 'Queue a local voice render.'
 
   return (
     <div className="space-y-2.5">
@@ -773,6 +827,8 @@ function ScriptEditor({
       </CardHeader>
       <CardContent className="p-0">
         <textarea
+          aria-label="Script text"
+          maxLength={5000}
           value={script}
           onChange={(event) => onScriptChange(event.target.value)}
           onKeyDown={(event) => {
@@ -789,7 +845,7 @@ function ScriptEditor({
           className="min-h-[180px] w-full resize-y border-0 bg-white p-3 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-500 sm:min-h-[260px] lg:min-h-[300px] xl:min-h-[320px]"
         />
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
-          <span>{script.length.toLocaleString()} characters</span>
+          <span>{script.length.toLocaleString()} / 5,000 characters</span>
           <span>{wordCount.toLocaleString()} words</span>
           <Badge variant="muted">{voiceLanguageShortLabel(language)}</Badge>
         </div>
@@ -837,7 +893,7 @@ function OutputPanel({
       <CardHeader>
         <div>
           <div className="text-sm font-semibold text-slate-950">Output and queue</div>
-          <div className="mt-1 text-xs text-slate-600">Latest local render and job state.</div>
+          <div className="mt-1 text-xs text-slate-600">Results matching this script, voice and model.</div>
         </div>
         <Button
           aria-label="Open jobs"
@@ -937,7 +993,7 @@ function OutputPanel({
             <WandSparkles className="mx-auto size-7 text-slate-500" />
             <div className="mt-3 text-sm font-semibold text-slate-800">No output yet</div>
             <p className="mt-1 text-xs leading-5 text-slate-600">
-              Generated clips will appear here with playback and export.
+              Render this script to hear its matching output. Previous scripts remain available in Jobs.
             </p>
           </div>
         )}
@@ -1109,7 +1165,8 @@ function findActiveRenderJob(
       voiceId: job.voice_id,
       text: job.text,
       language: normalizeVoiceLanguage(job.language),
-      numSteps: job.num_steps ?? 0,
+      modelId: job.model_id,
+      numSteps: job.num_steps ?? undefined,
       speed: job.speed ?? 1,
     }) === fingerprint
   )) ?? null
@@ -1119,15 +1176,17 @@ function renderRequestFingerprint(request: {
   voiceId: string
   text: string
   language: VoiceLanguage
-  numSteps: number
-  speed: number
+  modelId: string
+  numSteps?: number
+  speed?: number
 }) {
   return JSON.stringify([
     request.voiceId,
     request.text,
     request.language,
-    request.numSteps,
-    request.speed,
+    request.modelId,
+    request.numSteps ?? null,
+    request.speed ?? 1,
   ])
 }
 
@@ -1175,56 +1234,4 @@ function getLanguageWarning(
   }
 
   return null
-}
-
-function getRuntimeLanguageWarning(
-  selectedLanguage: VoiceLanguage,
-  configuredLanguages: string[] | undefined,
-) {
-  if (!configuredLanguages?.length) {
-    return null
-  }
-
-  const configured = new Set(configuredLanguages.map((language) => normalizeVoiceLanguage(language)))
-  if (configured.has(selectedLanguage)) {
-    return null
-  }
-
-  const available = Array.from(configured)
-    .map((language) => voiceLanguageLabel(language))
-    .join(', ')
-  return `${voiceLanguageLabel(selectedLanguage)} TTS is not configured on this backend. Available runtime: ${available}.`
-}
-
-function getModelReadinessMessage({
-  selectedLanguage,
-  configuredLanguages,
-  loadedLanguages,
-  statusError,
-  kind,
-}: {
-  selectedLanguage: VoiceLanguage
-  configuredLanguages: string[] | undefined
-  loadedLanguages: string[] | undefined
-  statusError: unknown
-  kind: 'ASR' | 'TTS'
-}) {
-  if (statusError instanceof Error) {
-    return `Model status unavailable: ${statusError.message}`
-  }
-  if (!configuredLanguages?.length) {
-    return null
-  }
-
-  const configured = new Set(configuredLanguages.map((language) => normalizeVoiceLanguage(language)))
-  if (!configured.has(selectedLanguage)) {
-    return null
-  }
-
-  const loaded = new Set((loadedLanguages ?? []).map((language) => normalizeVoiceLanguage(language)))
-  if (loaded.has(selectedLanguage)) {
-    return null
-  }
-
-  return `${voiceLanguageLabel(selectedLanguage)} ${kind} model is cold. The next request may spend extra time loading local assets.`
 }

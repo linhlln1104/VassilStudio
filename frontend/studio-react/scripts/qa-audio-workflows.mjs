@@ -1,3 +1,4 @@
+import { ttsModelCatalog } from './tts-model-fixture.mjs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -94,6 +95,7 @@ async function installGenerateFixture(page, fixture) {
     if (url.pathname === '/api/v1/auth/status') {
       return json({ auth_required: false, setup_required: false, authenticated: true, api_key_auth_enabled: false, user: null })
     }
+    if (url.pathname === '/api/v1/tts/models') return json(ttsModelCatalog())
     if (url.pathname === '/model-status') {
       return json({
         ready: true,
@@ -133,6 +135,7 @@ async function installGenerateFixture(page, fixture) {
       const job = {
         job_id: 'tts-qa-double-submit',
         status: 'queued',
+        model_id: 'zipvoice-vi',
         voice_id: 'voice-qa-runtime',
         language: 'vi',
         text: 'Day la bai kiem tra runtime integrity.',

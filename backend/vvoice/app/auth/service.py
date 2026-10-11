@@ -16,6 +16,7 @@ import time
 import uuid
 
 from vvoice.core.config import SecuritySettings
+from vvoice.app.auth.iam import IamService
 
 
 SCRYPT_ALGORITHM = "scrypt_sha256"
@@ -48,7 +49,7 @@ class CreatedSession:
     expires_at: str
 
 
-class LocalAuthService:
+class LocalAuthService(IamService):
     def __init__(self, settings: SecuritySettings) -> None:
         self.settings = settings
         self.path = settings.auth_db_path
@@ -63,6 +64,7 @@ class LocalAuthService:
         )
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_schema()
+        self._ensure_iam_schema()
 
     @property
     def auth_required(self) -> bool:
@@ -336,8 +338,9 @@ class LocalAuthService:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.path)
+        connection = sqlite3.connect(self.path, timeout=10)
         connection.row_factory = sqlite3.Row
+        connection.execute("pragma foreign_keys = on")
         try:
             yield connection
             connection.commit()

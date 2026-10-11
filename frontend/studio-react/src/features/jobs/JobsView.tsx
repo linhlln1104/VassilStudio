@@ -30,7 +30,7 @@ import { compactId, formatDuration } from '@/lib/format'
 import { jobRefetchInterval } from '@/lib/job-polling'
 import { cancellationResultMessage, jobProgressLabel, jobStatusLabel } from '@/lib/job-runtime'
 import { normalizeVoiceLanguage, voiceLanguageShortLabel } from '@/lib/language'
-import { setPendingScript, setPreferredLanguage } from '@/lib/studio-preferences'
+import { setPendingScript, setPreferredLanguage, setPreferredTtsModel, setPreferredVoiceId } from '@/lib/studio-preferences'
 import { cn } from '@/lib/utils'
 import { TranscriptReviewDialog } from '@/features/transcribe/TranscriptReviewDialog'
 import { JobInspector, type StudioJob } from './JobInspector'
@@ -102,6 +102,8 @@ export function JobsView() {
         reusableText: job.text,
         error: job.error,
         voiceId: job.voice_id,
+        modelId: job.model_id,
+        production: job.provenance?.production,
         numSteps: job.num_steps,
         speed: job.speed,
         filename: null,
@@ -131,6 +133,7 @@ export function JobsView() {
         reusableText: job.text || '',
         error: job.error,
         voiceId: null,
+        modelId: null,
         numSteps: null,
         speed: null,
         filename: job.filename,
@@ -263,8 +266,9 @@ export function JobsView() {
   })
 
   const runAgainMutation = useMutation({
-    mutationFn: async ({ job, idempotencyKey }: { job: StudioJob; idempotencyKey: string }) => {
+    mutationFn: async ({ job, idempotencyKey, snapshot }: { job: StudioJob; idempotencyKey: string; snapshot: boolean }) => {
       if (job.type === 'TTS') {
+        if (snapshot) return api.retryTtsJob(job.id, idempotencyKey)
         if (!job.voiceId || !job.reusableText.trim()) {
           throw new Error('The original voice profile or script is unavailable.')
         }
@@ -273,6 +277,7 @@ export function JobsView() {
           {
             text: job.reusableText,
             language: job.language,
+            modelId: job.modelId ?? undefined,
             numSteps: job.numSteps ?? undefined,
             speed: job.speed ?? undefined,
           },
@@ -304,7 +309,7 @@ export function JobsView() {
     },
     onError: (error) => {
       toast({
-        title: 'Run again failed',
+        title: 'Job submission failed',
         description: errorMessage(error, 'Unable to create a new job from this source.'),
         variant: 'danger',
       })
@@ -314,15 +319,15 @@ export function JobsView() {
     },
   })
 
-  const runJobAgain = (job: StudioJob) => {
+  const runJobAgain = (job: StudioJob, snapshot = false) => {
     if (runAgainSubmitLockRef.current) return
-    const sourceKey = jobKey(job)
+    const sourceKey = `${jobKey(job)}:${snapshot ? 'snapshot' : 'current'}`
     const retryRequest = runAgainRetryRef.current?.sourceKey === sourceKey
       ? runAgainRetryRef.current
       : { sourceKey, idempotencyKey: createIdempotencyKey(job.type === 'TTS' ? 'tts' : 'asr') }
     runAgainRetryRef.current = retryRequest
     runAgainSubmitLockRef.current = true
-    runAgainMutation.mutate({ job, idempotencyKey: retryRequest.idempotencyKey })
+    runAgainMutation.mutate({ job, idempotencyKey: retryRequest.idempotencyKey, snapshot })
   }
 
   const refetchJobs = () => {
@@ -341,6 +346,10 @@ export function JobsView() {
       return
     }
 
+    if (job.type === 'TTS') {
+      if (job.modelId) setPreferredTtsModel(normalizeVoiceLanguage(job.language), job.modelId)
+      if (job.voiceId) setPreferredVoiceId(job.voiceId)
+    }
     setPendingScript(script)
     setPreferredLanguage(normalizeVoiceLanguage(job.language))
     toast({
@@ -513,6 +522,7 @@ export function JobsView() {
         }}
         onReuse={reuseJob}
         onRunAgain={runJobAgain}
+        onRetrySnapshot={(job) => runJobAgain(job, true)}
         onReviewTranscript={(job) => {
           setSelectedJobKey(null)
           setReviewJobId(job.id)

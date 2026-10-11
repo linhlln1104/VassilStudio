@@ -5,7 +5,10 @@ import uuid
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException
 
 from vvoice import __version__
 from vvoice.core.brand import API_BRAND_NAME
@@ -39,12 +42,15 @@ from vvoice.core.observability import (
 from vvoice.app.auth.router import router as auth_router
 from vvoice.domains.asr.router import router as asr_router
 from vvoice.domains.realtime.router import router as realtime_router
-from vvoice.shared.security.auth import require_api_key
+from vvoice.shared.security.auth import (
+    require_domain_scope, reset_current_principal, set_current_principal,
+)
 from vvoice.shared.security.headers import apply_browser_security_headers
 from vvoice.app.studio.router import router as studio_router
 from vvoice.app.system.router import router as system_router
 from vvoice.domains.tts.router import router as tts_router
 from vvoice.domains.voices.router import router as voices_router
+from vvoice.domains.production.router import router as production_router
 
 
 def create_app() -> FastAPI:
@@ -58,6 +64,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         try:
+            container.production.start()
             if settings.runtime.warmup_on_startup:
                 await run_in_threadpool(container.asr.warmup_all)
                 await run_in_threadpool(container.tts.warmup_all)
@@ -73,13 +80,13 @@ def create_app() -> FastAPI:
 
     app.include_router(system_router, tags=["system"])
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
-    protected = [Depends(require_api_key)]
-
-    app.include_router(asr_router, prefix="/api/v1/asr", tags=["asr"], dependencies=protected)
-    app.include_router(tts_router, prefix="/api/v1/tts", tags=["tts"], dependencies=protected)
-    app.include_router(voices_router, prefix="/api/v1/voices", tags=["voices"], dependencies=protected)
+    app.include_router(asr_router, prefix="/api/v1/asr", tags=["asr"], dependencies=[Depends(require_domain_scope("asr"))])
+    app.include_router(tts_router, prefix="/api/v1/tts", tags=["tts"], dependencies=[Depends(require_domain_scope("tts"))])
+    app.include_router(voices_router, prefix="/api/v1/voices", tags=["voices"], dependencies=[Depends(require_domain_scope("voices"))])
     app.include_router(realtime_router, prefix="/api/v1/realtime", tags=["realtime"])
+    app.include_router(production_router, prefix="/api/v1", tags=["production"])
     app.include_router(studio_router, tags=["studio"])
+    register_openapi(app, settings.security.session_cookie_name)
 
     return app
 
@@ -92,6 +99,7 @@ def register_request_middleware(app: FastAPI) -> None:
         request_id = _request_id_from_header(request.headers.get(REQUEST_ID_HEADER))
         request.state.request_id = request_id
         token = set_request_id(request_id)
+        principal_token = set_current_principal(None)
         started = time.perf_counter()
         try:
             response = await call_next(request)
@@ -103,6 +111,7 @@ def register_request_middleware(app: FastAPI) -> None:
                     "method": request.method,
                     "path": request.url.path,
                     "duration_ms": elapsed_ms,
+                    "actor_id": getattr(getattr(request.state, "principal", None), "principal_id", None),
                 },
             )
             raise
@@ -110,6 +119,14 @@ def register_request_middleware(app: FastAPI) -> None:
             elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
             apply_browser_security_headers(request, response)
             response.headers[REQUEST_ID_HEADER] = request_id
+            principal = getattr(request.state, "principal", None)
+            if request.method not in {"GET", "HEAD", "OPTIONS"}:
+                auth = getattr(getattr(request.app.state, "container", None), "auth", None)
+                if auth is not None:
+                    await run_in_threadpool(
+                        auth.record_audit, principal, "http.mutation", "http", request.url.path,
+                        request_id, {"method": request.method, "status_code": response.status_code},
+                    )
             logger.info(
                 "http_request_completed",
                 extra={
@@ -117,15 +134,32 @@ def register_request_middleware(app: FastAPI) -> None:
                     "path": request.url.path,
                     "status_code": response.status_code,
                     "duration_ms": elapsed_ms,
+                    "actor_id": getattr(principal, "principal_id", None),
                 },
             )
             return response
         finally:
             reset_request_id(token)
+            reset_current_principal(principal_token)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
     logger = logging.getLogger("vvoice.errors")
+
+    @app.exception_handler(HTTPException)
+    async def http_error_handler(_: Request, exc: HTTPException) -> JSONResponse:
+        # Retain detail for existing clients while unifying integration error fields.
+        message = exc.detail if isinstance(exc.detail, str) else "HTTP request failed."
+        return JSONResponse(status_code=exc.status_code, headers=exc.headers,
+                            content={**_error_content(f"http_{exc.status_code}", message), "detail": exc.detail})
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+        detail = [{"loc": list(item["loc"]), "msg": item["msg"], "type": item["type"]}
+                  for item in exc.errors()]
+        return JSONResponse(status_code=422, content={
+            **_error_content("validation_error", "Request validation failed."), "detail": detail,
+        })
 
     @app.exception_handler(JobQueueFullError)
     async def queue_full_handler(_: Request, exc: JobQueueFullError) -> JSONResponse:
@@ -240,6 +274,30 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(VVoiceError)
     async def vvoice_error_handler(_: Request, exc: VVoiceError) -> JSONResponse:
         return JSONResponse(status_code=400, content=_error_content("vvoice_error", str(exc)))
+
+
+def register_openapi(app: FastAPI, session_cookie_name: str = "vassil_session") -> None:
+    def openapi():
+        if app.openapi_schema is not None:
+            return app.openapi_schema
+        schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+        schemes = schema.setdefault("components", {}).setdefault("securitySchemes", {})
+        if "StudioSession" in schemes:
+            schemes["StudioSession"]["name"] = session_cookie_name
+        for path in schema.get("paths", {}).values():
+            for operation in path.values():
+                if not isinstance(operation, dict) or "responses" not in operation:
+                    continue
+                if operation.get("security"):
+                    for code, label in (("401", "Credential required"), ("403", "Permission denied")):
+                        operation["responses"].setdefault(code, {"description": label})
+                for response in operation["responses"].values():
+                    response.setdefault("headers", {})[REQUEST_ID_HEADER] = {
+                        "description": "Trace identifier for logs and audit events", "schema": {"type": "string"},
+                    }
+        app.openapi_schema = schema
+        return schema
+    app.openapi = openapi
 
 
 def _request_id_from_header(value: str | None) -> str:

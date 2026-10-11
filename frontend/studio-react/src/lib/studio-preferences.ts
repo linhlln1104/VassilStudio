@@ -1,5 +1,6 @@
 const SELECTED_VOICE_STORAGE_KEY = 'vassil.selectedVoiceId'
 const SELECTED_LANGUAGE_STORAGE_KEY = 'vassil.selectedLanguage'
+const SELECTED_MODEL_STORAGE_KEY = 'vassil.selectedTtsModel'
 const PENDING_SCRIPT_STORAGE_KEY = 'vassil.pendingScript'
 const GENERATE_DRAFT_STORAGE_KEY = 'vassil.generateDraft'
 
@@ -44,6 +45,14 @@ function writeStoredPreference(key: string, legacyKey: string, value: string): v
 
 export function getPreferredVoiceId(): string {
   return readStoredPreference(SELECTED_VOICE_STORAGE_KEY, LEGACY_SELECTED_VOICE_STORAGE_KEY)
+}
+
+export function getPreferredTtsModel(language: string): string {
+  return readStorage(`${SELECTED_MODEL_STORAGE_KEY}.${language}`) ?? ''
+}
+
+export function setPreferredTtsModel(language: string, modelId: string): void {
+  writeStorage(`${SELECTED_MODEL_STORAGE_KEY}.${language}`, modelId)
 }
 
 export function setPreferredVoiceId(voiceId: string): void {

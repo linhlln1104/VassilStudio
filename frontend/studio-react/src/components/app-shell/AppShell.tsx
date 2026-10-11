@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { motion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Cpu,
@@ -23,9 +23,10 @@ type AppShellProps = {
   children: ReactNode
 }
 
-const sections: StudioRoute['section'][] = ['Create', 'Manage', 'System']
+const sections: StudioRoute['section'][] = ['Production', 'Create', 'Manage', 'System']
 
 export function AppShell({ activeRoute, onRouteChange, children }: AppShellProps) {
+  const reduceMotion = useReducedMotion()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const activeRouteData = routes.find((route) => route.id === activeRoute) ?? routes[0]
   const ActiveRouteIcon = activeRouteData.icon
@@ -91,9 +92,9 @@ export function AppShell({ activeRoute, onRouteChange, children }: AppShellProps
           <div className="flex-1 px-3 py-4 sm:px-5 lg:px-6 lg:py-5">
             <motion.div
               key={activeRoute}
-              initial={{ opacity: 0, y: 8 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
+              transition={{ duration: reduceMotion ? 0 : 0.18, ease: 'easeOut' }}
               className="mx-auto w-full max-w-[1440px]"
             >
               {children}
@@ -124,7 +125,7 @@ function RuntimeStatus({ onOpen }: { onOpen: () => void }) {
         ? { label: 'Partially ready', dot: 'bg-amber-500', text: 'text-neutral-600' }
         : statusQuery.isPending
           ? { label: 'Checking models', dot: 'bg-neutral-300', text: 'text-neutral-500' }
-          : { label: 'Models cold', dot: 'bg-amber-500', text: 'text-neutral-600' }
+          : { label: 'Model setup needed', dot: 'bg-amber-500', text: 'text-neutral-600' }
 
   return (
     <button

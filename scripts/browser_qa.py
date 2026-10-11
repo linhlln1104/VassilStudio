@@ -28,6 +28,8 @@ QA_SCRIPTS = (
     "qa-transcript-review.mjs",
     "qa-settings.mjs",
     "qa-regressions.mjs",
+    "qa-models.mjs",
+    "qa-production.mjs",
 )
 
 

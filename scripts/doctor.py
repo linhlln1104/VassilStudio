@@ -19,7 +19,7 @@ except ModuleNotFoundError:
 bootstrap_backend_path()
 
 from vvoice.core.config import load_settings  # noqa: E402
-from vvoice.domains.tts.text_frontend import ZipVoiceTextFrontend  # noqa: E402
+from vvoice.inference.tts.zipvoice.text import ZipVoiceTextFrontend  # noqa: E402
 
 
 EXPECTED_RUNTIME_VERSIONS = {
@@ -44,21 +44,17 @@ class Check:
     detail: str
 
 
-def dependency_checks() -> list[Check]:
-    modules = [
-        "fastapi",
-        "librosa",
-        "numpy",
-        "sherpa_onnx",
-        "soundfile",
-        "uvicorn",
-        "websockets",
-        "onnxruntime",
-        "torch",
-        "torchaudio",
-        "phonemizer",
-        "espeakng_loader",
-    ]
+def dependency_checks(config_path: str | None = None) -> list[Check]:
+    settings = load_settings(config_path)
+    modules = ["fastapi", "librosa", "numpy", "soundfile", "uvicorn", "websockets"]
+    if settings.asr.enabled:
+        modules.append("sherpa_onnx")
+    default_engines = {
+        settings.tts.profiles[model_id].engine
+        for model_id in settings.tts.default_models.values()
+    } if settings.tts.enabled else set()
+    if "zipvoice" in default_engines:
+        modules.extend(["onnxruntime", "torch", "torchaudio", "phonemizer", "espeakng_loader"])
     checks: list[Check] = []
     for module_name in modules:
         try:
@@ -111,6 +107,8 @@ def model_checks(config_path: str | None) -> list[Check]:
         "security.auth_db_dir": settings.security.auth_db_path.parent,
     }
     for language, model in settings.asr.models.items():
+        if not settings.asr.enabled:
+            continue
         prefix = f"asr.models.{language}"
         paths.update(
             {
@@ -120,19 +118,6 @@ def model_checks(config_path: str | None) -> list[Check]:
                 f"{prefix}.tokens": model.tokens,
             }
         )
-    for language, model in settings.tts.models.items():
-        prefix = f"tts.models.{language}"
-        paths.update(
-            {
-                f"{prefix}.encoder": model.encoder,
-                f"{prefix}.decoder": model.decoder,
-                f"{prefix}.vocoder": model.vocoder,
-                f"{prefix}.tokens": model.tokens,
-                f"{prefix}.lexicon": model.lexicon,
-                f"{prefix}.data_dir": model.data_dir,
-            }
-        )
-
     checks = [
         Check("runtime.provider", True, settings.runtime.provider),
         Check("runtime.environment", True, settings.runtime.environment),
@@ -202,7 +187,22 @@ def model_checks(config_path: str | None) -> list[Check]:
     for name, path in paths.items():
         checks.append(path_check(name, path))
 
+    from vvoice.domains.tts.service import TtsService
+
+    service = TtsService(settings.tts, settings.runtime)
+    default_models = set(settings.tts.default_models.values())
+    if settings.tts.enabled:
+        for model in service.model_catalog()["models"]:
+            if model["model_id"] in default_models:
+                checks.extend(
+                    Check(f"tts.profiles.{model['model_id']}.{name}", ok,
+                          "available" if ok else "missing; see docs/model-engines.md")
+                    for name, ok in model["checks"].items()
+                )
+
     for language, model in settings.tts.models.items():
+        if not settings.tts.enabled:
+            continue
         if language == "vi":
             tokens_ok, tokens_detail = zipvoice_token_check(model.tokens)
             checks.append(Check(f"tts.models.{language}.tokens.compatibility", tokens_ok, tokens_detail))
@@ -302,7 +302,7 @@ def build_report(config_path: str | None) -> dict[str, Any]:
     checks = [
         Check("python", True, platform.python_version()),
         Check("platform", True, platform.platform()),
-        *dependency_checks(),
+        *dependency_checks(config_path),
         *model_checks(config_path),
     ]
     return {

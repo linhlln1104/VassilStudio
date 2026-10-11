@@ -2,7 +2,16 @@
 
 [![Quality](https://github.com/linhlln1104/VassilStudio/actions/workflows/quality.yml/badge.svg)](https://github.com/linhlln1104/VassilStudio/actions/workflows/quality.yml)
 
-VassilStudio is a modular monolith for local voice workflows built around ZipFormer ASR and ZipVoice TTS models in `models/runtime/`.
+VassilStudio is a modular monolith for local voice workflows with named, pluggable TTS model profiles. It supports ZipVoice ONNX and VieNeu TTS v3 Turbo adapters, plus ZipFormer ASR. Model weights live outside the source tree under `models/runtime/`.
+
+See `docs/model-engines.md` for the multi-model architecture, engine-specific installation, model selection, and how to add another engine. Existing ZipVoice configs and saved jobs remain readable.
+
+Studio now includes Projects (versioned scripts, multiple takes, pronunciation dictionaries,
+review and selection), Batches (CSV/JSON preflight, durable rendering and approved ZIP/manifest
+exports), and Administration (scoped accounts/keys and model lifecycle controls). See
+`docs/production-workflows.md`, `docs/access-control.md`, and `docs/worker.md` for integration
+contracts and operation. This deployment targets one host with SQLite WAL and local assets;
+it is not a distributed cluster.
 
 The upstream runtime foundation is cloned locally at `foundation/sherpa-onnx` for reference. VassilStudio itself stays rooted in this repository and uses `sherpa-onnx` for ZipFormer ASR plus a direct ONNX runtime path for ZipVoice TTS.
 
@@ -14,8 +23,10 @@ See `docs/product-completeness-research.md` for the evidence-backed feature back
 ## Current Shape
 
 - `backend/vvoice/domains/asr`: language-aware ZipFormer transcription.
-- `backend/vvoice/domains/tts`: ZipVoice zero-shot speech generation.
+- `backend/vvoice/domains/tts`: engine-independent synthesis workflows, model selection, and jobs.
+- `backend/vvoice/inference/tts`: adapter contracts, registry, ZipVoice runtime, and isolated VieNeu worker.
 - `backend/vvoice/domains/voices`: reference voice profile storage.
+- `backend/vvoice/domains/production`: projects, immutable revisions, takes, batch orchestration and exports.
 - `backend/vvoice/domains/realtime`: websocket chunked ASR for live microphone workflows.
 - `backend/vvoice/shared/audio`: shared audio decode, resample, and WAV encoding.
 - `backend/vvoice/shared/jobs`: idempotency, request fingerprint, and lifecycle-stage contracts.
@@ -35,10 +46,10 @@ ASR models are selected by language through `asr.models` in `config/vassil.examp
 profile is `asr.models.vi`, and `asr.models.en` enables the local English ZipFormer assets for direct
 transcription and reference transcript generation.
 
-TTS models are selected by language through `tts.models` in `config/vassil.example.json`. The default
-profile is `tts.models.vi`, and `tts.models.en` enables the local English ZipVoice assets. Keep the
-voice profile language aligned with the text you generate so English text uses the English tokenizer
-and Vietnamese text uses the Vietnamese tokenizer.
+TTS deployments are keyed by stable model IDs under `tts.profiles` in `config/vassil.example.json`.
+`tts.default_models` selects a default ID for each language. The example contains `zipvoice-vi`,
+`zipvoice-en`, and bilingual `vieneu-v3-turbo`. Studio Generate selects a model independently of language;
+API requests use `model_id`. Language-keyed `tts.models` remains supported for existing installs.
 
 ZipVoice models are trained with eSpeak tokenizers. VassilStudio phonemizes text and reference transcripts
 with `phonemizer-fork` and the bundled `espeakng-loader` runtime, maps those symbols directly into
@@ -65,11 +76,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\download_vocoder.p
 - `data/voices`: saved voice profiles and loose voice import candidates.
 - `data/jobs/asr`: asynchronous ASR job state and normalized input audio.
 - `data/jobs/tts`: asynchronous TTS job state and generated job WAV files.
+- `data/production`: project database, reference snapshots, retained take audio and export staging.
+- `data/model-deployments.sqlite3`: local model profiles, activation state and version manifests.
 - `data/uploads`: reserved for future upload staging.
 - `data/outputs`: reserved for exported audio.
 - `logs`: runtime logs.
 
 ## Run
+
+For UI/API without model engines, install `python -m pip install -e ".[server]"`, build the React
+frontend as below, then run the API. Add `.[zipvoice]` and/or `.[zipformer]` only for those engines.
+VieNeu uses `python scripts/setup_vieneu.py` in a separate `.venv-vieneu`; downloading its weights
+is an explicit second step. The existing combined Zip runtime instructions remain below.
+
 
 Python 3.12 or newer and Node.js 24 are required. The tested runtime baseline is Python 3.12.
 
@@ -186,7 +205,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1
 ```
 
 The default check runs storage setup, doctor, OpenAPI export, ruff, pytest, React Studio
-lint/build, seven isolated browser QA suites, legacy frontend JavaScript syntax checks, and
+lint/build, eight isolated browser QA suites, legacy frontend JavaScript syntax checks, and
 Docker Compose config validation. Install `.[dev]` for the full local gate. Lightweight CI uses
 `.[test,qa]`; browser QA installs Chromium in CI and uses Chrome by default locally.
 OpenAPI export, auth smoke and browser QA use disposable storage, so they do not recover or mutate

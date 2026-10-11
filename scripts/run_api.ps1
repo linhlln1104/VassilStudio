@@ -1,6 +1,7 @@
 param(
   [int]$Port = 8000,
-  [string]$BindAddress = ""
+  [string]$BindAddress = "",
+  [switch]$Reload
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,38 +12,7 @@ if (-not (Test-Path $Python)) {
   $Python = "python"
 }
 
-function Import-LocalEnvFile {
-  param([string]$Path)
-
-  if (-not (Test-Path $Path)) {
-    return
-  }
-
-  foreach ($RawLine in Get-Content -Path $Path) {
-    $Line = $RawLine.Trim()
-    if (-not $Line -or $Line.StartsWith("#")) {
-      continue
-    }
-
-    $Separator = $Line.IndexOf("=")
-    if ($Separator -lt 1) {
-      continue
-    }
-
-    $Name = $Line.Substring(0, $Separator).Trim()
-    $Value = $Line.Substring($Separator + 1).Trim()
-    if (
-      ($Value.StartsWith('"') -and $Value.EndsWith('"')) -or
-      ($Value.StartsWith("'") -and $Value.EndsWith("'"))
-    ) {
-      $Value = $Value.Substring(1, $Value.Length - 2)
-    }
-
-    if (-not [Environment]::GetEnvironmentVariable($Name, "Process")) {
-      [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
-    }
-  }
-}
+. (Join-Path $PSScriptRoot "local_env.ps1")
 
 Import-LocalEnvFile (Join-Path $root ".env")
 
@@ -71,4 +41,8 @@ $backendDir = Join-Path $root "backend"
 $frontendDir = Join-Path $root "frontend"
 $env:PYTHONPATH = if ($env:PYTHONPATH) { "$backendDir;$env:PYTHONPATH" } else { $backendDir }
 
-& $Python -m uvicorn vvoice.main:create_app --factory --host $BindAddress --port $Port --no-access-log --reload --reload-dir $backendDir --reload-dir $frontendDir
+if ($Reload) {
+  & $Python -m uvicorn vvoice.main:create_app --factory --host $BindAddress --port $Port --no-access-log --reload --reload-dir $backendDir --reload-dir $frontendDir
+} else {
+  & $Python -m uvicorn vvoice.main:create_app --factory --host $BindAddress --port $Port --no-access-log
+}

@@ -1,3 +1,4 @@
+import { ttsModelCatalog } from './tts-model-fixture.mjs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -41,6 +42,7 @@ function jobFixture() {
     {
       job_id: 'tts-20260823-success-abcdef12',
       status: 'succeeded',
+      model_id: 'zipvoice-vi',
       voice_id: 'voice-hanoi-editorial-7ab82c10',
       language: 'vi',
       text: 'VassilStudio keeps every voice render inside your local workspace.',
@@ -64,6 +66,7 @@ function jobFixture() {
     {
       job_id: 'tts-20260823-failed-deadbeef',
       status: 'failed',
+      model_id: 'zipvoice-vi',
       voice_id: 'voice-saigon-narrator-1f119ecc',
       language: 'vi',
       text: 'A failed render remains available for diagnosis and recovery.',
@@ -177,6 +180,7 @@ async function installApiFixture(page, fixture) {
     if (url.pathname === '/api/v1/auth/status') {
       return json({ auth_required: false, setup_required: false, authenticated: true, user: null })
     }
+    if (url.pathname === '/api/v1/tts/models') return json(ttsModelCatalog())
     if (url.pathname === '/model-status') {
       return json({ ready: true, runtime: { asr_loaded: true, tts_loaded: true } })
     }
@@ -326,7 +330,7 @@ try {
     const footerActionBoxes = await Promise.all([
       dialog.getByRole('button', { name: 'Delete job', exact: true }).boundingBox(),
       dialog.getByRole('button', { name: 'Use in Generate', exact: true }).boundingBox(),
-      dialog.getByRole('button', { name: 'Run again', exact: true }).boundingBox(),
+      dialog.getByRole('button', { name: 'Create new take', exact: true }).boundingBox(),
     ])
     if (footerActionBoxes.some((box) => !box)) {
       throw new Error(`${viewport.name}: one or more recovery actions were not visible`)
@@ -342,7 +346,7 @@ try {
       const request = response.request()
       return request.method() === 'POST' && new URL(response.url()).pathname.startsWith('/api/v1/tts/jobs/voices/')
     })
-    await dialog.getByRole('button', { name: 'Run again', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Create new take', exact: true }).click()
     await ttsRecoveryResponse
     await page.getByText('Job accepted', { exact: true }).waitFor({ state: 'visible' })
     if (fixture.ttsCreates.length !== 1) {

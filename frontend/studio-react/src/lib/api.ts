@@ -176,6 +176,25 @@ export type ModelStatusResponse = {
   }
 }
 
+export type TtsModel = {
+  model_id: string
+  engine: string
+  label: string
+  languages: string[]
+  sample_rate: number
+  capabilities: { reference_audio: boolean; num_steps: boolean; speed: boolean }
+  ready: boolean
+  loaded: boolean
+  status: string
+  checks: Record<string, boolean>
+  message: string | null
+}
+
+export type TtsModelsResponse = {
+  default_models: Record<string, string>
+  models: TtsModel[]
+}
+
 export type DiagnosticsStorageItem = {
   name: string
   path_alias: string
@@ -319,7 +338,11 @@ export type ReviewedVoicePayload = VoiceIntakePayload & {
 }
 
 export type TtsJob = {
+  provenance?: { production?: {project_id?: string; batch_id?: string; segment_id?: string; take_id?: string} }
+  actor_id?: string | null
+  request_id?: string | null
   job_id: string
+  model_id: string
   status: JobStatus
   voice_id: string
   language: string
@@ -478,7 +501,8 @@ async function fetchProbe(path: string): Promise<ProbeResponse> {
 }
 
 function fetchWithAuth(path: string, init?: RequestInit): Promise<Response> {
-  const apiKey = path.startsWith('/api/v1/auth/') ? '' : getRequestApiKey()
+  const sessionEndpoint = /^\/api\/v1\/auth\/(status|setup|login|key-login|logout|change-password)(?:$|\?)/.test(path)
+  const apiKey = sessionEndpoint ? '' : getRequestApiKey()
   return fetch(`${API_BASE_URL}${path}`, {
     ...init,
     credentials: init?.credentials ?? 'same-origin',
@@ -577,6 +601,12 @@ export const api = {
     ownerSessionActive = true
     return session
   },
+  authKeyLogin: async (apiKey: string) => {
+    const session = await fetchJson<AuthSessionResponse>('/api/v1/auth/key-login', { method: 'POST', body: JSON.stringify({ api_key: apiKey }), headers: { 'Content-Type': 'application/json' } })
+    ownerSessionActive = true
+    clearBrowserApiKey()
+    return session
+  },
   authLogout: async () => {
     try {
       return await fetchJson<AuthLogoutResponse>('/api/v1/auth/logout', { method: 'POST' })
@@ -599,6 +629,7 @@ export const api = {
   liveness: () => fetchProbe('/livez'),
   readiness: () => fetchProbe('/readyz'),
   modelStatus: () => fetchJson<ModelStatusResponse>('/model-status'),
+  ttsModels: () => fetchJson<TtsModelsResponse>('/api/v1/tts/models'),
   diagnostics: () => fetchJson<DiagnosticsResponse>('/diagnostics'),
   diagnosticsBundle: (includeHostMetadata = false) =>
     fetchBlob(`/diagnostics/bundle${includeHostMetadata ? '?include_host_metadata=true' : ''}`),
@@ -607,8 +638,11 @@ export const api = {
     fetchJson<WarmupResponse>(`/warmup/asr${language ? `?language=${encodeURIComponent(language)}` : ''}`, {
       method: 'POST',
     }),
-  warmupTts: (language?: string) =>
-    fetchJson<WarmupResponse>(`/warmup/tts${language ? `?language=${encodeURIComponent(language)}` : ''}`, {
+  warmupTts: (language?: string, modelId?: string) =>
+    fetchJson<WarmupResponse>(`/warmup/tts?${new URLSearchParams({
+      ...(language ? { language } : {}),
+      ...(modelId ? { model_id: modelId } : {}),
+    })}`, {
       method: 'POST',
     }),
   voices: () => fetchJson<Voice[]>('/api/v1/voices'),
@@ -634,6 +668,10 @@ export const api = {
   cancelTtsJob: (jobId: string) =>
     fetchJson<TtsJob>(`/api/v1/tts/jobs/${encodeURIComponent(jobId)}/cancel`, {
       method: 'POST',
+    }),
+  retryTtsJob: (jobId: string, idempotencyKey: string) =>
+    fetchJson<TtsJob>(`/api/v1/tts/jobs/${encodeURIComponent(jobId)}/retry`, {
+      method: 'POST', headers: { 'Idempotency-Key': idempotencyKey },
     }),
   cancelAsrJob: (jobId: string) =>
     fetchJson<AsrJob>(`/api/v1/asr/jobs/${encodeURIComponent(jobId)}/cancel`, {
@@ -683,11 +721,14 @@ export const api = {
   },
   createTtsJobWithVoice: (
     voiceId: string,
-    payload: { text: string; language?: string; numSteps?: number; speed?: number },
+    payload: { text: string; language?: string; modelId?: string; numSteps?: number; speed?: number },
     options: { idempotencyKey?: string } = {},
   ) => {
     const form = new FormData()
     form.set('text', payload.text)
+    if (payload.modelId !== undefined) {
+      form.set('model_id', payload.modelId)
+    }
     if (payload.language !== undefined) {
       form.set('language', payload.language)
     }

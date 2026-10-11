@@ -28,6 +28,7 @@ import { voiceLanguageShortLabel } from '@/lib/language'
 import { cn } from '@/lib/utils'
 
 export type StudioJob = {
+  production?: { project_id?: string; batch_id?: string; segment_id?: string; take_id?: string }
   id: string
   type: 'TTS' | 'ASR'
   status: JobStatus
@@ -50,6 +51,7 @@ export type StudioJob = {
   reusableText: string
   error: string | null
   voiceId: string | null
+  modelId: string | null
   numSteps: number | null
   speed: number | null
   filename: string | null
@@ -65,6 +67,7 @@ type JobInspectorProps = {
   onDelete: (job: StudioJob) => void
   onReuse: (job: StudioJob) => void
   onRunAgain: (job: StudioJob) => void
+  onRetrySnapshot: (job: StudioJob) => void
   onReviewTranscript: (job: StudioJob) => void
 }
 
@@ -78,6 +81,7 @@ export function JobInspector({
   onDelete,
   onReuse,
   onRunAgain,
+  onRetrySnapshot,
   onReviewTranscript,
 }: JobInspectorProps) {
   const { toast } = useToast()
@@ -205,9 +209,10 @@ export function JobInspector({
                 />
                 {job.type === 'TTS' ? (
                   <>
+                    <Metadata label="TTS model" value={job.modelId || 'Unavailable'} icon={Gauge} />
                     <Metadata label="Voice profile" value={job.voiceId || 'Unavailable'} icon={FileAudio} />
-                    <Metadata label="Render steps" value={job.numSteps === null ? 'Default' : String(job.numSteps)} icon={Gauge} />
-                    <Metadata label="Speed" value={job.speed === null ? 'Default' : `${job.speed.toFixed(2)}x`} icon={Clock3} />
+                    {job.numSteps !== null ? <Metadata label="Render steps" value={String(job.numSteps)} icon={Gauge} /> : null}
+                    {job.speed !== null ? <Metadata label="Speed" value={`${job.speed.toFixed(2)}x`} icon={Clock3} /> : null}
                   </>
                 ) : (
                   <Metadata label="Source file" value={job.filename || 'Unavailable'} icon={FileAudio} className="col-span-2 sm:col-span-3" />
@@ -298,14 +303,16 @@ export function JobInspector({
               {terminal ? (
                 <Button
                   size="sm"
-                  disabled={!canRunAgain || runningAgain}
-                  title={canRunAgain ? 'Create a new job from this source' : 'Original source is unavailable'}
+                  disabled={!canRunAgain || runningAgain || Boolean(job.production?.project_id)}
+                  title={canRunAgain ? 'Create a new job using the current voice profile' : 'Original source is unavailable'}
                   onClick={() => onRunAgain(job)}
                 >
-                  {runningAgain ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
-                  Run again
+                  {runningAgain ? <Loader2 className="size-4 animate-spin" /> : job.type === 'ASR' ? <RotateCcw className="size-4" /> : null}
+                  {job.type === 'TTS' ? 'Create new take' : 'Run again'}
                 </Button>
               ) : null}
+              {job.production?.project_id ? <Button size="sm" variant="secondary" onClick={() => { onOpenChange(false); window.location.hash = job.production?.batch_id ? `/batches?batch=${encodeURIComponent(job.production.batch_id)}` : `/projects?project=${encodeURIComponent(job.production!.project_id!)}` }}>Open production context</Button> : null}
+              {terminal && job.type === 'TTS' && !job.production?.project_id ? <Button size="sm" variant="secondary" disabled={runningAgain} onClick={() => onRetrySnapshot(job)} title="Reuse the accepted reference, model and resolved parameters, even if the voice library changed.">Retry same inputs</Button> : null}
             </div>
           </footer>
         </Dialog.Content>

@@ -1,3 +1,4 @@
+import { ttsModelCatalog } from './tts-model-fixture.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -58,6 +59,7 @@ async function fixture(page, options = {}) {
       return json({ authenticated: true, user: { account_id: 'owner', username: 'owner', role: 'owner' }, expires_at: '2099-01-01T00:00:00Z' })
     }
     if (pathname === '/api/v1/auth/logout') { state.authenticated = false; return json({ logged_out: true }) }
+    if (pathname === '/api/v1/tts/models') return json(ttsModelCatalog())
     if (pathname === '/model-status') return json({ ready: true, checks: {}, runtime })
     if (pathname === '/health') return json({ status: 'ok', version: 'qa', provider: 'cpu', asr_enabled: true, tts_enabled: true, asr_loaded: true, tts_loaded: true })
     if (pathname === '/livez' || pathname === '/readyz') return json({ status: pathname === '/livez' ? 'ok' : 'ready', checks: {} })

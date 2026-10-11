@@ -237,7 +237,7 @@ def test_asr_job_service_cancels_queued_job(tmp_path) -> None:
         jobs.shutdown()
 
 
-def test_asr_job_service_marks_interrupted_jobs_failed(tmp_path) -> None:
+def test_asr_job_service_preserves_interrupted_jobs_for_a_worker(tmp_path) -> None:
     jobs = AsrJobService(
         tmp_path / "asr-jobs",
         FakeAsr(),
@@ -270,16 +270,18 @@ def test_asr_job_service_marks_interrupted_jobs_failed(tmp_path) -> None:
         tmp_path / "asr-jobs",
         FakeAsr(),
         target_sample_rate=16000,
+        worker_enabled=False,
     )
     try:
         job = recovered.get("interrupted")
 
-        assert job.status == "failed"
+        assert job.status == "running"
         assert job.language == "vi"
-        assert job.error == "Job was interrupted by server restart"
-        assert job.failed_reason == "interrupted"
-        assert job.progress_stage == "failed"
-        assert job.stage_started_at == job.completed_at
+        assert job.error is None
+        assert "interrupted" in recovered._executor.pending_ids()
+        assert job.failed_reason is None
+        assert job.progress_stage == "running_model"
+        assert job.stage_started_at == job.started_at
     finally:
         recovered.shutdown()
 

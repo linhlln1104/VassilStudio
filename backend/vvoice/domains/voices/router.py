@@ -61,7 +61,9 @@ def list_voice_import_candidates(request: Request):
     return [_import_candidate_response(path) for path in container.voices.list_import_candidates()]
 
 
-@router.get("/import-candidates/{filename}/audio")
+@router.get("/import-candidates/{filename}/audio", response_class=FileResponse,
+            responses={200: {"content": {media: {"schema": {"type": "string", "format": "binary"}}
+                                         for media in set(AUDIO_MEDIA_TYPES.values())}}})
 def get_voice_import_candidate_audio(request: Request, filename: str):
     container = request.app.state.container
     audio_path = container.voices.import_candidate_path(filename)
@@ -166,7 +168,8 @@ def get_voice(request: Request, voice_id: str):
     return _voice_response(profile)
 
 
-@router.get("/{voice_id}/reference-audio")
+@router.get("/{voice_id}/reference-audio", response_class=FileResponse,
+            responses={200: {"content": {"audio/wav": {"schema": {"type": "string", "format": "binary"}}}}})
 def get_voice_reference_audio(request: Request, voice_id: str):
     container = request.app.state.container
     profile = container.voices.get(voice_id)

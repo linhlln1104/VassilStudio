@@ -92,7 +92,12 @@ def test_runtime_dependencies_are_resolvable_from_supported_package_indexes() ->
     }
     test_tools = {"httpx2==2.5.0", "pytest==9.1.1", "ruff==0.15.20"}
 
-    assert {"phonemizer-fork==3.3.2", "espeakng-loader==0.2.4"} <= base
+    zip_tokenizer = {"phonemizer-fork==3.3.2", "espeakng-loader==0.2.4"}
+    assert zip_tokenizer <= extras["zipvoice"]
+    assert zip_tokenizer <= extras["runtime"]
+    assert zip_tokenizer.isdisjoint(base | extras["server"] | extras["test"])
+    assert model_runtime.isdisjoint(extras["server"])
+    assert extras["zipformer"] == {"sherpa-onnx==1.13.3"}
     assert model_runtime <= extras["runtime"]
     assert model_runtime.isdisjoint(base | extras["test"])
     assert test_tools == extras["test"]

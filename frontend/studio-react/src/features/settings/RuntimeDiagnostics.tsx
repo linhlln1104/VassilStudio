@@ -23,18 +23,23 @@ import type {
   HealthResponse,
   ModelStatusResponse,
   ProbeResponse,
+  TtsModelsResponse,
+  TtsModel,
 } from '@/lib/api'
+import { ttsModelMessage, ttsModelStatus } from '@/lib/tts-models'
 import { cn } from '@/lib/utils'
 
 export type WarmupTarget =
   | { engine: 'all' }
-  | { engine: 'asr' | 'tts'; language: string }
+  | { engine: 'asr'; language: string }
+  | { engine: 'tts'; language: string; modelId: string }
 
 type RuntimeDiagnosticsProps = {
   health: HealthResponse | undefined
   liveness: ProbeResponse | undefined
   readiness: ProbeResponse | undefined
   model: ModelStatusResponse | undefined
+  ttsModels: TtsModelsResponse | undefined
   diagnostics: DiagnosticsResponse | undefined
   loading: boolean
   refreshing: boolean
@@ -56,6 +61,7 @@ export function RuntimeDiagnostics({
   liveness,
   readiness,
   model,
+  ttsModels,
   diagnostics,
   loading,
   refreshing,
@@ -127,7 +133,7 @@ export function RuntimeDiagnostics({
             <Button
               variant="secondary"
               disabled={Boolean(warmingTarget) || coreOffline || initialCheck || !modelAssetsReady}
-              title={modelAssetsReady ? 'Load every configured ASR and TTS language' : 'Resolve missing model assets first'}
+              title={modelAssetsReady ? 'Load configured ASR languages and default TTS models' : 'Resolve missing model assets first'}
               onClick={() => onWarmup({ engine: 'all' })}
             >
               {warmingTarget?.engine === 'all' ? (
@@ -135,7 +141,7 @@ export function RuntimeDiagnostics({
               ) : (
                 <CirclePower className="size-4" />
               )}
-              {warmingTarget?.engine === 'all' ? 'Warming' : 'Warm all models'}
+              {warmingTarget?.engine === 'all' ? 'Warming' : 'Warm default models'}
             </Button>
             <div className="flex min-h-9 items-center rounded-md border border-slate-200 bg-white pl-2">
               <label
@@ -180,7 +186,7 @@ export function RuntimeDiagnostics({
           />
           <ProbeTile
             icon={Cpu}
-            label="Model assets"
+            label="Default model assets"
             value={modelAssetsReady ? 'Complete' : model ? 'Incomplete' : 'Checking'}
             detail={runtime ? `${runtime.provider.toUpperCase()} / ASR ${runtime.asr_num_threads} / TTS ${runtime.tts_num_threads}` : 'Runtime metadata pending'}
             state={modelAssetsReady ? 'success' : model ? 'warning' : 'neutral'}
@@ -225,18 +231,21 @@ export function RuntimeDiagnostics({
           controlsDisabled={coreOffline || initialCheck}
           onWarmup={onWarmup}
         />
-        <RuntimeEngine
-          engine="tts"
-          title="Voice synthesis"
-          runtimeName="ZipVoice TTS"
-          icon={AudioLines}
-          configuredLanguages={runtime?.tts_configured_languages ?? []}
-          loadedLanguages={runtime?.tts_loaded_languages ?? []}
-          assetChecks={model?.checks ?? {}}
-          warmingTarget={warmingTarget}
-          controlsDisabled={coreOffline || initialCheck}
-          onWarmup={onWarmup}
-        />
+        {(ttsModels?.models ?? []).map((profile) => (
+          <TtsModelCard
+            key={profile.model_id}
+            model={profile}
+            isDefault={Object.values(ttsModels?.default_models ?? {}).includes(profile.model_id)}
+            warmingTarget={warmingTarget}
+            controlsDisabled={coreOffline || initialCheck || queryErrors.some((error) => error.source === 'TTS models')}
+            onWarmup={onWarmup}
+          />
+        ))}
+        {!ttsModels?.models.length ? (
+          <div className="rounded-md border border-slate-200 bg-white p-4 text-xs text-slate-600">
+            {ttsModels ? 'No TTS models are configured.' : 'TTS model catalog unavailable. Run diagnostics to retry.'}
+          </div>
+        ) : null}
       </div>
 
       <RuntimeConfiguration runtime={runtime} version={health?.version ?? diagnostics?.version ?? 'unknown'} />
@@ -247,6 +256,7 @@ export function RuntimeDiagnostics({
         storage={diagnostics?.storage ?? []}
         privacy={diagnostics?.privacy}
         readinessAvailable={Boolean(readiness)}
+        ttsModels={ttsModels?.models ?? []}
       />
     </div>
   )
@@ -298,7 +308,7 @@ function RuntimeEngine({
   controlsDisabled,
   onWarmup,
 }: {
-  engine: 'asr' | 'tts'
+  engine: 'asr'
   title: string
   runtimeName: string
   icon: LucideIcon
@@ -384,6 +394,66 @@ function RuntimeEngine({
   )
 }
 
+function TtsModelCard({ model, isDefault, warmingTarget, controlsDisabled, onWarmup }: {
+  model: TtsModel
+  isDefault: boolean
+  warmingTarget: WarmupTarget | null
+  controlsDisabled: boolean
+  onWarmup: (target: WarmupTarget) => void
+}) {
+  const language = model.languages[0]
+  const warming = warmingTarget?.engine === 'tts' && warmingTarget.modelId === model.model_id
+  const canWarm = model.ready || (model.status === 'error' && Object.values(model.checks).every(Boolean))
+  const capabilities = [
+    model.capabilities.reference_audio ? 'Reference voice' : null,
+    model.capabilities.num_steps ? 'Render steps' : null,
+    model.capabilities.speed ? 'Speed control' : null,
+  ].filter(Boolean)
+  return (
+    <article className="rounded-md border border-slate-200 bg-white" aria-label={`${model.label} model`}>
+      <header className="flex items-start justify-between gap-3 border-b border-slate-200 p-3">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <span className="grid size-8 shrink-0 place-items-center rounded-md bg-blue-600 text-white"><AudioLines className="size-4" /></span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold leading-5 text-slate-950">{model.label}</h3>
+            <div className="mt-0.5 break-all text-xs text-slate-600">{model.model_id} / {model.engine}</div>
+          </div>
+        </div>
+        <Badge variant={model.loaded ? 'success' : model.ready ? 'muted' : 'danger'}>{ttsModelStatus(model)}</Badge>
+      </header>
+      <div className="space-y-3 p-3">
+        <div className="flex flex-wrap gap-1.5">
+          {model.languages.map((item) => <Badge key={item} variant="muted">{languageName(item)}</Badge>)}
+          <Badge variant="muted">{(model.sample_rate / 1000).toLocaleString()} kHz</Badge>
+          {isDefault ? <Badge variant="muted">Default</Badge> : null}
+        </div>
+        <p className="text-xs leading-5 text-slate-600">{ttsModelMessage(model)}</p>
+        <div className="text-xs text-slate-500">{capabilities.join(' / ') || 'No reference voice controls available'}</div>
+        {Object.keys(model.checks).length ? (
+          <details>
+            <summary className="cursor-pointer text-xs font-semibold text-slate-700">Setup checks</summary>
+            <dl className="mt-2 space-y-1">
+              {Object.entries(model.checks).map(([name, passed]) => (
+                <div key={name} className="flex justify-between gap-2 text-xs">
+                  <dt className="break-all text-slate-600">{name.replaceAll('_', ' ')}</dt>
+                  <dd className={passed ? 'text-emerald-700' : 'text-red-700'}>{passed ? 'Ready' : 'Missing'}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+        ) : null}
+        {!model.loaded ? (
+          <Button size="sm" variant="secondary" disabled={!canWarm || !language || Boolean(warmingTarget) || controlsDisabled}
+            aria-label={`Warm ${model.label}`} onClick={() => onWarmup({ engine: 'tts', modelId: model.model_id, language })}>
+            {warming ? <Loader2 className="size-4 animate-spin" /> : <CirclePower className="size-4" />}
+            {warming ? 'Warming' : model.status === 'error' ? 'Retry warmup' : 'Warm model'}
+          </Button>
+        ) : null}
+      </div>
+    </article>
+  )
+}
+
 function RuntimeConfiguration({
   runtime,
   version,
@@ -427,12 +497,14 @@ function Troubleshooting({
   storage,
   privacy,
   readinessAvailable,
+  ttsModels,
 }: {
   checks: Array<[string, boolean]>
   failedChecks: Array<[string, boolean]>
   storage: DiagnosticsResponse['storage']
   privacy: DiagnosticsResponse['privacy'] | undefined
   readinessAvailable: boolean
+  ttsModels: TtsModel[]
 }) {
   return (
     <section className="pb-1 pt-1">
@@ -472,7 +544,7 @@ function Troubleshooting({
       {failedChecks.length ? (
         <div className="mt-3 divide-y divide-amber-100 rounded-md border border-amber-200 bg-amber-50/60">
           {failedChecks.map(([name]) => {
-            const issue = describeCheck(name, storage)
+            const issue = describeCheck(name, storage, ttsModels)
             return (
               <div key={name} className="flex items-start gap-3 p-3">
                 <XCircle className="mt-0.5 size-4 shrink-0 text-amber-700" />
@@ -494,7 +566,7 @@ function Troubleshooting({
         </summary>
         <div className="divide-y divide-slate-100 border-t border-slate-200 px-3">
           {checks.length ? checks.map(([name, passed]) => {
-            const issue = describeCheck(name, storage)
+            const issue = describeCheck(name, storage, ttsModels)
             return (
               <div key={name} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
@@ -513,7 +585,7 @@ function Troubleshooting({
   )
 }
 
-function describeCheck(name: string, storage: DiagnosticsResponse['storage']) {
+function describeCheck(name: string, storage: DiagnosticsResponse['storage'], models: TtsModel[]) {
   if (name.startsWith('storage_')) {
     const storageName = name.slice('storage_'.length).replace(/_dir$/, '')
     const item = storage.find((candidate) => candidate.name === storageName)
@@ -522,6 +594,20 @@ function describeCheck(name: string, storage: DiagnosticsResponse['storage']) {
       ? 'Verify this location is writable by the VassilStudio process, then rerun diagnostics.'
       : 'Create the configured location, then rerun diagnostics.'
     return { label, remedy, location: item?.path_alias ?? null }
+  }
+
+  const profile = models.find((model) => name.startsWith(`tts_${model.model_id}_`))
+  if (profile) {
+    const component = name.slice(`tts_${profile.model_id}_`.length)
+    return {
+      label: `${profile.label} ${componentLabel(component)}`,
+      remedy: component.startsWith('dependency_')
+        ? 'Install the configured engine dependencies, then rerun diagnostics.'
+        : component === 'initialization'
+          ? 'Inspect the server logs for the model initialization failure, then retry warmup.'
+          : 'Restore the configured model asset and verify its path in VASSIL_CONFIG, then rerun diagnostics.',
+      location: null,
+    }
   }
 
   const [engine, language, ...componentParts] = name.split('_')
@@ -575,7 +661,7 @@ function warmupTargetKey(target: WarmupTarget | null) {
   if (!target) {
     return ''
   }
-  return target.engine === 'all' ? 'all' : `${target.engine}:${target.language.toLowerCase()}`
+  return target.engine === 'all' ? 'all' : target.engine === 'tts' ? `tts:${target.modelId}:${target.language}` : `asr:${target.language.toLowerCase()}`
 }
 
 function languageAssetsReady(engine: 'asr' | 'tts', language: string, checks: Record<string, boolean>) {

@@ -10,6 +10,7 @@ type ConfirmDialogProps = {
   confirmLabel?: string
   busyLabel?: string
   busy?: boolean
+  error?: string
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
 }
@@ -21,6 +22,7 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   busyLabel,
   busy = false,
+  error,
   onOpenChange,
   onConfirm,
 }: ConfirmDialogProps) {
@@ -45,6 +47,7 @@ export function ConfirmDialog({
               </Button>
             </Dialog.Close>
           </div>
+          {error ? <p role="alert" className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p> : null}
           <div className="mt-5 flex justify-end gap-2">
             <Dialog.Close asChild>
               <Button variant="secondary">Cancel</Button>

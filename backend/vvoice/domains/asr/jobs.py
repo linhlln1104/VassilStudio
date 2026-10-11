@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import logging
-import threading
+import os
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from vvoice.core.observability import get_request_id, set_request_id, reset_request_id
+from vvoice.shared.security.auth import current_actor_id
+from vvoice.shared.jobs.durable import DurableExecutor, FileLock
 from vvoice.core.errors import (
+    InferenceTransientError,
     AsrJobNotFoundError,
     IdempotencyConflictError,
     JobQueueFullError,
@@ -33,7 +36,7 @@ from vvoice.shared.jobs.integrity import (
     request_fingerprint,
 )
 from vvoice.shared.jobs.storage import (
-    artifact_path,
+    portable_artifact_path,
     atomic_write_bytes,
     atomic_write_metadata,
     count_quarantined_metadata,
@@ -83,6 +86,9 @@ class AsrJob:
     timing_status: str
     transcript_revision: int
     transcript_updated_at: str | None
+    request_id: str | None = None
+    recovery_count: int = 0
+    actor_id: str | None = None
 
 
 class AsrJobService:
@@ -96,6 +102,7 @@ class AsrJobService:
         max_pending_jobs: int = 32,
         max_attempts: int = 1,
         retry_backoff_seconds: float = 0.5,
+        worker_enabled: bool | None = None,
     ) -> None:
         self._jobs_dir = jobs_dir
         self._asr = asr
@@ -103,15 +110,17 @@ class AsrJobService:
         self._max_attempts = max(1, int(max_attempts))
         self._max_pending_jobs = max(1, int(max_pending_jobs))
         self._retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
-        self._lock = threading.RLock()
+        self._jobs_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = FileLock(self._jobs_dir / ".metadata.lock")
         self._accepting = True
         self._pending_job_ids: set[str] = set()
-        self._executor = ThreadPoolExecutor(
-            max_workers=max_workers,
-            thread_name_prefix="vvoice-asr-job",
+        self._executor = DurableExecutor(
+            jobs_dir, self._run_queued, max_workers=max_workers,
+            enabled=(os.getenv("VASSIL_WORKER_MODE", "embedded") != "external"
+                     if worker_enabled is None else worker_enabled),
         )
-        self._jobs_dir.mkdir(parents=True, exist_ok=True)
         self._mark_interrupted_jobs()
+        self._executor.start()
 
     @property
     def quarantined_count(self) -> int:
@@ -127,7 +136,10 @@ class AsrJobService:
     ) -> AsrJob:
         normalized_language = normalize_language(language)
         display_filename = filename or "audio"
-        key_hash = idempotency_key_hash(idempotency_key)
+        actor_id = current_actor_id()
+        key_hash = idempotency_key_hash(
+            f"{actor_id}:{idempotency_key}" if actor_id and idempotency_key else idempotency_key
+        )
         fingerprint = request_fingerprint(
             {
                 "audio_sha256": content_sha256(audio_bytes),
@@ -157,6 +169,8 @@ class AsrJobService:
             atomic_write_bytes(input_path, encode_wav(samples, sample_rate))
             job = AsrJob(
                 job_id=job_id,
+                request_id=get_request_id(),
+                actor_id=actor_id,
                 status="queued",
                 filename=display_filename,
                 language=normalized_language,
@@ -205,9 +219,15 @@ class AsrJobService:
         if key_hash is None:
             return None
 
-        for job in self.list():
-            if job.idempotency_key_hash != key_hash:
-                continue
+        previous = self._executor.key_record(key_hash)
+        if previous:
+            try:
+                job = self.get(previous["job_id"])
+            except AsrJobNotFoundError as exc:
+                raise IdempotencyConflictError(
+                    "This request was already processed; its job was removed. "
+                    "Use a new Idempotency-Key for an intentional new transcription."
+                ) from exc
             if job.request_fingerprint != fingerprint:
                 raise IdempotencyConflictError(
                     "Idempotency-Key was already used for a different ASR request"
@@ -219,18 +239,15 @@ class AsrJobService:
             return job
         return None
 
-    def list(self) -> list[AsrJob]:
-        if not self._jobs_dir.exists():
-            return []
-
-        jobs: list[AsrJob] = []
-        with self._lock:
-            for metadata_path in self._jobs_dir.glob("*/metadata.json"):
-                try:
-                    jobs.append(self.get(metadata_path.parent.name))
-                except AsrJobNotFoundError:
-                    continue
-        return sorted(jobs, key=lambda item: item.created_at, reverse=True)
+    def list(self, *, limit=None, offset=0, status=None, model_id=None) -> list[AsrJob]:
+        jobs = []
+        for job_id in self._executor.record_ids(
+                limit=limit, offset=offset, status=status, model_id=model_id):
+            try:
+                jobs.append(self.get(job_id))
+            except AsrJobNotFoundError:
+                self._executor.remove_record(job_id)
+        return jobs
 
     def get(self, job_id: str) -> AsrJob:
         metadata_path = self._metadata_path(job_id)
@@ -245,9 +262,7 @@ class AsrJobService:
     def _check_queue_capacity(self) -> None:
         if not self._accepting:
             raise VVoiceError("The ASR job service is shutting down")
-        pending = self._pending_job_ids | {
-            job.job_id for job in self.list() if job.status not in TERMINAL_STATUSES
-        }
+        pending = self._executor.pending_ids() | self._executor.active_record_ids()
         if len(pending) >= self._max_pending_jobs:
             raise JobQueueFullError("The ASR job queue is full. Wait for a job to finish and retry.")
 
@@ -307,6 +322,7 @@ class AsrJobService:
                 raise VVoiceError(f"Cannot delete ASR job while it is {job.status}")
             try:
                 delete_record_files(self._job_dir(job_id))
+                self._executor.remove_record(job_id)
             except ValueError as exc:
                 raise VVoiceError("ASR job contains an unexpected file or directory") from exc
 
@@ -369,9 +385,24 @@ class AsrJobService:
             self._executor.shutdown(wait=False, cancel_futures=True)
 
     def _run_queued(self, job_id: str) -> None:
+        token = None
         try:
+            with self._lock:
+                job = self.get(job_id)
+                if job.status == "running":
+                    # A prior owner died. Bound repeated crash recovery separately from retries.
+                    recoveries = getattr(job, "recovery_count", 0)
+                    if recoveries >= 3:
+                        self._mark_failed(job_id, VVoiceError("Crash recovery limit reached"))
+                        return
+                    job = _replace_job(job, status="queued", recovery_count=recoveries + 1,
+                                       max_attempts=max(job.max_attempts, job.attempt + 1))
+                    self._save(job)
+            token = set_request_id(getattr(job, "request_id", None) or job_id)
             self._run(job_id)
         finally:
+            if token is not None:
+                reset_request_id(token)
             with self._lock:
                 self._pending_job_ids.discard(job_id)
 
@@ -437,27 +468,24 @@ class AsrJobService:
                 return
 
     def _mark_interrupted_jobs(self) -> None:
-        for job in self.list():
-            if job.status in TERMINAL_STATUSES:
-                continue
-            completed_at = _now()
-            self._save(
-                _replace_job(
-                    job,
-                    status="failed",
-                    completed_at=completed_at,
-                    error="Job was interrupted by server restart",
-                    failed_reason="interrupted",
-                    progress_stage="failed",
-                    stage_started_at=completed_at,
-                )
-            )
+        # Import/reconcile v1 records once. Never mutate a live worker's job here.
+        # Only the OS-lock owner executes recovered work; API-only processes just enqueue.
+        with self._lock:
+            for path in self._jobs_dir.glob("*/metadata.json"):
+                try:
+                    job = self.get(path.parent.name)
+                except AsrJobNotFoundError:
+                    continue
+                self._save(job)
+                if job.status not in TERMINAL_STATUSES:
+                    self._executor.submit(self._run_queued, job.job_id)
 
     def _save(self, job: AsrJob) -> None:
         with self._lock:
             self._job_dir(job.job_id).mkdir(parents=True, exist_ok=True)
             metadata_path = self._metadata_path(job.job_id)
             atomic_write_metadata(metadata_path, _job_to_metadata(job))
+            self._executor.record(_job_to_metadata(job))
 
     def _load(self, metadata_path: Path) -> AsrJob:
         with self._lock:
@@ -473,6 +501,9 @@ class AsrJobService:
         raw_text = raw.get("raw_text", raw.get("text"))
         return AsrJob(
             job_id=raw["job_id"],
+            request_id=raw.get("request_id"),
+            actor_id=raw.get("actor_id"),
+            recovery_count=int(raw.get("recovery_count", 0)),
             status=status,
             filename=raw["filename"],
             language=normalize_language(raw.get("language", DEFAULT_LANGUAGE)),
@@ -497,7 +528,7 @@ class AsrJobService:
             ),
             idempotency_key_hash=raw.get("idempotency_key_hash"),
             request_fingerprint=raw.get("request_fingerprint"),
-            input_path=artifact_path(metadata_path.parent, input_path) if input_path else None,
+            input_path=portable_artifact_path(metadata_path.parent, input_path, "input.wav") if input_path else None,
             text=raw.get("text"),
             sample_rate=raw.get("sample_rate"),
             duration_seconds=raw.get("duration_seconds"),
@@ -709,6 +740,9 @@ class AsrJobService:
 def _job_to_metadata(job: AsrJob) -> dict:
     return {
         "job_id": job.job_id,
+        "request_id": job.request_id,
+        "actor_id": job.actor_id,
+        "recovery_count": job.recovery_count,
         "status": job.status,
         "filename": job.filename,
         "language": job.language,
@@ -724,7 +758,7 @@ def _job_to_metadata(job: AsrJob) -> dict:
         "stage_started_at": job.stage_started_at,
         "idempotency_key_hash": job.idempotency_key_hash,
         "request_fingerprint": job.request_fingerprint,
-        "input_path": str(job.input_path) if job.input_path else None,
+        "input_path": job.input_path.name if job.input_path else None,
         "text": job.text,
         "sample_rate": job.sample_rate,
         "duration_seconds": job.duration_seconds,
@@ -738,41 +772,7 @@ def _job_to_metadata(job: AsrJob) -> dict:
 
 
 def _replace_job(job: AsrJob, **changes) -> AsrJob:
-    values = _job_to_metadata(job)
-    values.update(changes)
-    input_path = values.get("input_path")
-    segments = segments_from_metadata(values.get("segments", []))
-    raw_segments = segments_from_metadata(
-        values.get("raw_segments", values.get("segments", []))
-    )
-    return AsrJob(
-        job_id=values["job_id"],
-        status=values["status"],
-        filename=values["filename"],
-        language=normalize_language(values.get("language", DEFAULT_LANGUAGE)),
-        created_at=values["created_at"],
-        started_at=values.get("started_at"),
-        completed_at=values.get("completed_at"),
-        error=values.get("error"),
-        attempt=int(values.get("attempt") or 0),
-        max_attempts=max(1, int(values.get("max_attempts") or 1)),
-        cancel_requested=bool(values.get("cancel_requested", False)),
-        failed_reason=values.get("failed_reason"),
-        progress_stage=values["progress_stage"],
-        stage_started_at=values["stage_started_at"],
-        idempotency_key_hash=values.get("idempotency_key_hash"),
-        request_fingerprint=values.get("request_fingerprint"),
-        input_path=Path(input_path) if input_path else None,
-        text=values.get("text"),
-        sample_rate=values.get("sample_rate"),
-        duration_seconds=values.get("duration_seconds"),
-        raw_text=values.get("raw_text", values.get("text")),
-        raw_segments=raw_segments,
-        segments=segments,
-        timing_status="available" if segments else "unavailable",
-        transcript_revision=max(0, int(values.get("transcript_revision") or 0)),
-        transcript_updated_at=values.get("transcript_updated_at"),
-    )
+    return replace(job, **changes)
 
 
 def _revised_segments(
@@ -843,8 +843,8 @@ def _job_age_anchor(job: AsrJob) -> datetime:
 
 
 def _is_retryable_exception(exc: Exception) -> bool:
-    return not isinstance(exc, VVoiceError)
+    return isinstance(exc, InferenceTransientError) or not isinstance(exc, VVoiceError)
 
 
 def _failed_reason_for(exc: Exception) -> str:
-    return "application_error" if isinstance(exc, VVoiceError) else "runtime_error"
+    return "runtime_error" if _is_retryable_exception(exc) else "application_error"

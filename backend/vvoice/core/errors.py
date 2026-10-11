@@ -21,6 +21,14 @@ class ModelConfigurationError(VVoiceError):
     pass
 
 
+class InferenceTransientError(VVoiceError):
+    """A bounded retry can recover a lost worker or temporary inference transport."""
+
+
+class InferenceDeadlineError(VVoiceError):
+    """Deadline failures need operator action rather than repeated expensive timeouts."""
+
+
 class AudioError(VVoiceError):
     pass
 
@@ -74,6 +82,8 @@ class TranscriptNotReadyError(VVoiceError):
 
 
 def public_error_message(exc: Exception) -> str:
+    if isinstance(exc, (InferenceTransientError, InferenceDeadlineError)):
+        return PUBLIC_JOB_ERROR_MESSAGE
     if isinstance(exc, AudioLimitError):
         return str(exc)
     if isinstance(exc, UnsupportedAudioFormatError):

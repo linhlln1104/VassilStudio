@@ -38,7 +38,7 @@ import { RuntimeDiagnostics, type WarmupTarget } from './RuntimeDiagnostics'
 
 const storageRows = [
   { label: 'Source models', value: 'MODEL_SOURCE_ROOT', description: 'Original checkpoints and research assets.' },
-  { label: 'Runtime models', value: 'MODEL_RUNTIME_ROOT', description: 'ONNX models loaded by the backend.' },
+  { label: 'Runtime models', value: 'MODEL_RUNTIME_ROOT', description: 'Local model assets loaded by inference engines.' },
   { label: 'Voice assets', value: 'DATA_ROOT/voices', description: 'Reference clips and prepared voice profiles.' },
   { label: 'Generated outputs', value: 'DATA_ROOT/outputs', description: 'Rendered TTS audio and exported files.' },
   { label: 'Contracts', value: 'CONTRACT_ROOT', description: 'Generated API contract for integrations.' },
@@ -49,6 +49,7 @@ const endpointRows = [
   { label: 'Liveness probe', href: '/livez' },
   { label: 'Readiness probe', href: '/readyz' },
   { label: 'Model status', href: '/model-status' },
+  { label: 'TTS models', href: '/api/v1/tts/models' },
   { label: 'OpenAPI JSON', href: '/openapi.json' },
   { label: 'FastAPI docs', href: '/docs' },
 ]
@@ -127,6 +128,11 @@ export function SettingsView() {
     queryFn: api.modelStatus,
     refetchInterval: 10000,
   })
+  const ttsModelsQuery = useQuery({
+    queryKey: ['tts-models'],
+    queryFn: api.ttsModels,
+    refetchInterval: 10000,
+  })
   const authQuery = useQuery({
     queryKey: ['auth-status'],
     queryFn: api.authStatus,
@@ -145,16 +151,17 @@ export function SettingsView() {
       if (target.engine === 'all') {
         return api.warmup()
       }
-      return target.engine === 'asr' ? api.warmupAsr(target.language) : api.warmupTts(target.language)
+      return target.engine === 'asr' ? api.warmupAsr(target.language) : api.warmupTts(target.language, target.modelId)
     },
     onSuccess: (_, target) => {
       void queryClient.invalidateQueries({ queryKey: ['health'] })
       void queryClient.invalidateQueries({ queryKey: ['readiness'] })
       void queryClient.invalidateQueries({ queryKey: ['model-status'] })
+      void queryClient.invalidateQueries({ queryKey: ['tts-models'] })
       void queryClient.invalidateQueries({ queryKey: ['diagnostics'] })
       const targetLabel = target.engine === 'all'
-        ? 'All configured models'
-        : `${target.language.toUpperCase()} ${target.engine.toUpperCase()}`
+        ? 'ASR and default TTS models'
+        : target.engine === 'tts' ? target.modelId : `${target.language.toUpperCase()} ASR`
       toast({
         title: 'Warmup complete',
         description: `${targetLabel} loaded successfully.`,
@@ -242,12 +249,14 @@ export function SettingsView() {
     livenessQuery.isFetching ||
     readinessQuery.isFetching ||
     modelQuery.isFetching ||
+    ttsModelsQuery.isFetching ||
     diagnosticsQuery.isFetching
   const runtimeQueryErrors = [
     queryError('Health', healthQuery.error),
     queryError('Liveness', livenessQuery.error),
     queryError('Readiness', readinessQuery.error),
     queryError('Model status', modelQuery.error),
+    queryError('TTS models', ttsModelsQuery.error),
     queryError('Diagnostics', diagnosticsQuery.error),
   ].filter((item): item is { source: string; message: string } => Boolean(item))
   const lastCheckedAt = Math.max(
@@ -255,6 +264,7 @@ export function SettingsView() {
     livenessQuery.dataUpdatedAt,
     readinessQuery.dataUpdatedAt,
     modelQuery.dataUpdatedAt,
+    ttsModelsQuery.dataUpdatedAt,
     diagnosticsQuery.dataUpdatedAt,
   )
 
@@ -264,6 +274,7 @@ export function SettingsView() {
       livenessQuery.refetch(),
       readinessQuery.refetch(),
       modelQuery.refetch(),
+      ttsModelsQuery.refetch(),
       diagnosticsQuery.refetch(),
     ])
     const failed = results.filter((result) => result.isError).length
@@ -287,6 +298,7 @@ export function SettingsView() {
     setPersistApiKeyForSession(state.persistence === 'session')
     setShowApiKey(false)
     void modelQuery.refetch()
+    void ttsModelsQuery.refetch()
     toast({
       title: state.persistence === 'session' ? 'API key active for this tab' : 'API key active in memory',
       description: state.persistence === 'session'
@@ -320,6 +332,7 @@ export function SettingsView() {
     setShowApiKey(false)
     setClearKeyConfirmOpen(false)
     void modelQuery.refetch()
+    void ttsModelsQuery.refetch()
     toast({
       title: 'API key cleared',
       description: 'Protected requests no longer use a temporary browser key.',
@@ -351,12 +364,14 @@ export function SettingsView() {
             liveness={livenessQuery.data}
             readiness={readinessQuery.data}
             model={modelQuery.data}
+            ttsModels={ttsModelsQuery.data}
             diagnostics={diagnosticsQuery.data}
             loading={
               healthQuery.isLoading ||
               livenessQuery.isLoading ||
               readinessQuery.isLoading ||
-              modelQuery.isLoading
+              modelQuery.isLoading ||
+              ttsModelsQuery.isLoading
             }
             refreshing={diagnosticsRunning}
             lastCheckedAt={lastCheckedAt}
