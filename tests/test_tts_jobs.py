@@ -12,6 +12,7 @@ from vvoice.core.errors import (
 )
 from vvoice.shared.audio.io import encode_wav
 from vvoice.domains.tts.jobs import TtsJobService
+from vvoice.domains.tts.parameters import validate_tts_parameters
 from vvoice.domains.tts.router import _job_response
 from vvoice.domains.tts.service import GeneratedSpeech
 from vvoice.domains.voices.service import VoiceStore
@@ -29,7 +30,11 @@ class FakeTts:
         samples = np.zeros(2400, dtype=np.float32)
         return GeneratedSpeech(samples=samples, sample_rate=24000, duration_seconds=0.1)
 
-    def sample_rate_for(self, language: str | None = None) -> int:
+    def validate_request(self, *, language=None, model_id=None, num_steps=None, speed=None):
+        validate_tts_parameters(num_steps, speed)
+        return model_id or f"zipvoice-{language or 'vi'}"
+
+    def sample_rate_for(self, language: str | None = None, model_id: str | None = None) -> int:
         return 24000
 
 
@@ -210,7 +215,7 @@ def test_tts_job_service_cancels_queued_job(tmp_path) -> None:
         jobs.shutdown()
 
 
-def test_tts_job_service_marks_interrupted_jobs_failed(tmp_path) -> None:
+def test_tts_job_service_preserves_interrupted_jobs_for_a_worker(tmp_path) -> None:
     voices = VoiceStore(tmp_path / "voices")
     jobs = TtsJobService(
         tmp_path / "tts-jobs",
@@ -247,15 +252,17 @@ def test_tts_job_service_marks_interrupted_jobs_failed(tmp_path) -> None:
         tmp_path / "tts-jobs",
         FakeTts(),
         voices,
+        worker_enabled=False,
     )
     try:
         job = recovered.get("interrupted")
 
-        assert job.status == "failed"
-        assert job.error == "Job was interrupted by server restart"
-        assert job.failed_reason == "interrupted"
-        assert job.progress_stage == "failed"
-        assert job.stage_started_at == job.completed_at
+        assert job.status == "running"
+        assert job.error is None
+        assert "interrupted" in recovered._executor.pending_ids()
+        assert job.failed_reason is None
+        assert job.progress_stage == "running_model"
+        assert job.stage_started_at == job.started_at
     finally:
         recovered.shutdown()
 

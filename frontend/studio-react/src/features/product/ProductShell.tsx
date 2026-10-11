@@ -297,7 +297,7 @@ export function ProductShell({ page = 'home' }: ProductShellProps) {
             <div className="grid grid-cols-1 pt-4 sm:grid-cols-2 lg:grid-cols-4">
               <FoundationItem icon={HardDrive} title="Local by default" copy="Configured workspace paths" />
               <FoundationItem icon={Captions} title="ZipFormer ASR" copy="File and realtime recognition" />
-              <FoundationItem icon={AudioLines} title="ZipVoice TTS" copy="Reusable reference voices" />
+              <FoundationItem icon={AudioLines} title="Multi-model TTS" copy="ZipVoice and VieNeu profiles" />
               <FoundationItem icon={LockKeyhole} title="Operator controlled" copy="Auth, diagnostics, cleanup" />
             </div>
           </div>

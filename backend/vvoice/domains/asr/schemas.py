@@ -38,6 +38,9 @@ class TranscriptionResponse(BaseModel):
 
 
 class AsrJobResponse(BaseModel):
+    actor_id: str | None = None
+    request_id: str | None = None
+    recovery_count: int = 0
     job_id: str
     status: str
     filename: str

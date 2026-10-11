@@ -137,7 +137,7 @@ def test_studio_route_and_react_assets_are_registered() -> None:
     assert "belong here" not in script
     assert "Change password" in script
     assert "Changelog" in script
-    assert "Warm all models" in script
+    assert "Warm default models" in script
     assert "Render mode" in script
     assert "First output checklist" in script
     assert "Production" in script

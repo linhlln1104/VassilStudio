@@ -1,3 +1,4 @@
+import { ttsModelCatalog } from './tts-model-fixture.mjs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -177,6 +178,11 @@ async function installApiFixture(page, fixture) {
       fixture.calls.ready += 1
       return json(fixture.readiness, fixture.readiness.status === 'ready' ? 200 : 503)
     }
+    if (url.pathname === '/api/v1/tts/models') return json(ttsModelCatalog({
+      'zipvoice-vi': { loaded: fixture.model.runtime.tts_loaded_languages.includes('vi') },
+      'zipvoice-en': { ready: false, status: 'missing_assets', checks: { vocoder: false } },
+      'vieneu-v3-turbo': fixture.vieneu ?? { ready: false, status: 'missing_dependency', checks: { dependency: false, assets: true } },
+    }))
     if (url.pathname === '/model-status') {
       fixture.calls.protectedRequests.push({
         path: url.pathname,
@@ -199,7 +205,8 @@ async function installApiFixture(page, fixture) {
     if ((url.pathname === '/warmup/asr' || url.pathname === '/warmup/tts') && method === 'POST') {
       const engine = url.pathname.endsWith('/asr') ? 'asr' : 'tts'
       const language = url.searchParams.get('language') || 'vi'
-      fixture.calls.warmup.push({ engine, language })
+      fixture.calls.warmup.push({ engine, language, modelId: url.searchParams.get('model_id') })
+      if (url.searchParams.get('model_id') === 'vieneu-v3-turbo') fixture.vieneu = { ready: true, loaded: true, status: 'loaded' }
       const loadedLanguages = fixture.model.runtime[`${engine}_loaded_languages`]
       if (!loadedLanguages.includes(language)) loadedLanguages.push(language)
       fixture.model.runtime[`${engine}_loaded`] = true
@@ -297,21 +304,26 @@ try {
     await page.getByText('Runtime setup needs attention', { exact: true }).waitFor({ state: 'visible' })
     await page.getByText('English TTS vocoder', { exact: true }).first().waitFor({ state: 'visible' })
     await page.getByText('Logs storage', { exact: true }).first().waitFor({ state: 'visible' })
-    await page.getByRole('button', { name: 'Warm all models' }).isDisabled().then((disabled) => {
+    await page.getByRole('button', { name: 'Warm default models' }).isDisabled().then((disabled) => {
       if (!disabled) throw new Error(`${viewport.name}: warm-all should be blocked while model assets are missing`)
     })
+
+    const vieneuCard = page.getByRole('article', { name: 'VieNeu TTS v3 Turbo model' })
+    if (!await vieneuCard.getByRole('button', { name: 'Warm VieNeu TTS v3 Turbo' }).isDisabled()) throw new Error('Missing dependency must block warmup')
+    await vieneuCard.getByText('Missing dependency', { exact: true }).waitFor()
 
     const ttsWarmResponse = page.waitForResponse((response) => {
       const url = new URL(response.url())
       return response.request().method() === 'POST' && url.pathname === '/warmup/tts' && url.searchParams.get('language') === 'vi'
     })
-    await page.getByRole('button', { name: 'Warm Vietnamese TTS' }).click()
+    await page.getByRole('button', { name: 'Warm ZipVoice Vietnamese' }).click()
     await ttsWarmResponse
     await page.getByText('Warmup complete', { exact: true }).waitFor({ state: 'visible' })
-    if (fixture.calls.warmup.length !== 1 || fixture.calls.warmup[0].language !== 'vi') {
+    if (fixture.calls.warmup.length !== 1 || fixture.calls.warmup[0].language !== 'vi' || fixture.calls.warmup[0].modelId !== 'zipvoice-vi') {
       throw new Error(`${viewport.name}: language-specific TTS warmup was not preserved`)
     }
 
+    fixture.vieneu = { ready: false, status: 'error', checks: { dependency: true, assets: true }, message: 'Previous initialization failed.' }
     const readyCallsBeforeRefresh = fixture.calls.ready
     const readinessRefresh = page.waitForResponse((response) => new URL(response.url()).pathname === '/readyz')
     await page.getByRole('button', { name: 'Run diagnostics', exact: true }).click()
@@ -320,6 +332,12 @@ try {
     if (fixture.calls.ready <= readyCallsBeforeRefresh) {
       throw new Error(`${viewport.name}: diagnostics did not refresh readiness`)
     }
+
+    await vieneuCard.getByText('Previous initialization failed.', { exact: true }).waitFor()
+    const retryWarmup = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).searchParams.get('model_id') === 'vieneu-v3-turbo')
+    await vieneuCard.getByRole('button', { name: 'Warm VieNeu TTS v3 Turbo' }).click()
+    await retryWarmup
+    await vieneuCard.getByText('Loaded', { exact: true }).waitFor()
 
     const downloadPromise = page.waitForEvent('download')
     await page.getByRole('button', { name: 'Download bundle', exact: true }).click()

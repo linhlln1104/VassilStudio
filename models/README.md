@@ -27,13 +27,21 @@ models/
         vocos_24khz.onnx
         tokens.txt
         espeak-ng-data/
+      vieneu-v3-turbo/
+        model/
+          onnx_update/
+        hf-cache/
   source/
     asr/
     tts/
 ```
 
-`runtime` is what `config/vassil.example.json` uses. TTS runtime profiles live under
-`tts.models.<language>`; only generate languages that have a configured profile. `source` is for original exports,
+`runtime` is what `config/vassil.example.json` uses. TTS deployments live under
+`tts.profiles.<model_id>` and declare their engine and supported languages;
+`tts.default_models` selects the default deployment for each language. Legacy
+`tts.models.<language>` settings still work. See [model engines](../docs/model-engines.md)
+for installation and configuration, including the separate VieNeu SDK environment.
+`source` is for original exports,
 checkpoints, or legacy drops that should not be mounted into production unless needed.
 
 ZipVoice profiles are phonemized by Vassil Studio, mapped directly to each model `tokens.txt`, and executed

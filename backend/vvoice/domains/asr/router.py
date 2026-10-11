@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request, UploadFile
+from datetime import UTC, datetime, timedelta
+
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 
@@ -19,9 +21,10 @@ from vvoice.shared.audio.io import duration_seconds, load_audio_bytes
 from vvoice.shared.language import DEFAULT_LANGUAGE, normalize_language
 from vvoice.shared.jobs.integrity import CANCELLATION_MODE, IDEMPOTENCY_KEY_HEADER
 from vvoice.shared.validation import read_audio_upload, safe_display_filename
+from vvoice.shared.security.auth import require_domain_scope
 
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_domain_scope("asr"))])
 
 
 @router.post("/transcribe", response_model=TranscriptionResponse)
@@ -90,9 +93,15 @@ async def create_asr_job(
 
 
 @router.get("/jobs", response_model=list[AsrJobResponse])
-def list_asr_jobs(request: Request):
+def list_asr_jobs(request: Request, limit: int | None = Query(default=None, ge=1, le=500),
+                  offset: int = Query(default=0, ge=0), status: str | None = None):
     container = request.app.state.container
-    return [_job_response(job) for job in container.asr_jobs.list()]
+    principal = request.state.principal
+    jobs = [job for job in container.asr_jobs.list()
+            if (principal.is_admin or getattr(job, "actor_id", None) == principal.principal_id)
+            and (status is None or job.status == status)]
+    jobs = jobs[offset:offset + limit] if limit is not None else jobs[offset:]
+    return [_job_response(job) for job in jobs]
 
 
 @router.delete("/jobs", response_model=AsrJobCleanupResponse)
@@ -101,19 +110,35 @@ def cleanup_asr_jobs(
     max_age_seconds: int | None = Query(default=None, ge=0),
 ):
     container = request.app.state.container
-    deleted = container.asr_jobs.cleanup(max_age_seconds=max_age_seconds)
+    principal = request.state.principal
+    if principal.is_admin:
+        deleted = container.asr_jobs.cleanup(max_age_seconds=max_age_seconds)
+    else:
+        deleted = []
+        cutoff = (datetime.now(UTC) - timedelta(seconds=max_age_seconds)
+                  if max_age_seconds is not None else None)
+        for job in container.asr_jobs.list():
+            if job.status not in {"succeeded", "failed", "cancelled"} or getattr(job, "actor_id", None) != principal.principal_id:
+                continue
+            if cutoff and datetime.fromisoformat((job.completed_at or job.created_at).replace("Z", "+00:00")) > cutoff:
+                continue
+            container.asr_jobs.delete(job.job_id)
+            deleted.append(job.job_id)
     return {"deleted": len(deleted), "job_ids": deleted}
 
 
 @router.get("/jobs/{job_id}", response_model=AsrJobResponse)
 def get_asr_job(request: Request, job_id: str):
     container = request.app.state.container
-    return _job_response(container.asr_jobs.get(job_id))
+    job = container.asr_jobs.get(job_id)
+    _assert_job_access(request, job)
+    return _job_response(job)
 
 
 @router.post("/jobs/{job_id}/cancel", response_model=AsrJobResponse)
 def cancel_asr_job(request: Request, job_id: str):
     container = request.app.state.container
+    _assert_job_access(request, container.asr_jobs.get(job_id))
     return _job_response(container.asr_jobs.cancel(job_id))
 
 
@@ -128,6 +153,7 @@ def revise_asr_transcript(
     revision: TranscriptRevisionRequest,
 ):
     container = request.app.state.container
+    _assert_job_access(request, container.asr_jobs.get(job_id))
     segment_edits = (
         tuple((segment.segment_id, segment.text) for segment in revision.segments)
         if revision.segments is not None
@@ -144,7 +170,16 @@ def revise_asr_transcript(
 
 @router.get(
     "/jobs/{job_id}/exports/{export_format}",
-    responses={409: {"description": "Transcript or timed segments are not ready"}},
+    response_class=Response,
+    responses={
+        200: {"content": {
+            "text/plain": {"schema": {"type": "string"}},
+            "text/vtt": {"schema": {"type": "string"}},
+            "application/x-subrip": {"schema": {"type": "string"}},
+            "application/json": {"schema": {"type": "object"}},
+        }},
+        409: {"description": "Transcript or timed segments are not ready"},
+    },
 )
 def export_asr_transcript(
     request: Request,
@@ -152,7 +187,9 @@ def export_asr_transcript(
     export_format: TranscriptExportFormat,
 ):
     container = request.app.state.container
-    export = render_transcript_export(container.asr_jobs.get(job_id), export_format)
+    job = container.asr_jobs.get(job_id)
+    _assert_job_access(request, job)
+    export = render_transcript_export(job, export_format)
     return Response(
         content=export.content,
         media_type=export.media_type,
@@ -163,10 +200,12 @@ def export_asr_transcript(
     )
 
 
-@router.get("/jobs/{job_id}/audio")
+@router.get("/jobs/{job_id}/audio", response_class=FileResponse,
+            responses={200: {"content": {"audio/wav": {"schema": {"type": "string", "format": "binary"}}}}})
 def get_asr_job_audio(request: Request, job_id: str):
     container = request.app.state.container
     job = container.asr_jobs.get(job_id)
+    _assert_job_access(request, job)
     if not job.input_path or not job.input_path.exists():
         raise HTTPException(status_code=409, detail="ASR job input audio is not available")
 
@@ -180,8 +219,17 @@ def get_asr_job_audio(request: Request, job_id: str):
 @router.delete("/jobs/{job_id}", response_model=AsrJobDeleteResponse)
 def delete_asr_job(request: Request, job_id: str):
     container = request.app.state.container
+    _assert_job_access(request, container.asr_jobs.get(job_id))
     container.asr_jobs.delete(job_id)
     return {"deleted": True, "job_id": job_id}
+
+
+def _assert_job_access(request: Request, job: AsrJob) -> None:
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        raise HTTPException(401, "Authentication required")
+    if not principal.is_admin and getattr(job, "actor_id", None) != principal.principal_id:
+        raise HTTPException(404, "ASR job not found")
 
 
 def _job_response(job: AsrJob) -> dict:
@@ -212,4 +260,7 @@ def _job_response(job: AsrJob) -> dict:
         "transcript_revision": job.transcript_revision,
         "transcript_edited": job.transcript_revision > 0,
         "transcript_updated_at": job.transcript_updated_at,
+        "request_id": getattr(job, "request_id", None),
+        "actor_id": getattr(job, "actor_id", None),
+        "recovery_count": getattr(job, "recovery_count", 0),
     }

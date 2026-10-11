@@ -9,6 +9,7 @@ from vvoice.core.config import AsrModelSettings, AsrSettings, RuntimeSettings
 from vvoice.core.errors import ModelConfigurationError
 from vvoice.domains.asr.transcript import TranscriptSegment, timed_segments_from_result
 from vvoice.shared.language import normalize_language
+from vvoice.inference.admission import DEFAULT_GATE
 
 
 @dataclass(frozen=True)
@@ -19,9 +20,10 @@ class Transcription:
 
 
 class AsrService:
-    def __init__(self, settings: AsrSettings, runtime: RuntimeSettings) -> None:
+    def __init__(self, settings: AsrSettings, runtime: RuntimeSettings, *, admission=None) -> None:
         self._settings = settings
         self._runtime = runtime
+        self._admission = admission or DEFAULT_GATE
         self._recognizers: dict[str, object] = {}
         self._locks = {language: threading.Lock() for language in settings.models}
         self._inference_locks = {language: threading.Lock() for language in settings.models}
@@ -33,8 +35,9 @@ class AsrService:
         language: str | None = None,
     ) -> Transcription:
         normalized_language = normalize_language(language or self._settings.default_language)
-        recognizer = self._get_recognizer(normalized_language)
-        with self._inference_locks[normalized_language]:
+        with self._admission.enter():
+            recognizer = self._get_recognizer(normalized_language)
+        with self._admission.enter(), self._inference_locks[normalized_language]:
             stream = recognizer.create_stream()
             stream.accept_waveform(sample_rate, samples)
             recognizer.decode_stream(stream)
@@ -69,7 +72,8 @@ class AsrService:
         return self._settings.model_for(language).sample_rate
 
     def warmup(self, language: str | None = None) -> None:
-        self._get_recognizer(normalize_language(language or self._settings.default_language))
+        with self._admission.enter():
+            self._get_recognizer(normalize_language(language or self._settings.default_language))
 
     def warmup_all(self) -> None:
         if not self._settings.enabled:

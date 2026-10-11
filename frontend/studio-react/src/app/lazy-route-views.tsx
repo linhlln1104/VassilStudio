@@ -1,5 +1,10 @@
 import { lazy } from 'react'
 
+export const ProjectsRouteView = lazy(() => import('@/features/production/ProjectsView').then((module) => ({ default: module.ProjectsView })))
+export const BatchesRouteView = lazy(() => import('@/features/production/BatchesView').then((module) => ({ default: module.BatchesView })))
+export const ModelsRouteView = lazy(() => import('@/features/production/ModelsView').then((module) => ({ default: module.ModelsView })))
+export const AdministrationRouteView = lazy(() => import('@/features/production/AdministrationView').then((module) => ({ default: module.AdministrationView })))
+
 export const GenerateRouteView = lazy(() =>
   import('@/features/generate/GenerateView').then((module) => ({ default: module.GenerateView })),
 )

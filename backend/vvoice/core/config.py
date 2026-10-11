@@ -4,7 +4,7 @@ import ipaddress
 import json
 import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
 import re
 from typing import Any
@@ -144,11 +144,26 @@ class TtsModelSettings:
 
 
 @dataclass(frozen=True)
+class TtsProfileSettings:
+    """A named deployment, independent of its engine and supported languages."""
+
+    model_id: str
+    engine: str
+    label: str
+    languages: tuple[str, ...]
+    sample_rate: int
+    root: Path
+    options: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class TtsSettings:
     enabled: bool
     sample_rate: int
     default_language: str
     models: dict[str, TtsModelSettings]
+    profiles: dict[str, TtsProfileSettings] = field(default_factory=dict)
+    default_models: dict[str, str] = field(default_factory=dict)
 
     @property
     def default_model(self) -> TtsModelSettings:
@@ -620,6 +635,8 @@ def _parse_asr_model_settings(
 
 def _parse_tts_settings(raw: dict[str, Any], root: Path) -> TtsSettings:
     default_language = normalize_language(raw.get("default_language", DEFAULT_LANGUAGE))
+    if "profiles" in raw:
+        return _parse_tts_profiles(raw, root, default_language)
     default_sample_rate = int(raw.get("sample_rate", 24000))
     defaults = {
         "sample_rate": default_sample_rate,
@@ -663,6 +680,71 @@ def _parse_tts_settings(raw: dict[str, Any], root: Path) -> TtsSettings:
         sample_rate=models[default_language].sample_rate,
         default_language=default_language,
         models=models,
+        profiles={
+            f"zipvoice-{language}": TtsProfileSettings(
+                model_id=f"zipvoice-{language}", engine="zipvoice", label=model.label,
+                languages=(language,), sample_rate=model.sample_rate, root=root,
+                options=asdict(model),
+            )
+            for language, model in models.items()
+        },
+        default_models={language: f"zipvoice-{language}" for language in models},
+    )
+
+
+def _parse_tts_profiles(raw: dict[str, Any], root: Path, default_language: str) -> TtsSettings:
+    if "models" in raw:
+        raise ValueError("Use either tts.profiles or legacy tts.models, not both.")
+    raw_profiles = raw["profiles"]
+    if not isinstance(raw_profiles, dict) or not raw_profiles:
+        raise ValueError("tts.profiles must be a non-empty object keyed by model ID.")
+    profiles: dict[str, TtsProfileSettings] = {}
+    legacy_models: dict[str, TtsModelSettings] = {}
+    for model_id, profile_raw in raw_profiles.items():
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}", model_id):
+            raise ValueError(f"Invalid TTS model ID: {model_id!r}.")
+        languages_raw = profile_raw.get("languages")
+        if not isinstance(languages_raw, list) or not languages_raw:
+            raise ValueError(f"tts.profiles.{model_id}.languages must be a non-empty list.")
+        languages = tuple(dict.fromkeys(normalize_language(value) for value in languages_raw))
+        engine = str(profile_raw.get("engine", "")).strip()
+        if not engine:
+            raise ValueError(f"tts.profiles.{model_id}.engine is required.")
+        options = profile_raw.get("options", {})
+        if not isinstance(options, dict):
+            raise ValueError(f"tts.profiles.{model_id}.options must be an object.")
+        profiles[model_id] = TtsProfileSettings(
+            model_id=model_id, engine=engine,
+            label=str(profile_raw.get("label", model_id)), languages=languages,
+            sample_rate=_positive_int(profile_raw["sample_rate"], f"{model_id}.sample_rate"),
+            root=root, options=dict(options),
+        )
+    defaults_raw = raw.get("default_models", {})
+    if not isinstance(defaults_raw, dict) or not defaults_raw:
+        raise ValueError("tts.default_models must map each language to an explicit model ID.")
+    defaults = {normalize_language(lang): model_id for lang, model_id in defaults_raw.items()}
+    supported = {language for profile in profiles.values() for language in profile.languages}
+    if set(defaults) != supported:
+        raise ValueError("tts.default_models must cover exactly the configured languages.")
+    for language, model_id in defaults.items():
+        if model_id not in profiles or language not in profiles[model_id].languages:
+            raise ValueError(f"Invalid TTS default model '{model_id}' for language '{language}'.")
+    if default_language not in defaults:
+        raise ValueError(f"tts.default_language '{default_language}' is not configured.")
+    # Compatibility accessors are retained for old ZipVoice scripts. New application
+    # code must use profiles/default_models and the adapter catalog.
+    for language, model_id in defaults.items():
+        profile = profiles[model_id]
+        if profile.engine == "zipvoice":
+            legacy_models[language] = _parse_tts_model_settings(
+                profile.options, root=root, language=language, label=profile.label,
+                defaults={"sample_rate": profile.sample_rate, "default_num_steps": 8,
+                          "default_speed": 1.0, "min_char_in_sentence": 30},
+            )
+    return TtsSettings(
+        enabled=bool(raw.get("enabled", True)), default_language=default_language,
+        sample_rate=profiles[defaults[default_language]].sample_rate,
+        models=legacy_models, profiles=profiles, default_models=defaults,
     )
 
 

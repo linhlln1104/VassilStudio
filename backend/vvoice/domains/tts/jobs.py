@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import logging
-import threading
+import os
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
+from contextlib import nullcontext
 
+from vvoice.core.observability import get_request_id, set_request_id, reset_request_id
+from vvoice.shared.jobs.durable import DurableExecutor, FileLock
 from vvoice.core.errors import (
+    InferenceTransientError,
     IdempotencyConflictError,
     JobQueueFullError,
     TtsJobNotFoundError,
@@ -27,6 +31,7 @@ from vvoice.shared.jobs.integrity import (
 )
 from vvoice.shared.jobs.storage import (
     artifact_path,
+    portable_artifact_path,
     atomic_write_bytes,
     atomic_write_metadata,
     count_quarantined_metadata,
@@ -36,7 +41,7 @@ from vvoice.shared.jobs.storage import (
     record_directory,
 )
 from vvoice.shared.validation import validate_text_field
-from vvoice.domains.tts.service import ZipVoiceService
+from vvoice.domains.tts.service import TtsService
 from vvoice.domains.voices.service import VoiceStore
 
 
@@ -55,6 +60,7 @@ class TtsJob:
     status: str
     voice_id: str
     language: str
+    model_id: str
     text: str
     num_steps: int | None
     speed: float | None
@@ -75,19 +81,24 @@ class TtsJob:
     duration_seconds: float | None
     reference_text: str | None = None
     reference_audio_sha256: str | None = None
+    request_id: str | None = None
+    recovery_count: int = 0
+    actor_id: str | None = None
+    provenance: dict = field(default_factory=dict)
 
 
 class TtsJobService:
     def __init__(
         self,
         jobs_dir: Path,
-        tts: ZipVoiceService,
+        tts: TtsService,
         voices: VoiceStore,
         *,
         max_workers: int = 1,
         max_pending_jobs: int = 32,
         max_attempts: int = 1,
         retry_backoff_seconds: float = 0.5,
+        worker_enabled: bool | None = None,
         max_text_chars: int = 5000,
     ) -> None:
         self._jobs_dir = jobs_dir
@@ -97,15 +108,17 @@ class TtsJobService:
         self._max_pending_jobs = max(1, int(max_pending_jobs))
         self._retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
         self._max_text_chars = max_text_chars
-        self._lock = threading.RLock()
+        self._jobs_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = FileLock(self._jobs_dir / ".metadata.lock")
         self._accepting = True
         self._pending_job_ids: set[str] = set()
-        self._executor = ThreadPoolExecutor(
-            max_workers=max_workers,
-            thread_name_prefix="vvoice-tts-job",
+        self._executor = DurableExecutor(
+            jobs_dir, self._run_queued, max_workers=max_workers,
+            enabled=(os.getenv("VASSIL_WORKER_MODE", "embedded") != "external"
+                     if worker_enabled is None else worker_enabled),
         )
-        self._jobs_dir.mkdir(parents=True, exist_ok=True)
         self._mark_interrupted_jobs()
+        self._executor.start()
 
     @property
     def quarantined_count(self) -> int:
@@ -117,9 +130,45 @@ class TtsJobService:
         voice_id: str,
         text: str,
         language: str | None = None,
+        model_id: str | None = None,
         num_steps: int | None = None,
         speed: float | None = None,
         idempotency_key: str | None = None,
+    ) -> TtsJob:
+        return self.create_from_snapshot(
+            voice_id=voice_id, text=text, language=language, model_id=model_id,
+            num_steps=num_steps, speed=speed, idempotency_key=idempotency_key,
+        )
+
+    def snapshot_voice(self, voice_id: str) -> dict:
+        profile, data = self._voices.snapshot(voice_id)
+        return {
+            "voice_id": voice_id, "reference_text": profile.reference_text,
+            "reference_audio_sha256": content_sha256(data),
+            "reference_wav": data, "language": profile.language,
+        }
+
+    def retry(self, job_id: str, *, idempotency_key: str | None = None) -> TtsJob:
+        with self._lock:
+            original = self.get(job_id)
+            if original.status not in TERMINAL_STATUSES:
+                raise VVoiceError("Wait for this job to finish before retrying its snapshot")
+            original, data = self._reference_snapshot(original)
+            return self.create_from_snapshot(
+                voice_id=original.voice_id, text=original.text, language=original.language,
+                model_id=original.model_id, num_steps=original.num_steps, speed=original.speed,
+                reference_bytes=data, reference_text=original.reference_text,
+                provenance={**original.provenance, "retry_of": original.job_id},
+                idempotency_key=idempotency_key,
+            )
+
+    def create_from_snapshot(
+        self, *, voice_id: str, text: str, language: str | None = None,
+        model_id: str | None = None, num_steps: int | None = None,
+        speed: float | None = None, idempotency_key: str | None = None,
+        reference_bytes: bytes | None = None, reference_text: str | None = None,
+        provenance: dict | None = None,
+        actor_id: str | None = None, request_id: str | None = None,
     ) -> TtsJob:
         text = validate_text_field(
             text,
@@ -128,33 +177,75 @@ class TtsJobService:
         )
         assert text is not None
         validate_tts_parameters(num_steps, speed)
-        key_hash = idempotency_key_hash(idempotency_key)
+        from vvoice.shared.security.auth import current_actor_id
+        actor_id = actor_id or current_actor_id()
+        key_hash = idempotency_key_hash(
+            f"{actor_id}:{idempotency_key}" if actor_id and idempotency_key else idempotency_key
+        )
 
         with self._lock:
             # Replays remain usable after the original profile has been edited or deleted.
-            replay = next(
-                (job for job in self.list() if key_hash and job.idempotency_key_hash == key_hash),
-                None,
-            ) if key_hash else None
+            previous = self._executor.key_record(key_hash)
+            replay = None
+            if previous:
+                try:
+                    replay = self.get(previous['job_id'])
+                except TtsJobNotFoundError as exc:
+                    raise IdempotencyConflictError(
+                        "This request was already processed; its job was removed. "
+                        "Use a new Idempotency-Key for an intentional new render."
+                    ) from exc
             if replay is not None:
                 effective_language = normalize_language(language or replay.language)
+                # A replay refers to the accepted model even if the configured default changed.
+                effective_model_id = replay.model_id if model_id is None else model_id.strip()
+                if not effective_model_id:
+                    raise VVoiceError("model_id must not be empty")
             else:
                 self._check_queue_capacity()
-                profile, reference_bytes = self._voices.snapshot(voice_id)
+                if reference_bytes is None:
+                    profile, reference_bytes = self._voices.snapshot(voice_id)
+                else:
+                    if not reference_bytes or reference_text is None:
+                        raise VVoiceError("A reference snapshot requires audio and transcript")
+                    profile = SimpleNamespace(reference_text=reference_text, language=language)
                 effective_language = normalize_language(language or profile.language)
-            self._tts.sample_rate_for(effective_language)
-            fingerprint = request_fingerprint(
-                {
-                    "language": effective_language,
-                    "num_steps": num_steps,
-                    "speed": speed,
-                    "text": text,
-                    "voice_id": voice_id,
-                }
+                effective_model_id = self._tts.validate_request(
+                    language=effective_language,
+                    model_id=model_id,
+                    num_steps=num_steps,
+                    speed=speed,
+                )
+            fingerprint = _tts_request_fingerprint(
+                language=effective_language,
+                model_id=effective_model_id,
+                num_steps=num_steps,
+                speed=speed,
+                text=text,
+                voice_id=voice_id,
             )
+            if provenance and provenance.get('retry_of'):
+                # A retry key identifies the frozen source job, not just its text
+                # and mutable voice ID. Reusing it for another take must conflict.
+                fingerprint = request_fingerprint({
+                    'request': fingerprint, 'retry_of': provenance['retry_of'],
+                    'reference_audio_sha256': content_sha256(reference_bytes),
+                    'reference_text': reference_text,
+                    'deployment_version': provenance.get('deployment_version'),
+                })
             existing = self._find_idempotent_job(key_hash, fingerprint)
             if existing is not None:
                 return existing
+
+            resolved = (self._tts.resolve_parameters(
+                language=effective_language, model_id=effective_model_id,
+                num_steps=num_steps, speed=speed,
+            ) if hasattr(self._tts, 'resolve_parameters') else {})
+            if (provenance and provenance.get('deployment_version')
+                    and provenance['deployment_version'] != resolved.get('deployment_version')):
+                raise VVoiceError("The accepted model version changed; select and review a new take")
+            frozen_provenance = {**resolved, **(provenance or {})}
+            frozen_provenance.pop('output_sha256', None)
 
             language = effective_language
             job_id = str(uuid.uuid4())
@@ -164,12 +255,16 @@ class TtsJobService:
             atomic_write_bytes(job_dir / "reference.wav", reference_bytes)
             job = TtsJob(
                 job_id=job_id,
+                request_id=request_id or get_request_id(),
+                actor_id=actor_id,
+                provenance=frozen_provenance,
                 status="queued",
                 voice_id=voice_id,
                 language=language,
+                model_id=effective_model_id,
                 text=text,
-                num_steps=num_steps,
-                speed=speed,
+                num_steps=resolved.get('num_steps', num_steps),
+                speed=resolved.get('speed', speed),
                 created_at=now,
                 started_at=None,
                 completed_at=None,
@@ -197,6 +292,7 @@ class TtsJobService:
                 "job_id": job_id,
                 "voice_id": voice_id,
                 "language": language,
+                "model_id": effective_model_id,
                 "num_steps": num_steps,
                 "speed": speed,
             },
@@ -211,9 +307,9 @@ class TtsJobService:
         if key_hash is None:
             return None
 
-        for job in self.list():
-            if job.idempotency_key_hash != key_hash:
-                continue
+        previous = self._executor.key_record(key_hash)
+        if previous:
+            job = self.get(previous['job_id'])
             if job.request_fingerprint != fingerprint:
                 raise IdempotencyConflictError(
                     "Idempotency-Key was already used for a different TTS request"
@@ -225,18 +321,15 @@ class TtsJobService:
             return job
         return None
 
-    def list(self) -> list[TtsJob]:
-        if not self._jobs_dir.exists():
-            return []
-
-        jobs: list[TtsJob] = []
-        with self._lock:
-            for metadata_path in self._jobs_dir.glob("*/metadata.json"):
-                try:
-                    jobs.append(self.get(metadata_path.parent.name))
-                except TtsJobNotFoundError:
-                    continue
-        return sorted(jobs, key=lambda item: item.created_at, reverse=True)
+    def list(self, *, limit=None, offset=0, status=None, model_id=None) -> list[TtsJob]:
+        jobs = []
+        for job_id in self._executor.record_ids(
+                limit=limit, offset=offset, status=status, model_id=model_id):
+            try:
+                jobs.append(self.get(job_id))
+            except TtsJobNotFoundError:
+                self._executor.remove_record(job_id)
+        return jobs
 
     def get(self, job_id: str) -> TtsJob:
         metadata_path = self._metadata_path(job_id)
@@ -251,9 +344,7 @@ class TtsJobService:
     def _check_queue_capacity(self) -> None:
         if not self._accepting:
             raise VVoiceError("The TTS job service is shutting down")
-        pending = self._pending_job_ids | {
-            job.job_id for job in self.list() if job.status not in TERMINAL_STATUSES
-        }
+        pending = self._executor.pending_ids() | self._executor.active_record_ids()
         if len(pending) >= self._max_pending_jobs:
             raise JobQueueFullError("The TTS job queue is full. Wait for a job to finish and retry.")
 
@@ -264,6 +355,7 @@ class TtsJobService:
                 raise VVoiceError(f"Cannot delete TTS job while it is {job.status}")
             try:
                 delete_record_files(self._job_dir(job_id))
+                self._executor.remove_record(job_id)
             except ValueError as exc:
                 raise VVoiceError("TTS job contains an unexpected file or directory") from exc
 
@@ -326,9 +418,24 @@ class TtsJobService:
             self._executor.shutdown(wait=False, cancel_futures=True)
 
     def _run_queued(self, job_id: str) -> None:
+        token = None
         try:
+            with self._lock:
+                job = self.get(job_id)
+                if job.status == "running":
+                    # A prior owner died. Bound repeated crash recovery separately from retries.
+                    recoveries = getattr(job, "recovery_count", 0)
+                    if recoveries >= 3:
+                        self._mark_failed(job_id, VVoiceError("Crash recovery limit reached"))
+                        return
+                    job = _replace_job(job, status="queued", recovery_count=recoveries + 1,
+                                       max_attempts=max(job.max_attempts, job.attempt + 1))
+                    self._save(job)
+            token = set_request_id(getattr(job, "request_id", None) or job_id)
             self._run(job_id)
         finally:
+            if token is not None:
+                reset_request_id(token)
             with self._lock:
                 self._pending_job_ids.discard(job_id)
 
@@ -352,21 +459,29 @@ class TtsJobService:
 
                 self._raise_if_cancel_requested(job_id)
                 job, reference_bytes = self._reference_snapshot(job)
+                if job.provenance.get('deployment_version') and hasattr(self._tts, 'assert_deployment'):
+                    self._tts.assert_deployment(job.model_id, job.provenance['deployment_version'])
                 reference_audio, reference_sample_rate = load_audio_bytes(
                     reference_bytes,
-                    target_sample_rate=self._tts.sample_rate_for(job.language),
+                    target_sample_rate=self._tts.sample_rate_for(
+                        job.language, model_id=job.model_id,
+                    ),
                 )
                 self._raise_if_cancel_requested(job_id)
                 job = self._set_progress_stage(job_id, "running_model")
-                speech = self._tts.synthesize(
-                    text=job.text,
-                    reference_audio=reference_audio,
-                    reference_sample_rate=reference_sample_rate,
-                    reference_text=job.reference_text,
-                    language=job.language,
-                    num_steps=job.num_steps,
-                    speed=job.speed,
-                )
+                guard = (self._tts.deployment_guard(job.model_id, job.provenance.get("deployment_version"))
+                         if hasattr(self._tts, "deployment_guard") else nullcontext())
+                with guard:
+                    speech = self._tts.synthesize(
+                        text=job.text,
+                        reference_audio=reference_audio,
+                        reference_sample_rate=reference_sample_rate,
+                        reference_text=job.reference_text,
+                        language=job.language,
+                        model_id=job.model_id,
+                        num_steps=job.num_steps,
+                        speed=job.speed,
+                    )
                 self._raise_if_cancel_requested(job_id)
                 job = self._set_progress_stage(job_id, "finalizing")
 
@@ -405,21 +520,17 @@ class TtsJobService:
                 return
 
     def _mark_interrupted_jobs(self) -> None:
-        for job in self.list():
-            if job.status in TERMINAL_STATUSES:
-                continue
-            completed_at = _now()
-            self._save(
-                _replace_job(
-                    job,
-                    status="failed",
-                    completed_at=completed_at,
-                    error="Job was interrupted by server restart",
-                    failed_reason="interrupted",
-                    progress_stage="failed",
-                    stage_started_at=completed_at,
-                )
-            )
+        # Import/reconcile v1 records once. Never mutate a live worker's job here.
+        # Only the OS-lock owner executes recovered work; API-only processes just enqueue.
+        with self._lock:
+            for path in self._jobs_dir.glob("*/metadata.json"):
+                try:
+                    job = self.get(path.parent.name)
+                except TtsJobNotFoundError:
+                    continue
+                self._save(job)
+                if job.status not in TERMINAL_STATUSES:
+                    self._executor.submit(self._run_queued, job.job_id)
 
     def _reference_snapshot(self, job: TtsJob) -> tuple[TtsJob, bytes]:
         with self._lock:
@@ -448,6 +559,7 @@ class TtsJobService:
             self._job_dir(job.job_id).mkdir(parents=True, exist_ok=True)
             metadata_path = self._metadata_path(job.job_id)
             atomic_write_metadata(metadata_path, _job_to_metadata(job))
+            self._executor.record(_job_to_metadata(job))
 
     def _load(self, metadata_path: Path) -> TtsJob:
         with self._lock:
@@ -458,11 +570,32 @@ class TtsJobService:
         max_attempts = int(raw.get("max_attempts") or self._max_attempts)
         if (raw.get("reference_text") is None) != (raw.get("reference_audio_sha256") is None):
             raise ValueError("TTS job reference snapshot metadata is incomplete")
+        language = normalize_language(raw.get("language", DEFAULT_LANGUAGE))
+        model_id = raw.get("model_id", f"zipvoice-{language}")
+        if not isinstance(model_id, str) or not model_id.strip():
+            raise ValueError("TTS job model_id must be a nonempty string")
+        fingerprint = raw.get("request_fingerprint")
+        if "model_id" not in raw and fingerprint:
+            # Old hashes omitted model_id. Upgrade only hashes that match the original payload.
+            payload = {
+                "language": language,
+                "num_steps": raw.get("num_steps"),
+                "speed": raw.get("speed"),
+                "text": raw["text"],
+                "voice_id": raw["voice_id"],
+            }
+            if fingerprint == _tts_request_fingerprint(**payload):
+                fingerprint = _tts_request_fingerprint(**payload, model_id=model_id)
         return TtsJob(
             job_id=raw["job_id"],
+            request_id=raw.get("request_id"),
+            actor_id=raw.get("actor_id"),
+            provenance=raw.get("provenance", {}),
+            recovery_count=int(raw.get("recovery_count", 0)),
             status=status,
             voice_id=raw["voice_id"],
-            language=normalize_language(raw.get("language", DEFAULT_LANGUAGE)),
+            language=language,
+            model_id=model_id,
             text=raw["text"],
             num_steps=raw.get("num_steps"),
             speed=raw.get("speed"),
@@ -486,8 +619,8 @@ class TtsJobService:
                 or raw["created_at"]
             ),
             idempotency_key_hash=raw.get("idempotency_key_hash"),
-            request_fingerprint=raw.get("request_fingerprint"),
-            output_path=artifact_path(metadata_path.parent, output_path) if output_path else None,
+            request_fingerprint=fingerprint,
+            output_path=portable_artifact_path(metadata_path.parent, output_path, "output.wav") if output_path else None,
             sample_rate=raw.get("sample_rate"),
             duration_seconds=raw.get("duration_seconds"),
             reference_text=raw.get("reference_text"),
@@ -674,6 +807,7 @@ class TtsJobService:
                     output_path=output_path,
                     sample_rate=sample_rate,
                     duration_seconds=duration_seconds,
+                    provenance={**job.provenance, "output_sha256": content_sha256(output_path.read_bytes())},
                 )
                 self._save(completed)
                 return completed
@@ -694,9 +828,14 @@ class TtsJobService:
 def _job_to_metadata(job: TtsJob) -> dict:
     return {
         "job_id": job.job_id,
+        "request_id": job.request_id,
+        "actor_id": job.actor_id,
+        "provenance": job.provenance,
+        "recovery_count": job.recovery_count,
         "status": job.status,
         "voice_id": job.voice_id,
         "language": job.language,
+        "model_id": job.model_id,
         "text": job.text,
         "num_steps": job.num_steps,
         "speed": job.speed,
@@ -712,7 +851,7 @@ def _job_to_metadata(job: TtsJob) -> dict:
         "stage_started_at": job.stage_started_at,
         "idempotency_key_hash": job.idempotency_key_hash,
         "request_fingerprint": job.request_fingerprint,
-        "output_path": str(job.output_path) if job.output_path else None,
+        "output_path": job.output_path.name if job.output_path else None,
         "sample_rate": job.sample_rate,
         "duration_seconds": job.duration_seconds,
         "reference_text": job.reference_text,
@@ -721,39 +860,32 @@ def _job_to_metadata(job: TtsJob) -> dict:
 
 
 def _replace_job(job: TtsJob, **changes) -> TtsJob:
-    values = _job_to_metadata(job)
-    values.update(changes)
-    output_path = values.get("output_path")
-    return TtsJob(
-        job_id=values["job_id"],
-        status=values["status"],
-        voice_id=values["voice_id"],
-        language=normalize_language(values.get("language", DEFAULT_LANGUAGE)),
-        text=values["text"],
-        num_steps=values.get("num_steps"),
-        speed=values.get("speed"),
-        created_at=values["created_at"],
-        started_at=values.get("started_at"),
-        completed_at=values.get("completed_at"),
-        error=values.get("error"),
-        attempt=int(values.get("attempt") or 0),
-        max_attempts=max(1, int(values.get("max_attempts") or 1)),
-        cancel_requested=bool(values.get("cancel_requested", False)),
-        failed_reason=values.get("failed_reason"),
-        progress_stage=values["progress_stage"],
-        stage_started_at=values["stage_started_at"],
-        idempotency_key_hash=values.get("idempotency_key_hash"),
-        request_fingerprint=values.get("request_fingerprint"),
-        output_path=Path(output_path) if output_path else None,
-        sample_rate=values.get("sample_rate"),
-        duration_seconds=values.get("duration_seconds"),
-        reference_text=values.get("reference_text"),
-        reference_audio_sha256=values.get("reference_audio_sha256"),
-    )
+    return replace(job, **changes)
 
 
 def _now() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
+
+
+def _tts_request_fingerprint(
+    *,
+    language: str,
+    text: str,
+    voice_id: str,
+    num_steps: int | None,
+    speed: float | None,
+    model_id: str | None = None,
+) -> str:
+    payload = {
+        "language": language,
+        "num_steps": num_steps,
+        "speed": speed,
+        "text": text,
+        "voice_id": voice_id,
+    }
+    if model_id is not None:
+        payload["model_id"] = model_id
+    return request_fingerprint(payload)
 
 
 def _cutoff(max_age_seconds: int | None) -> datetime | None:
@@ -769,8 +901,8 @@ def _job_age_anchor(job: TtsJob) -> datetime:
 
 
 def _is_retryable_exception(exc: Exception) -> bool:
-    return not isinstance(exc, VVoiceError)
+    return isinstance(exc, InferenceTransientError) or not isinstance(exc, VVoiceError)
 
 
 def _failed_reason_for(exc: Exception) -> str:
-    return "application_error" if isinstance(exc, VVoiceError) else "runtime_error"
+    return "runtime_error" if _is_retryable_exception(exc) else "application_error"

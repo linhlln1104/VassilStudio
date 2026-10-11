@@ -4,6 +4,11 @@ This guide is the production runbook for a small local-first VassilStudio instal
 Windows/local runs, Docker, model layout, auth, smoke checks, diagnostics, backup, and common
 failure modes.
 
+For the current multi-model TTS configuration and the isolated VieNeu v3 Turbo
+runtime, read [Model engines and deployments](model-engines.md). Zip-specific
+asset examples below also apply to legacy configurations; new deployments use
+`tts.profiles.<model_id>` with per-language `tts.default_models`.
+
 ## Supported Runtime Modes
 
 | Mode | Use when | Entry point |
@@ -43,7 +48,25 @@ Each ASR/TTS queue accepts at most 32 pending entries by default, including acti
 and executor entries not yet consumed. Configure `jobs.asr_max_pending_jobs` and
 `jobs.tts_max_pending_jobs` to change the bound. A full queue returns HTTP 429 with `Retry-After`;
 idempotent replays of an existing job remain available. A cancelled queued entry releases its
-executor slot when consumed. Keep one application process per workspace.
+executor slot when consumed. Use one API process and either its embedded worker or one separate
+worker process per workspace; see [worker operation](worker.md). Keep SQLite on a local filesystem.
+
+Accepted jobs are stored in `queue.sqlite3` (WAL) beside portable job metadata. One OS lock owner
+claims each domain's work; process death releases that lock and the next worker reclaims interrupted
+tasks. Recovery is bounded to three interrupted attempts. Normal shutdown finishes claimed work and
+leaves pending jobs queued. The shared inference admission lock serializes native model operations
+across ASR/TTS and API/worker processes. This is single-host crash recovery, not a distributed lease.
+
+TTS retry creates a new job from the frozen reference/transcript, parameters and deployment digest.
+Changing weights refuses the old request instead of silently using a different model. Transient
+worker loss can retry within `jobs.tts_max_attempts`; model configuration errors and inference
+deadlines do not automatically retry. The default remains one attempt. For two attempts, set
+`jobs.tts_max_attempts` to `2`. TTS idempotency keys are scoped to the actor; their deduplication
+records survive job cleanup for 30 days. Replaying a cleaned-up result returns 409 and asks for a
+new key for an intentional new render. Current record metadata and task indexes retain request IDs.
+
+Artifact paths in new job metadata are relative to each record directory. Known legacy absolute
+input/output paths are rebased to that same record on restore; other escaping paths are quarantined.
 
 Audio decode has hard bounds of 30 minutes, 32 million interleaved source samples, 8 channels and
 192 kHz. Resampled mono output is also bounded to 32 million samples. The first limit reached
@@ -357,10 +380,13 @@ To back up a local workspace, stop the app and copy:
 
 - `config/` local files, excluding secrets if sharing externally
 - `models/runtime/` if models are not easily reinstalled
-- `data/voices/`
-- `data/outputs/`
-- `data/auth.sqlite3`
-- any job directories that need audit/history retention
+- the complete `data/` directory, including job queues, auth/IAM/audit, deployment versions,
+  worker controls, production metadata, voice/reference snapshots and retained take assets
+
+Stop both API and worker before copying. If taking a live backup, use SQLite-aware snapshots
+and coordinate the associated audio files; copying only a `.sqlite3` file while WAL writers run
+is insufficient. Completed production audio has independent ownership and survives ordinary
+job cleanup. Production asset retention is currently explicit operator backup/storage management.
 
 To restore, copy the same paths into a fresh checkout, run `scripts/setup_storage.ps1`, then run
 `scripts/doctor.ps1` and `scripts/check.ps1`.

@@ -26,6 +26,7 @@ by those components.
 | FFmpeg executable supplied by imageio-ffmpeg | Platform wheel dependent | GPL-3.0-or-later for the RC builds using `--enable-gpl --enable-version3` | https://github.com/FFmpeg/FFmpeg |
 | sherpa-onnx | 1.13.3 | Apache-2.0 | https://github.com/k2-fsa/sherpa-onnx |
 | ZipVoice source/runtime design | Upstream source | Apache-2.0 | https://github.com/k2-fsa/ZipVoice |
+| VieNeu SDK (optional isolated environment) | 3.8.3 | Apache-2.0 | https://github.com/pnnbao97/VieNeu-TTS |
 | ONNX Runtime | 1.27.0 | MIT | https://github.com/microsoft/onnxruntime |
 | PyTorch | 2.11.0 CPU | BSD-3-Clause | https://github.com/pytorch/pytorch |
 | TorchAudio | 2.11.0 CPU | BSD-2-Clause | https://github.com/pytorch/audio |

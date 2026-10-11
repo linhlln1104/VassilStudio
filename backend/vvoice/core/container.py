@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 
 from vvoice.app.auth.service import LocalAuthService
 from vvoice.core.config import Settings
 from vvoice.domains.asr.jobs import AsrJobService
 from vvoice.domains.asr.service import AsrService
 from vvoice.domains.tts.jobs import TtsJobService
-from vvoice.domains.tts.service import ZipVoiceService
+from vvoice.domains.tts.service import TtsService
 from vvoice.domains.voices.service import VoiceStore
+from vvoice.domains.production.service import ProductionService
+from vvoice.inference.admission import AdmissionGate
 
 
 @dataclass
@@ -16,14 +19,19 @@ class AppContainer:
     settings: Settings
 
     def __post_init__(self) -> None:
+        mode = os.environ.get('VASSIL_WORKER_MODE', 'embedded').strip().lower()
+        if mode not in {'embedded', 'external'}:
+            raise ValueError('VASSIL_WORKER_MODE must be embedded or external')
         self._ensure_storage_dirs()
         self.auth = LocalAuthService(self.settings.security)
         if not self.settings.runtime.binds_loopback_only and self.auth.setup_required:
             raise ValueError(
                 "Complete owner setup on a loopback bind before enabling non-loopback access."
             )
-        self.asr = AsrService(self.settings.asr, self.settings.runtime)
-        self.tts = ZipVoiceService(self.settings.tts, self.settings.runtime)
+        admission = AdmissionGate(lock_path=self.settings.storage.data_dir / '.inference.lock')
+        self.asr = AsrService(self.settings.asr, self.settings.runtime, admission=admission)
+        self.tts = TtsService(self.settings.tts, self.settings.runtime, admission=admission,
+            state_path=self.settings.storage.data_dir / 'model-deployments.sqlite3')
         self.voices = VoiceStore(self.settings.storage.voices_dir)
         self.asr_jobs = AsrJobService(
             self.settings.storage.asr_jobs_dir,
@@ -33,6 +41,7 @@ class AppContainer:
             max_pending_jobs=self.settings.jobs.asr_max_pending_jobs,
             max_attempts=self.settings.jobs.asr_max_attempts,
             retry_backoff_seconds=self.settings.jobs.retry_backoff_seconds,
+            worker_enabled=mode == 'embedded',
         )
         self.tts_jobs = TtsJobService(
             self.settings.storage.tts_jobs_dir,
@@ -43,11 +52,27 @@ class AppContainer:
             max_attempts=self.settings.jobs.tts_max_attempts,
             retry_backoff_seconds=self.settings.jobs.retry_backoff_seconds,
             max_text_chars=self.settings.limits.max_tts_text_chars,
+            worker_enabled=mode == 'embedded',
+        )
+        if mode == 'external':
+            from vvoice.inference.remote import RemoteAsrService, RemoteTtsService, WorkerControlStore
+            control = WorkerControlStore(self.settings.storage.data_dir / 'worker-control.sqlite3')
+            self.tts = RemoteTtsService(self.tts, self.tts_jobs, control)
+            self.asr = RemoteAsrService(self.asr, self.asr_jobs, control)
+        self.production = ProductionService(
+            self.settings.storage.data_dir / 'production', self.tts_jobs, self.tts, self.voices,
+            max_text_chars=self.settings.limits.max_tts_text_chars,
         )
 
     def shutdown(self) -> None:
+        self.production.shutdown()
         self.asr_jobs.shutdown()
         self.tts_jobs.shutdown()
+        # Finish only already claimed work before unloading its model. Pending jobs
+        # remain queued for the next worker, including after a normal restart.
+        self.asr_jobs._executor.shutdown(wait=True)
+        self.tts_jobs._executor.shutdown(wait=True)
+        self.tts.close()
 
     def _ensure_storage_dirs(self) -> None:
         for path in [

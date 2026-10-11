@@ -38,30 +38,67 @@
   },
   "tts": {
     "enabled": true,
-    "sample_rate": 24000,
     "default_language": "vi",
-    "default_num_steps": 8,
-    "default_speed": 1.0,
-    "min_char_in_sentence": 30,
-    "models": {
-      "vi": {
+    "default_models": {
+      "vi": "zipvoice-vi",
+      "en": "zipvoice-en"
+    },
+    "profiles": {
+      "zipvoice-vi": {
+        "engine": "zipvoice",
         "label": "Vietnamese ZipVoice",
+        "languages": [
+          "vi"
+        ],
         "sample_rate": 24000,
-        "tokens": "models/runtime/tts/vi/zipvoice/tokens.txt",
-        "encoder": "models/runtime/tts/vi/zipvoice/text_model.onnx",
-        "decoder": "models/runtime/tts/vi/zipvoice/flow_matching_model.onnx",
-        "vocoder": "models/runtime/tts/vi/zipvoice/vocos_24khz.onnx",
-        "data_dir": "models/runtime/tts/vi/zipvoice/espeak-ng-data",
-        "lexicon": "models/runtime/tts/vi/zipvoice/lexicon_vi_minimal.txt"
+        "options": {
+          "tokens": "models/runtime/tts/vi/zipvoice/tokens.txt",
+          "encoder": "models/runtime/tts/vi/zipvoice/text_model.onnx",
+          "decoder": "models/runtime/tts/vi/zipvoice/flow_matching_model.onnx",
+          "vocoder": "models/runtime/tts/vi/zipvoice/vocos_24khz.onnx",
+          "data_dir": "models/runtime/tts/vi/zipvoice/espeak-ng-data",
+          "lexicon": "models/runtime/tts/vi/zipvoice/lexicon_vi_minimal.txt",
+          "default_num_steps": 8,
+          "default_speed": 1.0,
+          "min_char_in_sentence": 30
+        }
       },
-      "en": {
+      "zipvoice-en": {
+        "engine": "zipvoice",
         "label": "English ZipVoice",
+        "languages": [
+          "en"
+        ],
         "sample_rate": 24000,
-        "tokens": "models/runtime/tts/en/zipvoice/tokens.txt",
-        "encoder": "models/runtime/tts/en/zipvoice/text_model.onnx",
-        "decoder": "models/runtime/tts/en/zipvoice/flow_matching_model.onnx",
-        "vocoder": "models/runtime/tts/en/zipvoice/vocos_24khz.onnx",
-        "data_dir": "models/runtime/tts/en/zipvoice/espeak-ng-data"
+        "options": {
+          "tokens": "models/runtime/tts/en/zipvoice/tokens.txt",
+          "encoder": "models/runtime/tts/en/zipvoice/text_model.onnx",
+          "decoder": "models/runtime/tts/en/zipvoice/flow_matching_model.onnx",
+          "vocoder": "models/runtime/tts/en/zipvoice/vocos_24khz.onnx",
+          "data_dir": "models/runtime/tts/en/zipvoice/espeak-ng-data",
+          "default_num_steps": 8,
+          "default_speed": 1.0,
+          "min_char_in_sentence": 30
+        }
+      },
+      "vieneu-v3-turbo": {
+        "engine": "vieneu",
+        "label": "VieNeu TTS v3 Turbo",
+        "languages": [
+          "vi",
+          "en"
+        ],
+        "sample_rate": 48000,
+        "options": {
+          "environment_dir": ".venv-vieneu",
+          "model_dir": "models/runtime/tts/vieneu-v3-turbo/model",
+          "onnx_dir": "models/runtime/tts/vieneu-v3-turbo/model/onnx_update",
+          "cache_dir": "models/runtime/tts/vieneu-v3-turbo/hf-cache",
+          "threads": 0,
+          "denoise": true,
+          "load_timeout_seconds": 180,
+          "inference_timeout_seconds": 600
+        }
       }
     }
   },

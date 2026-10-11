@@ -5,6 +5,10 @@ import {
   Mic,
   Settings,
   UsersRound,
+  Folders,
+  Layers,
+  Cpu,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
 import type { ComponentType, LazyExoticComponent } from 'react'
@@ -16,20 +20,26 @@ import {
   SettingsRouteView,
   TranscribeRouteView,
   VoicesRouteView,
+  ProjectsRouteView,
+  BatchesRouteView,
+  ModelsRouteView,
+  AdministrationRouteView,
 } from './lazy-route-views'
 
-export type RouteId = 'generate' | 'voices' | 'jobs' | 'transcribe' | 'realtime' | 'settings'
+export type RouteId = 'generate' | 'voices' | 'jobs' | 'transcribe' | 'realtime' | 'settings' | 'projects' | 'batches' | 'models' | 'administration'
 
 export type StudioRoute = {
   id: RouteId
   label: string
   shortLabel: string
   icon: LucideIcon
-  section: 'Create' | 'Manage' | 'System'
+  section: 'Production' | 'Create' | 'Manage' | 'System'
   component: ComponentType | LazyExoticComponent<ComponentType>
 }
 
 export const routes: StudioRoute[] = [
+  { id: 'projects', label: 'Projects', shortLabel: 'Projects', icon: Folders, section: 'Production', component: ProjectsRouteView },
+  { id: 'batches', label: 'Batches', shortLabel: 'Batches', icon: Layers, section: 'Production', component: BatchesRouteView },
   {
     id: 'generate',
     label: 'Generate',
@@ -78,9 +88,11 @@ export const routes: StudioRoute[] = [
     section: 'System',
     component: SettingsRouteView,
   },
+  { id: 'models', label: 'Models', shortLabel: 'Models', icon: Cpu, section: 'System', component: ModelsRouteView },
+  { id: 'administration', label: 'Administration', shortLabel: 'Admin', icon: ShieldCheck, section: 'System', component: AdministrationRouteView },
 ]
 
 export function routeFromHash(hash: string): RouteId {
-  const candidate = hash.replace(/^#\/?/, '') as RouteId
+  const candidate = hash.replace(/^#\/?/, '').split('?')[0] as RouteId
   return routes.some((route) => route.id === candidate) ? candidate : 'generate'
 }

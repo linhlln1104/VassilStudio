@@ -12,6 +12,14 @@ data/
     tts/
   uploads/
   outputs/
+  production/
+    production.sqlite3
+    references/
+    audio/
+    exports/
+  model-deployments.sqlite3
+  worker-control.sqlite3
+  auth.sqlite3
 ```
 
 `data/voices` stores reusable reference voices, including loose import candidates such as
@@ -26,3 +34,10 @@ keeps profiles portable between local runs and Docker mounts. Older metadata wit
 paths is still read for compatibility.
 
 Docker mounts `./data` into `/app/data` as writable storage.
+
+Each job domain also contains a SQLite WAL dispatch queue/index and OS lock files.
+Production audio belongs to its retained take and survives ordinary job cleanup.
+Auth stores hashed keys, scoped accounts, sessions and audit events. Back up all data
+together after stopping API and worker, or use coordinated SQLite-aware live snapshots.
+Never copy only the main SQLite files while WAL writers run. See `docs/worker.md` and
+`docs/production-workflows.md` for recovery, versioning and export behavior.

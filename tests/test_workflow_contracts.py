@@ -27,7 +27,8 @@ def test_retained_asr_audio_can_be_requeued_using_its_wav_download_name(tmp_path
     app = FastAPI()
     app.state.container = SimpleNamespace(
         asr_jobs=jobs,
-        settings=SimpleNamespace(limits=SimpleNamespace(max_upload_bytes=100000)),
+        settings=SimpleNamespace(limits=SimpleNamespace(max_upload_bytes=100000),
+                                 security=SimpleNamespace(auth_required=False, api_keys=())),
     )
     register_exception_handlers(app)
     app.include_router(router, prefix="/asr")

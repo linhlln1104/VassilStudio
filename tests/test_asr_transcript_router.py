@@ -87,7 +87,9 @@ def test_transcript_revision_and_export_routes() -> None:
 
 def _client(jobs: TranscriptJobs) -> TestClient:
     app = FastAPI()
-    app.state.container = SimpleNamespace(asr_jobs=jobs)
+    app.state.container = SimpleNamespace(asr_jobs=jobs, settings=SimpleNamespace(
+        security=SimpleNamespace(auth_required=False, api_keys=()),
+    ))
     register_exception_handlers(app)
     app.include_router(router, prefix="/api/v1/asr")
     return TestClient(app)

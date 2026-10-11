@@ -23,6 +23,8 @@ type AuthPageProps = {
 export function AuthPage({ mode }: AuthPageProps) {
   const returnTo = authReturnTo()
   const [username, setUsername] = useState('')
+  const [signInMethod, setSignInMethod] = useState<'owner' | 'service'>('owner')
+  const [serviceKey, setServiceKey] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -31,7 +33,7 @@ export function AuthPage({ mode }: AuthPageProps) {
     queryFn: api.authStatus,
   })
   const mutation = useMutation({
-    mutationFn: mode === 'setup' ? api.authSetup : api.authLogin,
+    mutationFn: (payload: { username: string; password: string }) => mode === 'setup' ? api.authSetup(payload) : signInMethod === 'service' ? api.authKeyLogin(serviceKey.trim()) : api.authLogin(payload),
     onSuccess: () => {
       window.location.assign(returnTo)
     },
@@ -72,8 +74,7 @@ export function AuthPage({ mode }: AuthPageProps) {
   const Icon = isSetup ? UserPlus : LockKeyhole
   const passwordMismatch = isSetup && confirmPassword.length > 0 && password !== confirmPassword
   const canSubmit =
-    username.trim().length >= 3 &&
-    password.length >= (isSetup ? 8 : 1) &&
+    (signInMethod === 'service' && !isSetup ? serviceKey.trim().length > 0 : username.trim().length >= 3 && password.length >= (isSetup ? 8 : 1)) &&
     (!isSetup || password === confirmPassword) &&
     !statusQuery.isPending &&
     !statusQuery.isError &&
@@ -142,6 +143,8 @@ export function AuthPage({ mode }: AuthPageProps) {
               </div>
             ) : null}
 
+            {!isSetup ? <div className="mt-4 flex gap-2" aria-label="Sign-in method"><Button type="button" size="sm" variant={signInMethod === 'owner' ? 'default' : 'secondary'} onClick={() => { setSignInMethod('owner'); setServiceKey(''); mutation.reset() }}>Owner password</Button><Button type="button" size="sm" variant={signInMethod === 'service' ? 'default' : 'secondary'} onClick={() => { setSignInMethod('service'); setPassword(''); mutation.reset() }}>Service access key</Button></div> : null}
+            {signInMethod === 'service' && !isSetup ? <div className="mt-4"><AuthPasswordField label="Service access key" value={serviceKey} visible={false} autoComplete="off" minLength={1} onChange={(value) => { setServiceKey(value); mutation.reset() }} /><p className="mt-2 text-xs text-slate-500">Use a key issued by your administrator. Your session inherits its role and scopes; the key is not saved in browser storage.</p></div> : <>
             <label className="mt-5 block text-xs font-medium text-slate-700">
               Username
               <input
@@ -196,6 +199,7 @@ export function AuthPage({ mode }: AuthPageProps) {
               </div>
             ) : null}
 
+            </>}
             {mutation.isError ? (
               <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                 {mutation.error instanceof Error ? mutation.error.message : 'Authentication failed.'}

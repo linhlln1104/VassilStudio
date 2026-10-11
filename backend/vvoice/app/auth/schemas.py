@@ -27,6 +27,10 @@ class AuthLoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=512)
 
 
+class AuthKeyLoginRequest(BaseModel):
+    api_key: str = Field(min_length=1, max_length=256)
+
+
 class AuthChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=512)
     new_password: str = Field(min_length=8, max_length=512)

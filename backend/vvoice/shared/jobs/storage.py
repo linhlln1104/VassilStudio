@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import re
 import uuid
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 
 _RECORD_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -41,6 +42,20 @@ def contained_path(directory: Path, path: Path) -> Path:
 def artifact_path(directory: Path, value: str) -> Path:
     path = Path(value)
     return contained_path(directory, path if path.is_absolute() else directory / path)
+
+
+def portable_artifact_path(directory: Path, value: str, expected: str) -> Path:
+    """Rebase only the canonical artifact of the same legacy record after relocation.
+
+    Never follow the stored absolute path outside the new record. This also supports
+    a Windows backup restored on Linux without treating backslashes as filename text.
+    """
+    legacy = PureWindowsPath(value) if PureWindowsPath(value).is_absolute() else Path(value)
+    if legacy.is_absolute():
+        if legacy.name != expected or legacy.parent.name != directory.name:
+            raise ValueError('Legacy artifact does not belong to this record')
+        value = expected
+    return artifact_path(directory, value)
 
 
 def read_metadata(path: Path) -> dict:
@@ -100,6 +115,8 @@ def atomic_write_metadata(path: Path, metadata: dict) -> None:
     try:
         with temporary.open("x", encoding="utf-8") as stream:
             json.dump(metadata, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -111,6 +128,8 @@ def atomic_write_bytes(path: Path, content: bytes) -> None:
     try:
         with temporary.open("xb") as stream:
             stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)

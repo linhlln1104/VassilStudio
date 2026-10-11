@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vassil-studio"
 version = "0.1.0"
-description = "VassilStudio local voice platform using ZipFormer ASR and ZipVoice TTS"
+description = "VassilStudio local voice platform with pluggable speech model runtimes"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
@@ -17,12 +17,27 @@ dependencies = [
   "soundfile>=0.12",
   "librosa>=0.10",
   "imageio-ffmpeg>=0.5",
-  "phonemizer-fork==3.3.2",
-  "espeakng-loader==0.2.4",
 ]
 
 [project.optional-dependencies]
+server = [
+  "uvicorn[standard]>=0.30",
+  "requests>=2.32",
+  "websockets>=13",
+]
+zipvoice = [
+  "onnxruntime==1.27.0",
+  "torch==2.11.0",
+  "torchaudio==2.11.0",
+  "phonemizer-fork==3.3.2",
+  "espeakng-loader==0.2.4",
+]
+zipformer = ["sherpa-onnx==1.13.3"]
+# Compatibility extras for existing ZipVoice/ZipFormer deployments.
+# VieNeu runs in its own environment, managed by scripts/setup_vieneu.py.
 runtime = [
+  "phonemizer-fork==3.3.2",
+  "espeakng-loader==0.2.4",
   "uvicorn[standard]>=0.30",
   "requests>=2.32",
   "websockets>=13",
@@ -40,6 +55,8 @@ qa = [
   "uvicorn>=0.30",
 ]
 dev = [
+  "phonemizer-fork==3.3.2",
+  "espeakng-loader==0.2.4",
   "uvicorn[standard]>=0.30",
   "requests>=2.32",
   "websockets>=13",

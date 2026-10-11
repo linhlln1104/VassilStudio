@@ -1,3 +1,4 @@
+import { ttsModelCatalog } from './tts-model-fixture.mjs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -111,6 +112,7 @@ async function installFixture(page, fixture) {
     if (url.pathname === '/api/v1/auth/status') {
       return json({ auth_required: false, setup_required: false, authenticated: true, api_key_auth_enabled: false, user: null })
     }
+    if (url.pathname === '/api/v1/tts/models') return json(ttsModelCatalog())
     if (url.pathname === '/model-status') {
       return json({
         ready: true,
